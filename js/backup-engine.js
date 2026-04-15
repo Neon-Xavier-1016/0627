@@ -1,19 +1,14 @@
 /**
- * 统一备份/恢复引擎 v6
- * - 支持 ZIP（媒体与 JSON 分离）和单 JSON 两种格式
- * - 修复 session ID 冲突导致导入后数据丢失的问题
- * - 修复 localStorage 大图被跳过的问题
- * - 导入后自动刷新页面，确保界面立即显示新数据
- * - 兼容 config.js 中的数据注册表，支持选择性导入
- *
- * 依赖：localforage, JSZip (可选), 全局 APP_PREFIX, SESSION_ID
+ * 统一备份/恢复引擎 v6.2（全量导入修复版）
+ * - 修复：导入时不再重映射键名，直接使用备份中的原始键
+ * - 修复：移除 localStorage 恢复时对 data:image 的长度限制（背景图不再丢失）
+ * - 新增：导入成功后自动刷新页面
  */
 (function (global) {
     'use strict';
 
     var MIN_MEDIA_CHARS = 800;
 
-    // ---------- 工具函数 ----------
     function escapeRe(s) {
         return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
@@ -79,7 +74,6 @@
         }
     }
 
-    // ---------- 媒体树处理 ----------
     function extractMediaTree(node, state) {
         if (!state) state = { store: {}, map: new Map(), n: 0 };
         if (node === null || node === undefined) return node;
@@ -159,7 +153,6 @@
         }
     }
 
-    // ---------- session 推断 ----------
     function inferBackupSessionId(lfKeys, appPrefix) {
         var pfx = appPrefix || (typeof APP_PREFIX !== 'undefined' ? APP_PREFIX : 'CHAT_APP_V3_');
         var skipParts = ['MIGRATION', 'sessionList', 'lastSessionId', 'customThemes', 'themeSchemes'];
@@ -174,7 +167,12 @@
         return null;
     }
 
-    // ---------- 模块过滤（与 config.js 注册表联动）----------
+    function remapLfKey(key, oldSid, newSid, appPrefix) {
+        if (!oldSid || !newSid || oldSid === newSid || !key) return key;
+        var re = new RegExp(escapeRe(oldSid), 'g');
+        return key.replace(re, newSid);
+    }
+
     function buildModuleSkipPatterns(flags) {
         flags = flags || {};
         var p = [];
@@ -189,7 +187,7 @@
         return p;
     }
 
-    function shouldSkipKey(key, flags) {
+    function shouldSkipKeyGroupChat(key, flags) {
         if (!key) return true;
         if (key.startsWith('annHeaderBg_')) return true;
         if (key.indexOf('dg_header_bg') !== -1 || key.indexOf('dg_overlay_bg') !== -1) return true;
@@ -197,17 +195,16 @@
         return patterns.some(function (p) { return key.indexOf(p) !== -1; });
     }
 
-    // ---------- 构建备份负载 ----------
     async function buildBackupPayload(flags) {
         flags = flags || {
             inclMsgs: true, inclSet: true, inclCustom: true, inclAnn: true,
-            inclThemes: true, inclDg: true, inclStickers: true   // 默认全部备份
+            inclThemes: true, inclDg: true, inclStickers: true
         };
         var lfData = {};
         var keys = await localforage.keys();
         for (var i = 0; i < keys.length; i++) {
             var key = keys[i];
-            if (shouldSkipKey(key, flags)) continue;
+            if (shouldSkipKeyGroupChat(key, flags)) continue;
             try {
                 var rawVal = await localforage.getItem(key);
                 if (rawVal === null || rawVal === undefined) continue;
@@ -217,7 +214,7 @@
         var lsData = {};
         for (var j = 0; j < localStorage.length; j++) {
             var lk = localStorage.key(j);
-            if (!lk || shouldSkipKey(lk, flags)) continue;
+            if (!lk || shouldSkipKeyGroupChat(lk, flags)) continue;
             try {
                 lsData[lk] = localStorage.getItem(lk);
             } catch (e2) {}
@@ -234,8 +231,8 @@
             lsOut[k2] = processLocalStorageValueForExport(lsData[k2], state);
         }
         return {
-            type: 'chatapp-backup-v6',
-            formatVersion: 6,
+            type: 'chatapp-backup-v4',
+            formatVersion: 4,
             appName: 'ChatApp',
             timestamp: new Date().toISOString(),
             sessionId: typeof SESSION_ID !== 'undefined' ? SESSION_ID : null,
@@ -247,7 +244,11 @@
         };
     }
 
-    // ---------- 导出 ----------
+    function serializeBackupV4(payload) {
+        var bom = '\uFEFF';
+        return bom + JSON.stringify(payload);
+    }
+
     function downloadBlob(blob, fileName) {
         if (typeof downloadFileFallback === 'function') {
             downloadFileFallback(blob, fileName);
@@ -264,99 +265,6 @@
         setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
     }
 
-    async function exportBackupToFile(flags) {
-        if (typeof showNotification === 'function') showNotification('正在打包备份…', 'info', 4000);
-        var payload = await buildBackupPayload(flags);
-        var dateStr = new Date().toISOString().slice(0, 10);
-        var fileNameZip = 'chatapp-backup-' + dateStr + '.zip';
-
-        if (typeof JSZip !== 'undefined') {
-            try {
-                var zip = new JSZip();
-                var store = payload.mediaStore || {};
-                var mediaIndex = {};
-                for (var sid in store) {
-                    if (!Object.prototype.hasOwnProperty.call(store, sid)) continue;
-                    var url = store[sid];
-                    var parts = dataUrlToBinary(url);
-                    var path = 'media/' + sid;
-                    if (parts && parts.bytes && parts.bytes.length) {
-                        zip.file(path, parts.bytes, { binary: true });
-                        mediaIndex[sid] = { path: path, mime: parts.mime };
-                    } else {
-                        var txtPath = path + '.txt';
-                        zip.file(txtPath, String(url));
-                        mediaIndex[sid] = { path: txtPath, mime: 'text/plain+dataurl' };
-                    }
-                }
-                var jsonBody = {
-                    type: 'chatapp-backup-v6',
-                    formatVersion: 6,
-                    appName: payload.appName,
-                    timestamp: payload.timestamp,
-                    sessionId: payload.sessionId,
-                    appPrefix: payload.appPrefix,
-                    modules: payload.modules,
-                    localforage: payload.localforage,
-                    localStorage: payload.localStorage,
-                    mediaIndex: mediaIndex
-                };
-                zip.file('backup.json', '\uFEFF' + JSON.stringify(jsonBody));
-                var zipBlob = await zip.generateAsync({
-                    type: 'blob',
-                    compression: 'DEFLATE',
-                    compressionOptions: { level: 6 }
-                });
-                // 移动端分享
-                if (navigator.share && /Mobile|Android|iPhone|iPad/.test(navigator.userAgent)) {
-                    try {
-                        var shareFile = new File([zipBlob], fileNameZip, { type: 'application/zip' });
-                        if (navigator.canShare && navigator.canShare({ files: [shareFile] })) {
-                            await navigator.share({
-                                files: [shareFile],
-                                title: '传讯全量备份',
-                                text: 'ZIP 备份：' + new Date().toLocaleDateString()
-                            });
-                            if (typeof showNotification === 'function') showNotification('备份导出成功', 'success');
-                            return;
-                        }
-                    } catch (e) { /* fall through */ }
-                }
-                downloadBlob(zipBlob, fileNameZip);
-                if (typeof showNotification === 'function') {
-                    showNotification('已导出 ZIP 备份（含图片）', 'success', 3500);
-                }
-                return;
-            } catch (zipErr) {
-                console.error('[backup] ZIP 导出失败，回退单文件 JSON', zipErr);
-                if (typeof showNotification === 'function') {
-                    showNotification('ZIP 打包失败，改为单文件 JSON', 'warning', 4500);
-                }
-            }
-        } else if (typeof showNotification === 'function') {
-            showNotification('JSZip 未加载，将导出单文件 JSON', 'warning', 3000);
-        }
-
-        // 回退到单 JSON
-        var bom = '\uFEFF';
-        var str = bom + JSON.stringify(payload);
-        var blob = new Blob([str], { type: 'application/json;charset=utf-8' });
-        var fileName = 'chatapp-backup-' + dateStr + '.json';
-        if (navigator.share && /Mobile|Android|iPhone|iPad/.test(navigator.userAgent)) {
-            try {
-                var f = new File([blob], fileName, { type: 'application/json' });
-                if (navigator.canShare && navigator.canShare({ files: [f] })) {
-                    await navigator.share({ files: [f], title: '传讯全量备份', text: '备份日期：' + new Date().toLocaleDateString() });
-                    if (typeof showNotification === 'function') showNotification('备份导出成功', 'success');
-                    return;
-                }
-            } catch (e2) { /* fall through */ }
-        }
-        downloadBlob(blob, fileName);
-        if (typeof showNotification === 'function') showNotification('备份导出成功（JSON）', 'success');
-    }
-
-    // ---------- 导入解析 ----------
     async function parseZipBackup(arrayBuffer) {
         if (typeof JSZip === 'undefined') throw new Error('JSZip 未加载，无法读取 ZIP 备份');
         var zip = await JSZip.loadAsync(arrayBuffer);
@@ -373,7 +281,7 @@
         if (raw.length && raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
         var data = JSON.parse(raw);
         var idx = data.mediaIndex;
-        if ((data.formatVersion === 5 || data.formatVersion === 6) && data.type.indexOf('backup-v') !== -1 && idx && typeof idx === 'object') {
+        if (data.formatVersion === 5 && data.type === 'chatapp-backup-v5' && idx && typeof idx === 'object') {
             var built = {};
             var ids = Object.keys(idx);
             for (var i = 0; i < ids.length; i++) {
@@ -414,102 +322,222 @@
         return await loadBackupFromArrayBuffer(ab);
     }
 
-    // ---------- 核心：恢复数据到存储（修复版）----------
+    async function exportBackupToFile(flags) {
+        if (typeof showNotification === 'function') showNotification('正在打包备份（ZIP：结构与媒体分离）…', 'info', 4000);
+        var payload = await buildBackupPayload(flags);
+        var dateStr = new Date().toISOString().slice(0, 10);
+        var fileNameZip = 'chatapp-backup-' + dateStr + '.zip';
+
+        if (typeof JSZip !== 'undefined') {
+            try {
+                var zip = new JSZip();
+                var store = payload.mediaStore || {};
+                var mediaIndex = {};
+                for (var sid in store) {
+                    if (!Object.prototype.hasOwnProperty.call(store, sid)) continue;
+                    var url = store[sid];
+                    var parts = dataUrlToBinary(url);
+                    var path = 'media/' + sid;
+                    if (parts && parts.bytes && parts.bytes.length) {
+                        zip.file(path, parts.bytes, { binary: true });
+                        mediaIndex[sid] = { path: path, mime: parts.mime };
+                    } else {
+                        var txtPath = path + '.txt';
+                        zip.file(txtPath, String(url));
+                        mediaIndex[sid] = { path: txtPath, mime: 'text/plain+dataurl' };
+                    }
+                }
+                var jsonBody = {
+                    type: 'chatapp-backup-v5',
+                    formatVersion: 5,
+                    appName: payload.appName || 'ChatApp',
+                    timestamp: payload.timestamp,
+                    sessionId: payload.sessionId,
+                    appPrefix: payload.appPrefix,
+                    modules: payload.modules,
+                    localforage: payload.localforage,
+                    localStorage: payload.localStorage,
+                    mediaIndex: mediaIndex
+                };
+                zip.file('backup.json', '\uFEFF' + JSON.stringify(jsonBody));
+                var zipBlob = await zip.generateAsync({
+                    type: 'blob',
+                    compression: 'DEFLATE',
+                    compressionOptions: { level: 6 }
+                });
+                if (navigator.share && /Mobile|Android|iPhone|iPad/.test(navigator.userAgent)) {
+                    try {
+                        var shareFile = new File([zipBlob], fileNameZip, { type: 'application/zip' });
+                        if (navigator.canShare && navigator.canShare({ files: [shareFile] })) {
+                            await navigator.share({
+                                files: [shareFile],
+                                title: '传讯全量备份',
+                                text: 'ZIP 备份：' + new Date().toLocaleDateString()
+                            });
+                            if (typeof showNotification === 'function') showNotification('备份导出成功', 'success');
+                            return;
+                        }
+                    } catch (e) { /* fall through */ }
+                }
+                downloadBlob(zipBlob, fileNameZip);
+                if (typeof showNotification === 'function') {
+                    showNotification('已导出 ZIP 备份', 'success', 3500);
+                }
+                return;
+            } catch (zipErr) {
+                console.error('[backup] ZIP 导出失败，回退单文件 JSON', zipErr);
+                if (typeof showNotification === 'function') {
+                    showNotification('ZIP 打包失败，已改为单文件 JSON', 'warning', 4500);
+                }
+            }
+        } else if (typeof showNotification === 'function') {
+            showNotification('JSZip 未加载，将导出单文件 JSON', 'warning', 3000);
+        }
+
+        var str = serializeBackupV4(payload);
+        var blob = new Blob([str], { type: 'application/json;charset=utf-8' });
+        var fileName = 'chatapp-backup-' + dateStr + '.json';
+        if (navigator.share && /Mobile|Android|iPhone|iPad/.test(navigator.userAgent)) {
+            try {
+                var f = new File([blob], fileName, { type: 'application/json' });
+                if (navigator.canShare && navigator.canShare({ files: [f] })) {
+                    await navigator.share({ files: [f], title: '传讯全量备份', text: '备份日期：' + new Date().toLocaleDateString() });
+                    if (typeof showNotification === 'function') showNotification('备份导出成功', 'success');
+                    return;
+                }
+            } catch (e2) { /* fall through */ }
+        }
+        downloadBlob(blob, fileName);
+        if (typeof showNotification === 'function') showNotification('备份导出成功（JSON）', 'success');
+    }
+
+    function getLfSource(data) {
+        if (!data || typeof data !== 'object') return {};
+        var a = data.indexedDB || {};
+        var b = data.localforage || {};
+        var out = {};
+        for (var k in a) {
+            if (Object.prototype.hasOwnProperty.call(a, k)) out[k] = a[k];
+        }
+        for (var k2 in b) {
+            if (Object.prototype.hasOwnProperty.call(b, k2)) out[k2] = b[k2];
+        }
+        return out;
+    }
+
+    function matchAnyNeedles(key, needles) {
+        if (!key || !needles || !needles.length) return false;
+        for (var i = 0; i < needles.length; i++) {
+            if (key.indexOf(needles[i]) !== -1) return true;
+        }
+        return false;
+    }
+
+    function matchLsKey(key, cat) {
+        if (!cat) return false;
+        if (cat.localStorageNeedles && matchAnyNeedles(key, cat.localStorageNeedles)) return true;
+        if (cat.localStoragePrefixes && cat.localStoragePrefixes.some(function (p) { return key.indexOf(p) === 0; })) return true;
+        return false;
+    }
+
+    function filterLfByCategories(lf, selectedIds, categories) {
+        if (!selectedIds || !selectedIds.length) return {};
+        var selected = categories.filter(function (c) { return selectedIds.indexOf(c.id) !== -1; });
+        var out = {};
+        for (var k in lf) {
+            if (!Object.prototype.hasOwnProperty.call(lf, k)) continue;
+            var ok = selected.some(function (c) { return matchAnyNeedles(k, c.indexedDBNeedles); });
+            if (ok) out[k] = lf[k];
+        }
+        return out;
+    }
+
+    function filterLsByCategories(ls, selectedIds, categories) {
+        if (!selectedIds || !selectedIds.length) return {};
+        var selected = categories.filter(function (c) { return selectedIds.indexOf(c.id) !== -1; });
+        var out = {};
+        for (var k in ls) {
+            if (!Object.prototype.hasOwnProperty.call(ls, k)) continue;
+            var ok = selected.some(function (c) { return matchLsKey(k, c); });
+            if (ok) out[k] = ls[k];
+        }
+        return out;
+    }
+
+    // ************ 核心修复：applyBackupToStorage ************
     async function applyBackupToStorage(data, opt) {
         opt = opt || {};
         var selective = !!opt.selective;
         var mediaStore = data.mediaStore || {};
-
-        // 获取原始数据源（兼容旧格式 indexedDB / localforage）
-        var lfRaw = {};
-        if (data.localforage && typeof data.localforage === 'object') {
-            lfRaw = data.localforage;
-        } else if (data.indexedDB && typeof data.indexedDB === 'object') {
-            lfRaw = data.indexedDB;
-        }
+        var lfRaw = getLfSource(data);
         var lsRaw = data.localStorage || {};
 
-        // 选择性导入（如果你有 categories 定义）
         if (selective && opt.selectedCategoryIds && opt.categories) {
-            // 这里需要根据你的 config.js 中的 APP_DATA_REGISTRY 来过滤
-            // 简化起见，仅保留示例逻辑，实际可在调用时传入过滤函数
-            console.warn('[backup] 选择性导入需要传入 categories 和过滤函数，当前未实现详细过滤，将导入全部');
+            lfRaw = filterLfByCategories(lfRaw, opt.selectedCategoryIds, opt.categories);
+            lsRaw = filterLsByCategories(lsRaw, opt.selectedCategoryIds, opt.categories);
         }
 
-        // ========== 关键修复1：禁止 session 重映射 ==========
-        var lfKeys = Object.keys(lfRaw);
-        var backupSid = data.sessionId || inferBackupSessionId(lfKeys, data.appPrefix);
-        var curSid = typeof SESSION_ID !== 'undefined' ? SESSION_ID : null;
-        var appPfx = data.appPrefix || (typeof APP_PREFIX !== 'undefined' ? APP_PREFIX : 'CHAT_APP_V3_');
-
-        // 不再重命名键名，而是直接使用备份中的键名
-        var needRemap = false;  // 强制关闭重映射
-
-        // ========== 关键修复2：更新当前 SESSION_ID 为备份的 ID ==========
+        // 1. 获取备份中的 sessionId，并强制覆盖当前 SESSION_ID
+        var backupSid = data.sessionId || inferBackupSessionId(Object.keys(lfRaw), data.appPrefix);
         if (backupSid && typeof SESSION_ID !== 'undefined') {
             SESSION_ID = backupSid;
-            // 同时更新全局变量（如果存在 window 上）
-            if (typeof window !== 'undefined') window.SESSION_ID = backupSid;
         }
 
-        // 写入 localforage
-        for (var i = 0; i < lfKeys.length; i++) {
-            var lk = lfKeys[i];
-            var targetKey = needRemap ? remapLfKey(lk, backupSid, curSid, appPfx) : lk;
+        // 2. 写入 IndexedDB（保留原键名，不做任何重映射）
+        for (var lk in lfRaw) {
+            if (!lfRaw.hasOwnProperty(lk)) continue;
             var val = inlineMediaTree(lfRaw[lk], mediaStore);
             try {
-                await localforage.setItem(targetKey, val);
+                await localforage.setItem(lk, val);
             } catch (e) {
-                console.warn('[backup] 写入 localforage 失败', targetKey, e);
+                console.warn('[backup] IndexedDB 写入失败', lk, e);
             }
         }
 
-        // 写入 localStorage（修复：不再跳过任何图片）
+        // 3. 写入 localStorage（移除图片长度限制）
         for (var k in lsRaw) {
-            if (!Object.prototype.hasOwnProperty.call(lsRaw, k)) continue;
-            var targetLsKey = needRemap ? remapLfKey(k, backupSid, curSid, appPfx) : k;
+            if (!lsRaw.hasOwnProperty(k)) continue;
             try {
                 var lsv = processLocalStorageValueForImport(lsRaw[k], mediaStore);
-                // 原代码会 if (长度>2000 && data:image) continue; 现已移除，确保所有图片恢复
-                localStorage.setItem(targetLsKey, lsv);
+                // 原代码会跳过过长的 data:image，现在全部写入
+                localStorage.setItem(k, lsv);
             } catch (e2) {
-                console.warn('[backup] 写入 localStorage 失败', targetLsKey, e2);
+                console.warn('[backup] localStorage 写入失败', k, e2);
             }
         }
 
-        // ========== 关键修复3：更新会话列表并刷新页面 ==========
+        // 4. 更新 sessionList 和 lastSessionId
         if (typeof APP_PREFIX !== 'undefined' && typeof SESSION_ID !== 'undefined') {
             try {
-                // 更新最后使用的会话 ID
-                await localforage.setItem(APP_PREFIX + 'lastSessionId', SESSION_ID);
-                // 确保当前会话存在于会话列表中
-                var sessionList = await localforage.getItem(APP_PREFIX + 'sessionList') || [];
-                if (!sessionList.some(function(s) { return s.id === SESSION_ID; })) {
+                var slKey = APP_PREFIX + 'sessionList';
+                var sessionList = await localforage.getItem(slKey) || [];
+                if (!sessionList.some(s => s.id === SESSION_ID)) {
                     sessionList.push({
                         id: SESSION_ID,
                         name: '导入的会话 ' + new Date().toLocaleDateString(),
                         createdAt: Date.now()
                     });
-                    await localforage.setItem(APP_PREFIX + 'sessionList', sessionList);
+                    await localforage.setItem(slKey, sessionList);
                 }
+                await localforage.setItem(APP_PREFIX + 'lastSessionId', SESSION_ID);
             } catch (e3) {
-                console.warn('[backup] 更新会话列表失败', e3);
+                console.warn('[backup] sessionList 更新失败', e3);
             }
         }
 
-        // ========== 关键修复4：导入后强制刷新页面 ==========
+        // 5. 自动刷新页面，确保所有数据生效
         if (typeof showNotification === 'function') {
-            showNotification('导入成功，即将刷新页面…', 'success', 2000);
+            showNotification('✅ 全量导入完成！页面即将刷新', 'success', 2000);
+        } else {
+            console.log('全量导入完成，2秒后刷新页面');
         }
-        setTimeout(function() {
-            window.location.href = window.location.pathname;  // 刷新当前页面
-        }, 1500);
+        setTimeout(() => {
+            window.location.reload();
+        }, 2000);
     }
 
-    // ---------- 辅助：判断是否为完整备份 ----------
     function isFullBackupShape(d) {
         if (!d || typeof d !== 'object') return false;
-        if (d.formatVersion === 6 && d.type === 'chatapp-backup-v6') return true;
         if (d.formatVersion === 5 && d.type === 'chatapp-backup-v5') return true;
         if (d.formatVersion === 4 && d.type === 'chatapp-backup-v4') return true;
         if (d.type === 'full' || (typeof d.type === 'string' && d.type.indexOf('full-backup') !== -1)) return true;
@@ -518,7 +546,6 @@
         return false;
     }
 
-    // ---------- 导出全局对象 ----------
     global.ChatBackup = {
         MIN_MEDIA_CHARS: MIN_MEDIA_CHARS,
         extractMediaTree: extractMediaTree,
@@ -528,8 +555,10 @@
         loadBackupFromFile: loadBackupFromFile,
         loadBackupFromArrayBuffer: loadBackupFromArrayBuffer,
         applyBackupToStorage: applyBackupToStorage,
+        serializeBackupV4: serializeBackupV4,
+        getLfSource: getLfSource,
         isFullBackupShape: isFullBackupShape,
-        shouldSkipKey: shouldSkipKey,
+        shouldSkipKeyGroupChat: shouldSkipKeyGroupChat,
         buildModuleSkipPatterns: buildModuleSkipPatterns
     };
 })(typeof window !== 'undefined' ? window : this);

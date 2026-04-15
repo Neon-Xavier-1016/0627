@@ -476,3 +476,21 @@ window.handleSendEnvelope = handleSendEnvelope;
 window.switchEnvTab = switchEnvTab;
 
 console.log('✅ envelope.js 已加载（最终安全版）');
+// ==================== 自动初始化 ====================
+(function autoInit() {
+    // 等待 DOM 就绪
+    function init() {
+        if (typeof initEnvelopeListeners === 'function') {
+            initEnvelopeListeners();
+            console.log('📬 信封功能已自动初始化');
+        } else {
+            console.warn('信封功能初始化失败：initEnvelopeListeners 未定义');
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
