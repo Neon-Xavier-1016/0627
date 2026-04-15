@@ -11685,3 +11685,193 @@ html[data-theme="dark"] .period-stat-value { color: var(--accent-color-dark); }
     }
     */
 }
+/* ========== 修复心情选择器 ========== */
+
+/* 1. 将 .mood-display-row 改为 4×3 网格布局 */
+.mood-display-row {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 12px !important;
+    margin: 16px 0 !important;
+}
+
+/* 2. 心情选项样式 */
+.mood-option {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 12px 6px !important;
+    background: var(--primary-bg) !important;
+    border-radius: 16px !important;
+    border: 1px solid var(--border-color) !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+}
+
+.mood-option:active {
+    transform: scale(0.96);
+    background: rgba(var(--accent-color-rgb), 0.1);
+}
+
+.mood-option-emoji {
+    font-size: 28px !important;
+    margin-bottom: 6px !important;
+}
+
+.mood-option-label {
+    font-size: 12px !important;
+    color: var(--text-secondary) !important;
+}
+
+/* 3. 显示自定义心情按钮（强制显示） */
+#mood-custom-add,
+.mood-custom-add-btn {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    width: 100% !important;
+    padding: 10px !important;
+    margin: 8px 0 16px !important;
+    background: rgba(var(--accent-color-rgb), 0.08) !important;
+    border: 1px dashed rgba(var(--accent-color-rgb), 0.4) !important;
+    border-radius: 40px !important;
+    color: var(--accent-color) !important;
+    font-size: 13px !important;
+    cursor: pointer !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+/* 4. 确保卡片可滚动，底部按钮可见 */
+.mood-selector-card {
+    max-height: 85vh !important;
+    overflow-y: auto !important;
+}
+
+/* 5. 手机小屏适配 */
+@media (max-width: 480px) {
+    .mood-display-row {
+        gap: 8px !important;
+    }
+    .mood-option {
+        padding: 8px 4px !important;
+    }
+    .mood-option-emoji {
+        font-size: 22px !important;
+    }
+    .mood-option-label {
+        font-size: 10px !important;
+    }
+}
+/* 心情选项网格 - 4×3 布局 */
+.mood-options-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 12px !important;
+    margin: 16px 0 !important;
+}
+
+/* 每个心情选项的样式 */
+.mood-option {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 12px 6px !important;
+    background: var(--primary-bg) !important;
+    border-radius: 16px !important;
+    border: 1px solid var(--border-color) !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+}
+
+.mood-option:active {
+    transform: scale(0.96);
+    background: rgba(var(--accent-color-rgb), 0.1);
+}
+
+.mood-option-emoji {
+    font-size: 28px !important;
+    margin-bottom: 6px !important;
+}
+
+.mood-option-label {
+    font-size: 12px !important;
+    color: var(--text-secondary) !important;
+}
+
+/* 自定义心情按钮 */
+#mood-custom-add {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    width: 100% !important;
+    padding: 10px !important;
+    margin: 8px 0 16px !important;
+    background: rgba(var(--accent-color-rgb), 0.08) !important;
+    border: 1px dashed rgba(var(--accent-color-rgb), 0.4) !important;
+    border-radius: 40px !important;
+    color: var(--accent-color) !important;
+    font-size: 13px !important;
+    cursor: pointer !important;
+}
+
+/* 确保卡片可滚动 */
+.mood-selector-card {
+    max-height: 85vh !important;
+    overflow-y: auto !important;
+}
+
+/* 手机小屏适配 */
+@media (max-width: 480px) {
+    .mood-options-grid {
+        gap: 8px !important;
+    }
+    .mood-option {
+        padding: 8px 4px !important;
+    }
+    .mood-option-emoji {
+        font-size: 22px !important;
+    }
+    .mood-option-label {
+        font-size: 10px !important;
+    }
+}
+/* 许愿池 - 双列网格布局 */
+#wish-pool-grid,
+.wp-grid-container {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;  /* 双列 */
+    gap: 14px !important;
+    padding: 12px 8px !important;
+}
+
+/* 每个愿望卡片内部样式微调（可选，让双列更好看） */
+.wish-card,
+.wp-card {
+    margin: 0 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    border-radius: 16px !important;
+    overflow: hidden !important;
+}
+
+/* 手机小屏保持双列，但缩小间距 */
+@media (max-width: 480px) {
+    #wish-pool-grid,
+    .wp-grid-container {
+        gap: 10px !important;
+        padding: 8px 4px !important;
+    }
+}
+
+/* 如果卡片内有图片，确保图片适应双列宽度 */
+.wish-card img,
+.wp-card img {
+    width: 100% !important;
+    height: auto !important;
+    object-fit: cover !important;
+}

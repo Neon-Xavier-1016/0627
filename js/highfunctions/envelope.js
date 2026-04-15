@@ -494,3 +494,37 @@ console.log('✅ envelope.js 已加载（最终安全版）');
         init();
     }
 })();
+// 移动端修复：确保写信按钮能点开
+(function fixMobileEnvelopeButton() {
+    function bindEnvelopeButton() {
+        const btn = document.querySelector('#new-envelope-btn');
+        if (btn) {
+            // 移除旧事件，重新绑定
+            btn.removeEventListener('click', openNewEnvelopeForm);
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (typeof openNewEnvelopeForm === 'function') {
+                    openNewEnvelopeForm();
+                }
+            });
+            // 移动端触摸事件
+            btn.addEventListener('touchstart', function(e) {
+                e.preventDefault();
+                if (typeof openNewEnvelopeForm === 'function') {
+                    openNewEnvelopeForm();
+                }
+            });
+        } else {
+            // 如果按钮还没加载，稍后重试
+            setTimeout(bindEnvelopeButton, 300);
+        }
+    }
+
+    // 页面加载完成后执行
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bindEnvelopeButton);
+    } else {
+        bindEnvelopeButton();
+    }
+})();
