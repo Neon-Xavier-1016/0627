@@ -23,13 +23,13 @@
     <link rel="stylesheet" href="css/styles.css">
 
     <style id="css-live-preview-style"></style>
-    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+    <script src="https://onesignal.com/api/v1/sync/js/sdk/OneSignalSDK.page.js" defer></script>
     <script>
         window.OneSignalDeferred = window.OneSignalDeferred || [];
         OneSignalDeferred.push(async function(OneSignal) {
           await OneSignal.init({
             appId: "7e4026d8-26df-407a-98b7-bfd5544bffe9",
-            serviceWorkerPath: "/0627/OneSignalSDKWorker.js",
+            serviceWorkerPath: "OneSignalSDKWorker.js",
           });
         });
     </script>
