@@ -466,6 +466,271 @@
     </div>
 </div>
 
+            <!-- ==================== 远方来信模态框 ==================== -->
+            <div class="modal" id="farletter-modal">
+                <div class="modal-content" style="max-height:92vh; padding:0; overflow:hidden; background:transparent;">
+                    <div class="env-wrapper">
+                        <div class="env-header-flip">
+                            <div class="env-header-flip-top">
+                                <svg class="env-header-icon" width="40" height="30" viewBox="0 0 24 24" fill="none">
+                                    <rect x="2" y="4" width="20" height="16" rx="2" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.6)" stroke-width="1.5"/>
+                                    <path d="M22 7l-10 7L2 7" stroke="rgba(255,255,255,0.5)" stroke-width="1.2" fill="none"/>
+                                </svg>
+                                <button id="farletter-settings-btn" class="env-settings-icon" title="设置">
+                                    <i class="fas fa-cog"></i>
+                                </button>
+                            </div>
+                            <div class="env-header-title">远方来信</div>
+                            <div class="env-header-subtitle">LETTERS · FROM DISTANCE</div>
+                        </div>
+
+                        <div class="env-body">
+                            <div class="env-tab-bar">
+                                <button class="env-tab-btn active" id="farletter-tab-received" onclick="switchFarLetterTab('received')">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:4px;"><path d="M22 13V19a2 2 0 01-2 2H4a2 2 0 01-2-2v-6"/><polyline points="15 3 21 3 21 9"/><line x1="21" y1="3" x2="10" y2="14"/></svg>
+                                    收到的信
+                                    <span id="farletter-received-badge" class="env-badge" style="display:none;"></span>
+                                </button>
+                                <button class="env-tab-btn" id="farletter-tab-replied" onclick="switchFarLetterTab('replied')">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:4px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                    回复的信
+                                </button>
+                            </div>
+
+                            <!-- 收到的信列表 -->
+                            <div id="farletter-received-section" class="farletter-list-section">
+                                <div id="farletter-received-list" class="farletter-list"></div>
+                                <div id="farletter-received-empty" class="farletter-empty-state" style="display:none;">
+                                    <i class="fas fa-envelope-open-text"></i>
+                                    <p>还没有收到任何信件</p>
+                                    <span id="farletter-empty-text"></span>
+                                </div>
+                            </div>
+
+                            <!-- 回复的信列表 -->
+                            <div id="farletter-replied-section" class="farletter-list-section" style="display:none;">
+                                <div id="farletter-replied-list" class="farletter-list"></div>
+                                <div id="farletter-replied-empty" class="farletter-empty-state" style="display:none;">
+                                    <i class="fas fa-reply-all"></i>
+                                    <p>还没有回复过任何信件</p>
+                                    <span>回复收到的信后，会出现在这里</span>
+                                </div>
+                            </div>
+
+                            <!-- 回复写信界面 -->
+                            <div id="farletter-reply-compose" class="farletter-compose-panel" style="display:none;">
+                                <div class="env-compose-paper">
+                                    <div class="env-compose-heading">
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                        <span id="farletter-reply-title">回一封信</span>
+                                    </div>
+                                    <div class="env-compose-greeting">亲爱的，</div>
+                                    <textarea id="farletter-reply-input" placeholder="今天想跟你说.." rows="6"></textarea>
+                                </div>
+                                <div style="display:flex; align-items:center; gap:8px; margin:4px 0 6px; font-size:12px; padding: 0 2px;">
+                                    <input type="checkbox" id="farletter-send-to-chat" style="width:15px;height:15px; cursor:pointer; accent-color:var(--accent-color);">
+                                    <label for="farletter-send-to-chat" style="cursor:pointer; color:var(--text-secondary);">同时发送到聊天记录</label>
+                                </div>
+                                <div style="display:flex;gap:8px;">
+                                    <button class="modal-btn modal-btn-secondary" id="farletter-cancel-reply" style="flex:1;">取消</button>
+                                    <button class="modal-btn modal-btn-primary" id="farletter-send-reply" style="flex:2;">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px;"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9l20-7z"/></svg>封 · 寄出
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="env-send-area">
+                            <button class="env-write-btn" id="farletter-urge-btn">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                催一封信
+                            </button>
+                            <button class="env-close-btn" id="farletter-close-btn">关闭</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== 远方来信设置面板 ==================== -->
+            <div class="modal" id="farletter-settings-modal">
+                <div class="modal-content" style="width: 90%; max-width: 380px;">
+                    <div class="modal-title">
+                        <i class="fas fa-sliders-h"></i><span>远方来信设置</span>
+                    </div>
+
+                    <div class="settings-section">
+                        <div class="settings-section-title">寄信周期</div>
+                        <div class="period-buttons" style="display: flex; justify-content: center; gap: 10px; margin: 8px 0;">
+                            <button class="period-btn" data-period="7">7天</button>
+                            <button class="period-btn" data-period="15">15天</button>
+                            <button class="period-btn" data-period="30">30天</button>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <div class="settings-section-title" id="farletter-settings-title"></div>
+                        <div style="margin: 16px 0;">
+                            <div style="display: flex; gap: 16px; justify-content: center;">
+                                <!-- 最少封数 -->
+                                <div style="text-align: center; flex: 1;">
+                                    <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px;">最少</div>
+                                    <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                        <button id="farletter-min-minus" style="width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--primary-bg); color: var(--text-primary); cursor: pointer; font-size: 16px;">−</button>
+                                        <span id="farletter-min-val" style="font-size: 16px; font-weight: 600; min-width: 32px; text-align: center;">1</span>
+                                        <button id="farletter-min-plus" style="width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--primary-bg); color: var(--text-primary); cursor: pointer; font-size: 16px;">+</button>
+                                    </div>
+                                </div>
+                                <!-- 最多封数 -->
+                                <div style="text-align: center; flex: 1;">
+                                    <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px;">最多</div>
+                                    <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                        <button id="farletter-max-minus" style="width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--primary-bg); color: var(--text-primary); cursor: pointer; font-size: 16px;">−</button>
+                                        <span id="farletter-max-val" style="font-size: 16px; font-weight: 600; min-width: 32px; text-align: center;">5</span>
+                                        <button id="farletter-max-plus" style="width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--primary-bg); color: var(--text-primary); cursor: pointer; font-size: 16px;">+</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="margin-top: 10px; text-align: center; font-size: 10px; color: var(--text-secondary);">
+                                <span>范围：1 ~ 10 封</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <div class="setting-pill-row" id="farletter-notify-toggle" style="cursor: pointer;">
+                            <span class="setting-pill-icon"><i class="fas fa-bell"></i></span>
+                            <span class="setting-pill-label">回复后在聊天界面显示通知</span>
+                            <div class="setting-pill-switch"><div class="setting-pill-knob"></div></div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <div class="setting-pill-row" id="farletter-browser-notify-toggle" style="cursor: pointer;">
+                            <span class="setting-pill-icon"><i class="fas fa-globe"></i></span>
+                            <span class="setting-pill-label">浏览器通知（关闭网页也能收到）</span>
+                            <div class="setting-pill-switch"><div class="setting-pill-knob"></div></div>
+                        </div>
+                        <button id="farletter-request-permission" class="modal-btn modal-btn-secondary" style="margin-top: 10px; width: 100%; font-size: 12px;">
+                            <i class="fas fa-bell"></i> 请求通知权限
+                        </button>
+                    </div>
+
+                    <div class="settings-modal-buttons" style="display: flex; gap: 12px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                        <button class="modal-btn modal-btn-secondary" id="farletter-settings-cancel" style="flex: 1;">取消</button>
+                        <button class="modal-btn modal-btn-primary" id="farletter-settings-save" style="flex: 1;">保存设置</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== 远方来信详情查看模态框 ==================== -->
+            <div class="modal" id="farletter-view-modal" style="z-index:2100;">
+                <div class="modal-content" style="overflow:hidden;padding:0;background:transparent;max-height:92vh;display:flex;flex-direction:column;">
+                    <div style="background:var(--secondary-bg);border-radius:20px;overflow:hidden;display:flex;flex-direction:column;max-height:92vh;">
+                        <div style="background:var(--accent-color);padding:0;position:relative;overflow:hidden;flex-shrink:0;">
+                            <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:repeating-linear-gradient(45deg,rgba(255,255,255,0.04) 0px,rgba(255,255,255,0.04) 2px,transparent 2px,transparent 12px);pointer-events:none;"></div>
+                            <div style="position:relative;padding:14px 20px 12px;display:flex;align-items:center;justify-content:space-between;">
+                                <div style="display:flex;align-items:center;gap:10px;color:white;">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></svg>
+                                    <span id="farletter-view-title" style="font-size:14px;font-weight:700;letter-spacing:2px;">信件内容</span>
+                                </div>
+                                <div style="border:2px solid rgba(255,255,255,0.5);border-radius:50%;width:48px;height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0.7;">
+                                    <span style="font-size:7px;color:white;letter-spacing:0.5px;">已送达</span>
+                                    <span id="farletter-view-stamp-date" style="font-size:8px;color:white;font-weight:600;"></span>
+                                    <span style="font-size:6px;color:white;opacity:0.8;">DELIVERED</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="padding:0;overflow-y:auto;flex:1;min-height:0;">
+                            <div id="farletter-view-content" style="padding:16px;">
+                                <div id="farletter-view-original-ctx" style="margin-bottom:16px;background:rgba(var(--accent-color-rgb),0.06);border:1px solid rgba(var(--accent-color-rgb),0.18);border-radius:10px;padding:12px 14px;border-left:3px solid rgba(var(--accent-color-rgb),0.5);">
+                                    <div style="font-size:10px;color:var(--accent-color);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:5px;">
+                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9l20-7z"/></svg>
+                                        <span id="farletter-view-original-name"></span>的原信
+                                        <span id="farletter-view-original-edited-badge" style="font-size:10px;margin-left:8px;opacity:0.6;display:none;">✎ 已编辑</span>
+                                    </div>
+                                    <div id="farletter-view-original-text" style="font-size:13px;color:var(--text-secondary);line-height:1.8;white-space:pre-wrap;word-break:break-word;"></div>
+                                </div>
+
+                                <div id="farletter-view-reply-ctx" style="display:none;background:var(--primary-bg);border-radius:12px;border:1px solid var(--border-color);overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.06);">
+                                    <div style="height:4px;background:linear-gradient(90deg,var(--accent-color),rgba(var(--accent-color-rgb),0.4),var(--accent-color));"></div>
+                                    <div style="padding:18px 20px 14px;position:relative;">
+                                        <div style="font-size:10px;color:var(--accent-color);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:5px;">
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9l20-7z"/></svg>
+                                            你的回信
+                                            <span id="farletter-view-reply-edited-badge" style="font-size:10px;margin-left:8px;opacity:0.6;display:none;">✎ 已编辑</span>
+                                        </div>
+                                        <div style="position:relative;z-index:1;">
+                                            <div id="farletter-view-reply-greeting" style="font-size:13px;color:var(--text-primary);margin-bottom:8px;font-weight:500;"></div>
+                                            <div id="farletter-view-reply-text" style="border:none;background:transparent;padding:0;line-height:1.8;margin-bottom:16px;font-size:13px;color:var(--text-primary);white-space:pre-wrap;"></div>
+                                            <div style="border-top:1px dashed rgba(var(--accent-color-rgb),0.25);margin:12px 0;"></div>
+                                            <div id="farletter-view-reply-date" style="font-size:11px;color:var(--text-secondary);text-align:right;margin-bottom:4px;"></div>
+                                            <div id="farletter-view-reply-sign" style="font-size:14px;color:var(--accent-color);text-align:right;font-weight:600;"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 底部按钮区域 -->
+                        <div class="modal-buttons" style="margin:0;padding:12px 18px 16px;border-top:1px solid var(--border-color);flex-shrink:0; display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button class="modal-btn modal-btn-secondary" id="farletter-close-view" data-no-auto-close="true">关闭</button>
+                            <button class="modal-btn modal-btn-secondary" id="farletter-edit-original-btn" style="display:none;">
+                                <i class="fas fa-edit"></i> 编辑
+                            </button>
+                            <button class="modal-btn modal-btn-secondary" id="farletter-edit-reply-btn" style="display:none;">
+                                <i class="fas fa-edit"></i> 编辑
+                            </button>
+                            <button class="modal-btn modal-btn-secondary" id="farletter-view-reply-btn" style="display:none;">
+                                <i class="fas fa-reply-all"></i> 查看回信
+                            </button>
+                            <button class="modal-btn modal-btn-primary" id="farletter-reply-from-view" style="display:none;">
+                                <i class="fas fa-pen-fancy"></i> 回复
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== 编辑信件模态框 ==================== -->
+            <div class="modal" id="farletter-edit-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; z-index: 100000; background: rgba(0,0,0,0.7); align-items: center; justify-content: center;">
+                <div class="env-wrapper" style="width: 90%; max-width: 420px; margin: 0 auto;">
+                    <div class="env-header-flap" style="background: linear-gradient(135deg, var(--accent-color, #ff6b9d), rgba(var(--accent-color-rgb, 255,107,157), 0.7)); border-radius: 16px 16px 0 0; padding: 20px 20px 16px; text-align: center;">
+                        <svg class="env-header-icon" width="40" height="30" viewBox="0 0 40 30" fill="none" style="margin: 0 auto 8px; display: block;">
+                            <rect x="1" y="7" width="38" height="22" rx="3" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.6)" stroke-width="1.5"/>
+                            <path d="M1 9 L20 20 L39 9" stroke="rgba(255,255,255,0.5)" stroke-width="1.2" fill="none"/>
+                            <path d="M1 29 L14 18" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>
+                            <path d="M39 29 L26 18" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>
+                        </svg>
+                        <div class="env-header-title" id="farletter-edit-title" style="font-size: 16px; font-weight: 700; letter-spacing: 2px; color: white;">编辑</div>
+                        <div class="env-header-subtitle" style="font-size: 10px; opacity: 0.7; margin-top: 4px; color: white;">✎ EDIT LETTER</div>
+                    </div>
+
+                    <div class="env-body" style="background: var(--secondary-bg, #1a1a2e); border-radius: 0 0 16px 16px; padding: 20px;">
+                        <div class="env-compose-paper" style="background: var(--primary-bg, #0d0d14); border-radius: 14px; border: 1px solid var(--border-color, #333); overflow: hidden;">
+                            <div class="env-compose-heading" style="padding: 12px 16px; background: rgba(var(--accent-color-rgb, 255,107,157), 0.08); border-bottom: 1px solid var(--border-color, #333); display: flex; align-items: center; gap: 8px;">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent-color, #ff6b9d)" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                <span style="font-size: 12px; font-weight: 600; color: var(--accent-color, #ff6b9d); letter-spacing: 0.5px;">✎ 编辑</span>
+                            </div>
+                            <textarea id="farletter-edit-textarea" rows="8" style="width: 100%; box-sizing: border-box; padding: 16px; font-size: 14px; line-height: 1.8; background: var(--primary-bg, #0d0d14); color: var(--text-primary, #fff); border: none; outline: none; resize: vertical; font-family: inherit;"></textarea>
+                        </div>
+
+                        <div class="env-send-info" style="display: flex; align-items: center; justify-content: center; gap: 8px; margin: 16px 0 12px; padding: 8px 12px; background: rgba(var(--accent-color-rgb, 255,107,157), 0.08); border-radius: 12px;">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent-color, #ff6b9d)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            <span style="font-size: 11px; color: var(--text-secondary, #aaa);">编辑后保存，内容将立即更新</span>
+                        </div>
+
+                        <div style="display: flex; gap: 12px;">
+                            <button id="farletter-edit-cancel" class="modal-btn modal-btn-secondary" style="flex: 1; padding: 12px; border-radius: 12px; border: 1px solid var(--border-color, #333); background: transparent; color: var(--text-secondary, #aaa); cursor: pointer; font-size: 13px; font-weight: 500;">取消</button>
+                            <button id="farletter-edit-save" class="modal-btn modal-btn-primary" style="flex: 2; padding: 12px; border-radius: 12px; border: none; background: var(--accent-color, #ff6b9d); color: white; cursor: pointer; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                                保存
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
     <div class="modal" id="settings-modal">
         <div class="modal-content">
             <div class="modal-title">
@@ -989,23 +1254,64 @@
                             <span class="cs-slider-val" id="reply-delay-max-value">7s</span>
                         </div>
                     </div>
-
+                    <!-- 主动发送 -->
                     <p class="cs-group-label" style="margin-top:4px;">主动发送</p>
                     <div class="cs-card">
+                        <!-- 主动发消息开关 -->
+                        <!-- 主动发消息开关（替换原来的） -->
                         <div class="setting-pill-row" id="auto-send-toggle">
                             <span class="setting-pill-icon"><i class="fas fa-paper-plane"></i></span>
                             <span class="setting-pill-label">主动发消息给我</span>
-                            <div class="setting-pill-switch"><div class="setting-pill-knob"></div></div>
-                        </div>
-                        <div id="auto-send-control" style="display:none;">
-                            <div class="cs-slider-row">
-                                <span class="cs-slider-label">间隔</span>
-                                <input type="range" min="1" max="120" step="1" value="5" class="font-size-slider" id="auto-send-slider">
-                                <span class="cs-slider-val" id="auto-send-value">5分钟</span>
+                            <div id="auto-send-switch" style="width:44px;height:24px;background:#ccc;border-radius:24px;position:relative;cursor:pointer;">
+                                <div id="auto-send-knob" style="position:absolute;width:18px;height:18px;background:#fff;border-radius:50%;top:3px;left:3px;transition:left 0.25s;"></div>
                             </div>
+                        </div>
+                        <!-- 主动发送的详细设置（整体折叠） -->
+                        <div id="auto-send-detail" style="display: none; margin-top: 12px;">
+
+                            <!-- 固定间隔滑块 -->
+                            <div id="fixed-interval-panel" class="cs-slider-row" style="margin-bottom: 12px;">
+                                <span class="cs-slider-label">间隔</span>
+                                <input type="range" min="1" max="120" step="1" value="30" class="font-size-slider" id="auto-send-slider">
+                                <span class="cs-slider-val" id="auto-send-value">30分钟</span>
+                            </div>
+
+                            <!-- 智能随机发送开关 -->
+                            <!-- 智能随机发送开关（替换原来的） -->
+                            <div class="setting-pill-row" id="smart-random-toggle" style="border-top: 1px solid var(--border-color); margin-top: 12px; padding-top: 8px;">
+                                <span class="setting-pill-icon"><i class="fas fa-random"></i></span>
+                                <span class="setting-pill-label">智能随机发送 <span style="font-size:11px;color:var(--text-secondary);font-weight:400;">开启后间隔随机</span></span>
+                                <div id="smart-random-switch" style="width:44px;height:24px;background:#ccc;border-radius:24px;position:relative;cursor:pointer;">
+                                    <div id="smart-random-knob" style="position:absolute;width:18px;height:18px;background:#fff;border-radius:50%;top:3px;left:3px;transition:left 0.25s;"></div>
+                                </div>
+                            </div>
+
+                            <!-- 智能随机发送详细设置面板 -->
+                            <div id="smart-random-panel" style="display: none; margin-top: 12px; padding: 12px; background: var(--secondary-bg); border-radius: 14px;">
+
+                                <div style="margin-bottom: 14px;">
+                                    <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">
+                                        <i class="fas fa-clock"></i> 活跃时间段
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <input type="time" id="active-time-start" value="08:00" style="flex: 1; padding: 8px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--primary-bg); color: var(--text-primary);">
+                                        <span>—</span>
+                                        <input type="time" id="active-time-end" value="22:00" style="flex: 1; padding: 8px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--primary-bg); color: var(--text-primary);">
+                                    </div>
+                                    <div style="font-size: 11px; color: var(--text-secondary); margin-top: 5px;">只在此时段内发送消息</div>
+                                </div>
+
+                                <button id="save-smart-settings-btn" class="modal-btn modal-btn-primary" style="width: 100%; padding: 8px; font-size: 13px;">
+                                    <i class="fas fa-save"></i> 保存设置
+                                </button>
+                            </div>
+
                         </div>
                     </div>
 
+                    <!-- 隐藏元素，防止 listeners.js 报错 -->
+                    <div id="auto-send-control" style="display: none;"></div>
+                    
                     <p class="cs-group-label" style="margin-top:4px;">消息节奏</p>
                     <div class="cs-card">
                         <div class="setting-pill-row" id="emoji-mix-toggle">
@@ -1121,14 +1427,72 @@
                 <div class="cs-panel" id="cs-panel-names">
                     <p class="cs-group-label">聊天昵称</p>
                     <div class="cs-name-row">
-                        <button class="cs-name-btn" onclick="(function(){var m=document.getElementById('edit-modal'),ti=m.querySelector('#edit-modal-title'),ni=m.querySelector('#name-input'),sb=m.querySelector('#save-name');ti.textContent='修改梦角的昵称';ni.value=(typeof settings!=='undefined'?settings.partnerName:'梦角');sb.disabled=!ni.value.trim();sb.onclick=function(){var n=ni.value.trim();if(n){settings.partnerName=n;var pEls=document.querySelectorAll('.username[data-role=partner],.partner-name,.contact-name');pEls.forEach(function(el){el.textContent=n;});if(typeof throttledSaveData==='function')throttledSaveData();if(typeof updateUI==='function')updateUI();if(typeof showNotification==='function')showNotification('梦角昵称已更新为「'+n+'」✦','success');}if(typeof hideModal==='function')hideModal(m);};if(typeof showModal==='function')showModal(m,ni);})()" >
+                        <button class="cs-name-btn" onclick="(function(){
+    var m=document.getElementById('edit-modal'),
+        ti=m.querySelector('#edit-modal-title'),
+        ni=m.querySelector('#name-input'),
+        sb=m.querySelector('#save-name');
+
+    ti.textContent='修改梦角的昵称';
+    ni.value=(typeof settings!=='undefined'?settings.partnerName:'梦角');
+    sb.disabled=!ni.value.trim();
+
+    sb.onclick=function(){
+        var n=ni.value.trim();
+        if(n){
+            settings.partnerName=n;
+            var pEls=document.querySelectorAll('.username[data-role=partner],.partner-name,.contact-name');
+            pEls.forEach(function(el){el.textContent=n;});
+
+            // 更新远方来信中的名字
+            if(typeof window.updateFarLetterDynamicNames === 'function') {
+                window.updateFarLetterDynamicNames();
+            }
+
+            if(typeof throttledSaveData==='function') throttledSaveData();
+            if(typeof updateUI==='function') updateUI();
+            if(typeof showNotification==='function') showNotification('梦角昵称已更新为「'+n+'」✦','success');
+        }
+        if(typeof hideModal==='function') hideModal(m);
+    };
+
+    if(typeof showModal==='function') showModal(m,ni);
+})()">
                             <i class="fas fa-user"></i>
                             <span>修改梦角名称</span>
                         </button>
-                        <button class="cs-name-btn" onclick="(function(){var m=document.getElementById('edit-modal'),ti=m.querySelector('#edit-modal-title'),ni=m.querySelector('#name-input'),sb=m.querySelector('#save-name');ti.textContent='修改我的昵称';ni.value=(typeof settings!=='undefined'?settings.myName:'我');sb.disabled=!ni.value.trim();sb.onclick=function(){var n=ni.value.trim();if(n){settings.myName=n;if(typeof throttledSaveData==='function')throttledSaveData();if(typeof updateUI==='function')updateUI();if(typeof showNotification==='function')showNotification('我的昵称已更新为「'+n+'」✦','success');}if(typeof hideModal==='function')hideModal(m);};if(typeof showModal==='function')showModal(m,ni);})()" >
-                            <i class="fas fa-user-circle"></i>
-                            <span>修改我方名称</span>
-                        </button>
+                            <button class="cs-name-btn" onclick="(function(){
+    var m=document.getElementById('edit-modal'),
+        ti=m.querySelector('#edit-modal-title'),
+        ni=m.querySelector('#name-input'),
+        sb=m.querySelector('#save-name');
+
+    ti.textContent='修改我的昵称';
+    ni.value=(typeof settings!=='undefined'?settings.myName:'我');
+    sb.disabled=!ni.value.trim();
+
+    sb.onclick=function(){
+        var n=ni.value.trim();
+        if(n){
+            settings.myName=n;
+
+            // 更新远方来信中的署名（如果需要）
+            if(typeof window.updateFarLetterDynamicNames === 'function') {
+                window.updateFarLetterDynamicNames();
+            }
+
+            if(typeof throttledSaveData==='function') throttledSaveData();
+            if(typeof updateUI==='function') updateUI();
+            if(typeof showNotification==='function') showNotification('我的昵称已更新为「'+n+'」✦','success');
+        }
+        if(typeof hideModal==='function') hideModal(m);
+    };
+
+    if(typeof showModal==='function') showModal(m,ni);
+})()">
+                                <i class="fas fa-user-circle"></i>
+                                <span>修改我方名称</span>
+                            </button>
                     </div>
                     <p class="cs-hint">专为顶部昵称不可见的机型设置</p>
                 </div>
@@ -1167,11 +1531,14 @@
                     <div class="settings-item" id="anniversary-function">
                         <i class="fas fa-heart"></i><span>重要日</span>
                     </div>
-                    <div class="settings-item" id="mood-function">
-                        <i class="fas fa-calendar-day"></i><span>心晴与日程</span>
-                    </div>
                     <div class="settings-item" id="envelope-function">
                         <i class="fas fa-envelope"></i><span>信封投递</span>
+                    </div>
+                    <div class="settings-item" id="farletter-function">
+                        <i class="fas fa-envelope-open-text"></i><span>远方来信</span>
+                    </div>
+                    <div class="settings-item" id="mood-function">
+                        <i class="fas fa-calendar-day"></i><span>心晴手账</span>
                     </div>
                     <div class="settings-item" id="period-function">
                         <i class="fa-solid fa-droplet"></i><span>月经记录</span>
@@ -1911,7 +2278,6 @@
                     <div class="ann-form-group">
                         <label class="ann-label"><i class="fas fa-th-large"></i>类型</label>
                         <div class="ann-type-selector">
-                            <!-- 注意：这里将 switchAnnType 改为了 selectAnnType，与JS匹配 -->
                             <div class="ann-type-btn active" data-type="anniversary" onclick="selectAnnType('anniversary')">
                                 <i class="fas fa-heart"></i>
                                 <span>纪念日</span>
@@ -1933,7 +2299,7 @@
                         </div>
                     </div>
 
-                    <!-- 🆕 新增：提醒设置 -->
+                    <!-- 提醒设置 -->
                     <div class="ann-form-group" id="ann-reminder-settings-group">
                         <label class="ann-label"><i class="fas fa-bell"></i> 提醒设置</label>
                         <div id="ann-reminder-options" style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
@@ -1957,7 +2323,7 @@
                                     <textarea id="ann-opt-custom-days" placeholder="输入具体天数（多个用英文逗号或换行隔开）&#10;例如：222, 520, 1314" style="width:100%; height:60px; margin-top:4px; padding:5px; font-size:12px; border:1px solid var(--border-color); border-radius:6px; box-sizing:border-box; background:var(--primary-bg); color:var(--text-primary);"></textarea>
                                 </div>
 
-                                <!-- 🆕 新增：间隔年提醒 -->
+                                <!-- 间隔年提醒 -->
                                 <div style="display:flex; align-items:center; gap:8px; margin-top:6px; font-size:13px;">
                                     <input type="checkbox" id="ann-opt-yearly-interval-check" class="ann-reminder-checkbox" style="flex-shrink:0; accent-color:var(--accent-color); width:15px; height:15px;">
                                     <div style="display:flex; align-items:center; gap:4px; flex:1;">
@@ -1967,7 +2333,6 @@
                                     </div>
                                 </div>
                             </div>
-
 
                             <!-- 生日专属选项 -->
                             <div id="ann-opt-birthday" style="display:none;">
@@ -1980,7 +2345,7 @@
                                     每 10 年提醒一次
                                 </label>
 
-                                <!-- 新增：自定义间隔 -->
+                                <!-- 自定义间隔 -->
                                 <div style="display:flex; align-items:center; gap:8px; margin-top:6px; font-size:13px;">
                                     <input type="checkbox" id="ann-opt-interval-check" class="ann-reminder-checkbox" style="flex-shrink:0; accent-color:var(--accent-color); width:15px; height:15px;">
                                     <div style="display:flex; align-items:center; gap:4px; flex:1;">
@@ -1993,10 +2358,26 @@
                         </div>
                     </div>
 
-                    <!-- 🆕 新增：通知文案 -->
+                    <!-- ==================== 远方来信：每年这天收到信 ==================== -->
+                    <div class="ann-form-group" id="ann-farletter-group">
+                        <label class="ann-label">
+                            <i class="fas fa-envelope-open-text"></i> 远方来信
+                        </label>
+                        <div class="setting-pill-row" id="ann-farletter-toggle" style="cursor:pointer; margin-top: 8px;">
+                            <span class="setting-pill-icon"><i class="fas fa-paper-plane"></i></span>
+                            <span class="setting-pill-label">每年这天收到梦角的来信</span>
+                            <div class="setting-pill-switch" id="ann-farletter-switch">
+                                <div class="setting-pill-knob"></div>
+                            </div>
+                        </div>
+                        <div style="font-size: 11px; color: var(--text-secondary); margin-top: 6px; opacity: 0.7;">
+                            开启后，每年这一天会收到一封来自对方的信（与定时随机不重复）
+                        </div>
+                    </div>
+
+                    <!-- 通知文案 -->
                     <div class="ann-form-group">
                         <label class="ann-label"><i class="fas fa-comment-dots"></i> 通知文案</label>
-                        <!-- 修改 placeholder 提示用户 -->
                         <textarea id="ann-custom-message" class="modal-input" rows="4" placeholder="每行写一段话，到时会随机抽取一条展示&#10;" style="resize:vertical; font-family:var(--font-family);"></textarea>
                         <div style="font-size: 11px; color: var(--text-secondary); margin-top: 4px; opacity: 0.7;">此文案将显示在当日通知和公告中</div>
                     </div>
@@ -2265,7 +2646,7 @@ window.exportAllData = () => {
 <script src="js/highfunctions/period.js"></script>          <!-- 月经记录 -->
 <script src="js/highfunctions/screenshot.js"></script>      <!-- 截图 -->
 <script src="js/highfunctions/envelope.js"></script>
-
+<script src="js/highfunctions/farletter.js"></script>
 <script src="js/highfunctions/wishing-pool.js"></script>    <!-- 许愿池 -->
 <script src="js/highfunctions/wordcloud.js"></script>       <!-- 词云 -->
 <script src="js/highfunctions/music.js"></script>
@@ -2275,6 +2656,111 @@ window.exportAllData = () => {
 <script src="js/features/combo-menu.js"></script>          <!-- 表情拍一拍菜单 -->
 <script src="js/features/daily-greeting.js"></script>      <!-- 今日公告 -->
 <script src="js/features/notifications.js"></script>       <!-- 通知 -->
+            <script>
+                // ========== 后端同步代码 ==========
+                const BACKEND_URL = 'https://auto-message-server-4oz54mgwy-2631044045-5133s-projects.vercel.app';
+
+                // 获取用户唯一ID
+                function getUserId() {
+                  let userId = localStorage.getItem('auto_send_user_id');
+                  if (!userId) {
+                    userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                    localStorage.setItem('auto_send_user_id', userId);
+                  }
+                  return userId;
+                }
+
+                // 获取字卡库消息
+                function getAllMessagesFromLibrary() {
+                  const messages = [];
+                  try {
+                    const replyLibrary = JSON.parse(localStorage.getItem('custom_replies') || '[]');
+                    replyLibrary.forEach(item => {
+                      if (item.enabled !== false && item.text && item.text.trim()) {
+                        messages.push({ text: item.text });
+                      }
+                    });
+                    const atmosphereLibrary = JSON.parse(localStorage.getItem('atmosphere_replies') || '[]');
+                    atmosphereLibrary.forEach(item => {
+                      if (item.enabled !== false && item.text && item.text.trim()) {
+                        messages.push({ text: item.text });
+                      }
+                    });
+                  } catch(e) {}
+
+                  if (messages.length === 0) {
+                    messages.push({ text: "今天想你了 💭" });
+                    messages.push({ text: "记得照顾好自己哦 ✨" });
+                    messages.push({ text: "突然很想你 💕" });
+                  }
+                  return messages;
+                }
+
+                // 同步设置到后端
+                async function syncToBackend() {
+                  const userId = getUserId();
+
+                  // 获取最短等待和最长等待（分钟）
+                  const minSlider = document.getElementById('reply-delay-min-slider');
+                  const maxSlider = document.getElementById('reply-delay-max-slider');
+                  const autoSendSwitch = document.getElementById('auto-send-switch');
+                  const smartRandomSwitch = document.getElementById('smart-random-switch');
+                  const activeStart = document.getElementById('active-time-start');
+                  const activeEnd = document.getElementById('active-time-end');
+
+                  const settings = {
+                    enabled: autoSendSwitch ? autoSendSwitch.style.background === 'rgb(255, 107, 157)' || autoSendSwitch.style.background === 'var(--accent-color)' : false,
+                    smartRandom: smartRandomSwitch ? smartRandomSwitch.style.background === 'rgb(255, 107, 157)' || smartRandomSwitch.style.background === 'var(--accent-color)' : false,
+                    minInterval: minSlider ? Math.round(parseInt(minSlider.value) / 1000 / 60) : 30,
+                    maxInterval: maxSlider ? Math.round(parseInt(maxSlider.value) / 1000 / 60) : 120,
+                    activeStart: activeStart ? activeStart.value : '08:00',
+                    activeEnd: activeEnd ? activeEnd.value : '22:00',
+                    messages: getAllMessagesFromLibrary()
+                  };
+
+                  try {
+                    await fetch(`${BACKEND_URL}/api/sync`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ userId, settings })
+                    });
+                    console.log('✅ 已同步到云端');
+                  } catch(e) {
+                    console.log('同步失败，将在下次重试');
+                  }
+                }
+
+                // 监听设置变化
+                function watchSettingsChange() {
+                  const elements = ['reply-delay-min-slider', 'reply-delay-max-slider', 'auto-send-switch', 'smart-random-switch', 'active-time-start', 'active-time-end'];
+                  elements.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) {
+                      el.addEventListener('change', () => setTimeout(syncToBackend, 500));
+                      el.addEventListener('click', () => setTimeout(syncToBackend, 500));
+                    }
+                  });
+
+                  // 监听字卡库变化
+                  window.addEventListener('storage', (e) => {
+                    if (e.key === 'custom_replies' || e.key === 'atmosphere_replies') {
+                      syncToBackend();
+                    }
+                  });
+                }
+
+                // 页面加载时同步
+                if (document.readyState === 'loading') {
+                  document.addEventListener('DOMContentLoaded', () => {
+                    setTimeout(syncToBackend, 3000);
+                    watchSettingsChange();
+                  });
+                } else {
+                  setTimeout(syncToBackend, 3000);
+                  watchSettingsChange();
+                }
+            </script>
+<script src="js/features/smart-random-send.js"></script>
 <script src="js/features/theme-editor.js"></script>        <!-- 主题编辑器 -->
 </body>
 </html>

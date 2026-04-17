@@ -1,19 +1,39 @@
 /**
- * features/anniversary.js - 重要日与提醒系统
+ * features/anniversary.js - 重要日与提醒系统（集成远方来信）
  */
 
 // 当前正在编辑的纪念日ID（用于区分新增/编辑）
 let currentEditAnnId = null;
 
+// ==================== 工具函数 ====================
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function showToast(msg, type = 'info') {
+    if (typeof showNotification === 'function') {
+        showNotification(msg, type);
+        return;
+    }
+    const toast = document.createElement('div');
+    toast.className = 'toast-notification';
+    toast.textContent = msg;
+    toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:#fff;padding:8px 16px;border-radius:24px;font-size:13px;z-index:10000;';
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2000);
+}
+
+// ==================== 类型选择 ====================
 window.selectAnnType = function(type) {
     window.currentAnnType = type;
 
-    // 按钮高亮
     document.querySelectorAll('.ann-type-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.type === type);
     });
 
-    // 提示语
     const hint = document.getElementById('ann-type-desc');
     if (hint) {
         if (type === 'anniversary') hint.textContent = '计算从过去某一天到现在已经过了多少天';
@@ -26,24 +46,26 @@ window.selectAnnType = function(type) {
     const reminderGroup = document.getElementById('ann-reminder-settings-group');
 
     if (type === 'countdown') {
-        if(reminderGroup) reminderGroup.style.display = 'none';
+        if (reminderGroup) reminderGroup.style.display = 'none';
     } else {
-        if(reminderGroup) reminderGroup.style.display = 'block';
-        if(annOpt) annOpt.style.display = (type === 'anniversary') ? 'block' : 'none';
-        if(birOpt) birOpt.style.display = (type === 'birthday') ? 'block' : 'none';
+        if (reminderGroup) reminderGroup.style.display = 'block';
+        if (annOpt) annOpt.style.display = (type === 'anniversary') ? 'block' : 'none';
+        if (birOpt) birOpt.style.display = (type === 'birthday') ? 'block' : 'none';
     }
 };
 
+// ==================== 删除纪念日 ====================
 window.deleteAnniversary = function(id, event) {
     if (event) event.stopPropagation();
     if (confirm('确定要删除这个重要日吗？')) {
         window.anniversaries = window.anniversaries.filter(a => a.id !== id);
         if (typeof throttledSaveData === 'function') throttledSaveData();
         renderAnniversariesList();
-        if (typeof showNotification === 'function') showNotification('重要日已删除', 'success');
+        showToast('重要日已删除', 'success');
     }
 };
 
+// ==================== 更新顶部卡片 ====================
 let activeAnnId = null;
 
 async function fillAnnHeaderCard(ann) {
@@ -112,6 +134,7 @@ async function fillAnnHeaderCard(ann) {
     if (activeEl) activeEl.classList.add('ann-item-active');
 }
 
+// ==================== 保存纪念日 ====================
 function addAnniversary() {
     const nameInput = document.getElementById('ann-input-name');
     const dateInput = document.getElementById('ann-input-date');
@@ -119,7 +142,7 @@ function addAnniversary() {
     const date = dateInput ? dateInput.value : '';
 
     if (!name || !date) {
-        if (typeof showNotification === 'function') showNotification('请填写名称和日期', 'error');
+        showToast('请填写名称和日期', 'error');
         return;
     }
 
@@ -167,6 +190,10 @@ function addAnniversary() {
     const customMsgEl = document.getElementById('ann-custom-message');
     const customMessage = customMsgEl ? customMsgEl.value.trim() : '';
 
+    // 获取远方来信开关状态
+    const farletterSwitch = document.getElementById('ann-farletter-switch');
+    const sendFarLetter = farletterSwitch?.classList.contains('active') || false;
+
     if (currentEditAnnId) {
         const index = window.anniversaries.findIndex(a => a.id === currentEditAnnId);
         if (index > -1) {
@@ -175,6 +202,7 @@ function addAnniversary() {
             window.anniversaries[index].type = type;
             window.anniversaries[index].remindRules = remindRules;
             window.anniversaries[index].customMessage = customMessage;
+            window.anniversaries[index].sendFarLetter = sendFarLetter;
             currentEditAnnId = null;
         }
     } else {
@@ -184,13 +212,15 @@ function addAnniversary() {
             date: date,
             type: type,
             remindRules: remindRules,
-            customMessage: customMessage
+            customMessage: customMessage,
+            sendFarLetter: sendFarLetter
         });
     }
 
     if (typeof throttledSaveData === 'function') throttledSaveData();
     renderAnniversariesList();
 
+    // 清空表单
     if (nameInput) nameInput.value = '';
     if (dateInput) dateInput.value = '';
     if (customMsgEl) customMsgEl.value = '';
@@ -198,9 +228,17 @@ function addAnniversary() {
     if (intervalEl) intervalEl.value = '';
     document.querySelectorAll('.ann-reminder-checkbox').forEach(cb => cb.checked = false);
 
-    if (typeof showNotification === 'function') showNotification('重要日已保存', 'success');
+    // 重置远方来信开关
+    if (farletterSwitch) {
+        farletterSwitch.classList.remove('active');
+        const knob = farletterSwitch.querySelector('.setting-pill-knob');
+        if (knob) knob.style.right = '23px';
+    }
+
+    showToast('重要日已保存', 'success');
 }
 
+// ==================== 渲染列表 ====================
 function renderAnniversariesList() {
     const listContainer = document.getElementById('ann-list-container');
     const headerCard = document.getElementById('ann-header-card');
@@ -274,13 +312,7 @@ function renderAnniversariesList() {
     });
 }
 
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
+// ==================== 编辑纪念日 ====================
 window.editAnnCard = function(id) {
     const ann = window.anniversaries.find(a => a.id === id);
     if (!ann) return;
@@ -299,11 +331,12 @@ window.editAnnCard = function(id) {
 
     window.selectAnnType(ann.type);
 
+    // 重置所有复选框
     document.querySelectorAll('.ann-reminder-checkbox').forEach(cb => cb.checked = false);
     const customDaysEl = document.getElementById('ann-opt-custom-days');
     const intervalEl = document.getElementById('ann-opt-interval-years');
-    if(customDaysEl) customDaysEl.value = '';
-    if(intervalEl) intervalEl.value = '';
+    if (customDaysEl) customDaysEl.value = '';
+    if (intervalEl) intervalEl.value = '';
 
     let customDaysArray = [];
     if (ann.remindRules) {
@@ -324,24 +357,40 @@ window.editAnnCard = function(id) {
             if (rule.startsWith('interval:')) {
                 const y = rule.split(':')[1];
                 const check = document.getElementById('ann-opt-interval-check');
-                if(check) check.checked = true;
-                if(intervalEl) intervalEl.value = y;
+                if (check) check.checked = true;
+                if (intervalEl) intervalEl.value = y;
             }
         });
     }
 
     if (customDaysArray.length > 0) {
         const check = document.getElementById('ann-opt-custom-check');
-        if(check) check.checked = true;
-        if(customDaysEl) customDaysEl.value = customDaysArray.join(', ');
+        if (check) check.checked = true;
+        if (customDaysEl) customDaysEl.value = customDaysArray.join(', ');
+    }
+
+    // 恢复远方来信开关
+    const farletterSwitch = document.getElementById('ann-farletter-switch');
+    if (farletterSwitch) {
+        if (ann.sendFarLetter) {
+            farletterSwitch.classList.add('active');
+            const knob = farletterSwitch.querySelector('.setting-pill-knob');
+            if (knob) knob.style.right = '3px';
+        } else {
+            farletterSwitch.classList.remove('active');
+            const knob = farletterSwitch.querySelector('.setting-pill-knob');
+            if (knob) knob.style.right = '23px';
+        }
     }
 };
 
+// ==================== 选择卡片 ====================
 window.selectAnnCard = function(id) {
     const ann = window.anniversaries.find(a => a.id === id);
     if (ann) fillAnnHeaderCard(ann);
 };
 
+// ==================== 清除背景图 ====================
 window.clearAnnCardBg = async function() {
     if (!activeAnnId) return;
     if (typeof localforage !== 'undefined') {
@@ -349,10 +398,17 @@ window.clearAnnCardBg = async function() {
     }
     const bgEl = document.getElementById('ann-header-card-bg');
     if (bgEl) bgEl.style.backgroundImage = '';
-    if (typeof showNotification === 'function') showNotification('封面图已清除', 'success');
+    showToast('封面图已清除', 'success');
 };
 
-// ==================== 核心检测函数 ====================
+// ==================== 更新 partnerName 显示 ====================
+function updateAnnPartnerName() {
+    const partnerName = window.settings?.partnerName || '梦角';
+    const placeholder = document.getElementById('ann-partner-name-placeholder');
+    if (placeholder) placeholder.textContent = partnerName;
+}
+
+// ==================== 核心检测函数（纪念日提醒 + 远方来信触发） ====================
 function initSpecialDaySystem() {
     const today = new Date();
     const todayStr = today.toDateString();
@@ -418,6 +474,7 @@ function initSpecialDaySystem() {
         }
     });
 
+    // 处理纪念日通知
     if (specialEvent) {
         let msg = `今天是特别的日子：${specialEvent.name}`;
         if (specialEvent.customMessage) {
@@ -452,10 +509,51 @@ function initSpecialDaySystem() {
     } else {
         window._todaySpecialNote = null;
     }
+
+    // ==================== 远方来信触发（纪念日） ====================
+    // 检查所有纪念日，如果有开启 sendFarLetter 且日期匹配，触发发信
+    window.anniversaries.forEach(async ann => {
+        if (!ann.sendFarLetter) return;
+
+        const targetDate = new Date(ann.date);
+        const isDateMatch = targetDate.getMonth() === today.getMonth() && targetDate.getDate() === today.getDate();
+
+        if (isDateMatch) {
+            // 检查今天是否已经发过（避免重复）
+            const todayKey = `farletter_ann_${ann.id}_${today.getFullYear()}`;
+            let alreadySent = false;
+            if (typeof localforage !== 'undefined') {
+                alreadySent = await localforage.getItem(todayKey);
+            }
+
+            if (!alreadySent) {
+                // 调用远方来信模块的纪念日发信函数
+                if (typeof window.triggerFarLetterOnAnniversary === 'function') {
+                    window.triggerFarLetterOnAnniversary(ann.id, ann.name);
+                    if (typeof localforage !== 'undefined') {
+                        await localforage.setItem(todayKey, true);
+                    }
+                }
+            }
+        }
+    });
 }
 
 // ==================== 初始化模块 ====================
 function initAnniversaryModule() {
+    // 更新 partnerName 显示
+    updateAnnPartnerName();
+
+    // 监听 settings 变化时更新 partnerName
+    if (window.settings) {
+        const originalSettings = window.settings;
+        if (originalSettings) {
+            // 可以使用 Proxy 或者定期更新，这里简单处理
+            setInterval(updateAnnPartnerName, 1000);
+        }
+    }
+
+    // 高级功能入口
     const entryBtn = document.getElementById('anniversary-function');
     if (entryBtn) {
         const newBtn = entryBtn.cloneNode(true);
@@ -471,6 +569,7 @@ function initAnniversaryModule() {
         });
     }
 
+    // 关闭按钮
     const closeBtn = document.getElementById('close-anniversary-modal');
     if (closeBtn) {
         const newClose = closeBtn.cloneNode(true);
@@ -481,6 +580,7 @@ function initAnniversaryModule() {
         });
     }
 
+    // 新增按钮
     const openAddBtn = document.getElementById('open-ann-add-btn');
     const editorSlide = document.getElementById('ann-editor-slide');
 
@@ -495,11 +595,20 @@ function initAnniversaryModule() {
             if (msgInput) msgInput.value = '';
             document.querySelectorAll('.ann-reminder-checkbox').forEach(cb => cb.checked = false);
 
+            // 重置远方来信开关
+            const farletterSwitch = document.getElementById('ann-farletter-switch');
+            if (farletterSwitch) {
+                farletterSwitch.classList.remove('active');
+                const knob = farletterSwitch.querySelector('.setting-pill-knob');
+                if (knob) knob.style.right = '23px';
+            }
+
             window.selectAnnType('anniversary');
             if (editorSlide) editorSlide.classList.add('active');
         };
     }
 
+    // 关闭编辑器
     const closeEditorBtn = document.getElementById('close-ann-editor');
     if (closeEditorBtn) {
         closeEditorBtn.onclick = () => {
@@ -508,6 +617,7 @@ function initAnniversaryModule() {
         };
     }
 
+    // 保存按钮
     const saveBtn = document.getElementById('save-ann-btn');
     if (saveBtn) {
         const newSave = saveBtn.cloneNode(true);
@@ -518,13 +628,14 @@ function initAnniversaryModule() {
         });
     }
 
+    // 背景图上传
     const annBgInput = document.getElementById('ann-header-bg-input');
     if (annBgInput) {
         annBgInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
             if (!activeAnnId) {
-                if (typeof showNotification === 'function') showNotification('请先选择一个纪念日', 'warning');
+                showToast('请先选择一个纪念日', 'warning');
                 return;
             }
             const reader = new FileReader();
@@ -535,10 +646,30 @@ function initAnniversaryModule() {
                 if (typeof localforage !== 'undefined') {
                     await localforage.setItem(`annHeaderBg_${activeAnnId}`, dataUrl);
                 }
-                if (typeof showNotification === 'function') showNotification('封面图已更新', 'success');
+                showToast('封面图已更新', 'success');
             };
             reader.readAsDataURL(file);
             e.target.value = '';
+        });
+    }
+
+    // 远方来信开关的点击事件（独立处理，避免与 setting-pill-row 冲突）
+    const farletterToggleRow = document.getElementById('ann-farletter-toggle');
+    if (farletterToggleRow) {
+        farletterToggleRow.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const switchEl = document.getElementById('ann-farletter-switch');
+            if (switchEl) {
+                if (switchEl.classList.contains('active')) {
+                    switchEl.classList.remove('active');
+                    const knob = switchEl.querySelector('.setting-pill-knob');
+                    if (knob) knob.style.right = '23px';
+                } else {
+                    switchEl.classList.add('active');
+                    const knob = switchEl.querySelector('.setting-pill-knob');
+                    if (knob) knob.style.right = '3px';
+                }
+            }
         });
     }
 
@@ -579,14 +710,13 @@ window.showAnniversaryNotification = function(ann) {
     }
 };
 
-// 确保 anniversaries 数组存在
+// ==================== 初始化数据 ====================
 if (typeof window.anniversaries === 'undefined') {
     window.anniversaries = [];
 }
 
-// 设置默认 currentAnnType
 if (typeof window.currentAnnType === 'undefined') {
     window.currentAnnType = 'anniversary';
 }
 
-console.log('✅ anniversary.js 已加载');
+console.log('✅ anniversary.js 已加载（集成远方来信）');

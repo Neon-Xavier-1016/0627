@@ -936,8 +936,16 @@ function startCall(isPartner) {
         document.getElementById('call-inc-reject')?.addEventListener('click', () => {
             document.getElementById('call-incoming-overlay')?.classList.remove('visible');
             clearTimeout(S.incomingTimer);
-            const i = document.getElementById('message-input'), sb = document.getElementById('send-btn');
-            if (i && sb) { i.value = `📵 已拒绝 ${getName()} 的视频通话`; sb.click(); }
+            const myName = (typeof settings !== 'undefined' && settings.myName) || '我';
+            const partnerName = getName();
+            const rejectLabels = [
+                `${partnerName} 的来电，${myName}未接听`,
+                `${myName}拒绝了 ${partnerName} 的通话`,
+                `错过了 ${partnerName} 的来电`,
+                `${myName}暂时无法接听 ${partnerName} 的通话`,
+            ];
+            const label = rejectLabels[Math.floor(Math.random() * rejectLabels.length)];
+            sendCallEvent('fa-phone-slash', label, null);
         });
         document.getElementById('call-inc-accept')?.addEventListener('click', () => {
             document.getElementById('call-incoming-overlay')?.classList.remove('visible');

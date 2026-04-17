@@ -12,13 +12,13 @@
         const style = document.createElement('style');
         style.id = 'dm-data-styles';
         style.textContent = `
-/* ----- 数据管理模态框样式（移动优先）----- */
-.dm6-container {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    background: var(--secondary-bg);
-}
+    /* ----- 数据管理模态框样式（移动优先）----- */
+    .dm6-container {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        background: var(--secondary-bg);
+    }
 
 /* 顶部栏 */
 .dm6-topbar {
@@ -514,6 +514,27 @@
     cursor: pointer;
     margin-top: 8px;
 }
+
+    /* 修复数据管理模态框滚动问题 */
+            #data-modal .modal-content {
+                display: flex !important;
+                flex-direction: column !important;
+                padding: 0 !important;
+                overflow: hidden !important;
+                height: 85vh;
+                max-height: 85vh;
+            }
+            #data-modal .modal-content > div {
+                flex: 1;
+                min-height: 0;
+            }
+            .dm6-body {
+                flex: 1;
+                overflow-y: auto;
+                padding: 16px 16px 24px;
+                -webkit-overflow-scrolling: touch;
+            }
+
         `;
         document.head.appendChild(style);
     }
@@ -936,7 +957,30 @@
     }
 
     function buildUI(modalContent) {
+        // 强制修复父容器样式
+        modalContent.style.cssText = `
+            display: flex !important;
+            flex-direction: column !important;
+            height: 85vh !important;
+            max-height: 85vh !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+        `;
+
         modalContent.innerHTML = MAIN_HTML;
+
+        // 强制设置容器高度
+        const container = modalContent.querySelector('.dm6-container');
+        if (container) {
+            container.style.cssText = `
+                display: flex;
+                flex-direction: column;
+                height: 100%;
+                flex: 1;
+                min-height: 0;
+            `;
+        }
+
         // 确保抽屉存在于 body 中
         if (!document.getElementById('dm6-drawer-full')) {
             const div = document.createElement('div');
@@ -951,9 +995,18 @@
         bindEvents(modalContent);
         updateStorageStats();
         syncNotifToggle();
-        // 刷新云同步 UI（如果外部提供）
         if (typeof refreshCloudSyncInfo === 'function') refreshCloudSyncInfo();
         if (typeof window.syncCloudAutoSyncSettingsUI === 'function') window.syncCloudAutoSyncSettingsUI();
+
+        // 强制滚动到顶部
+        setTimeout(() => {
+            const body = modalContent.querySelector('.dm6-body');
+            if (body) {
+                body.scrollTop = 0;
+            }
+            // 也尝试滚动整个容器
+            modalContent.scrollTop = 0;
+        }, 50);
     }
 
     // 监听模态框打开

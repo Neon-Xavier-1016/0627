@@ -1737,6 +1737,21 @@ function showModal(modalElement, focusElement = null) {
                return;
            }
 
+           // 保护远方来信的查看模态框
+           if (modalElement && modalElement.id === 'farletter-view-modal') {
+               // 如果设置了阻止标志，则不关闭
+               if (window._preventAutoClose) {
+                   console.log('hideModal 被阻止，因为 _preventAutoClose = true');
+                   return;
+               }
+               // 如果当前显示的是回复的信（标题包含"回复的信"），也不自动关闭
+               const title = document.getElementById('farletter-view-title');
+               if (title && title.textContent === '回复的信') {
+                   console.log('hideModal 被阻止，因为当前是回复的信视图');
+                   return;
+               }
+           }
+
            const content = modalElement.querySelector('.modal-content');
            if (content) {
                content.style.opacity = '0';

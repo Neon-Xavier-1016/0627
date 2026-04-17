@@ -11875,3 +11875,692 @@ html[data-theme="dark"] .period-stat-value { color: var(--accent-color-dark); }
     height: auto !important;
     object-fit: cover !important;
 }
+/* 智能随机发送样式 */
+.prob-item input[type="range"] {
+    cursor: pointer;
+}
+
+#smart-random-panel {
+    transition: all 0.3s ease;
+}
+
+#fixed-interval-panel {
+    transition: opacity 0.2s;
+}
+
+/* 时间输入框样式 */
+input[type="time"] {
+    font-family: var(--font-family);
+    cursor: pointer;
+}
+
+input[type="time"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.5);
+    cursor: pointer;
+}
+
+/* 暗色主题适配 */
+[data-theme="dark"] input[type="time"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.8);
+}
+/* 智能随机发送开关样式 */
+#smart-random-switch {
+    width: 44px !important;
+    height: 24px !important;
+    background: #ccc !important;
+    border-radius: 24px !important;
+    position: relative !important;
+    cursor: pointer !important;
+    transition: background 0.3s ease !important;
+}
+
+#smart-random-switch .setting-pill-knob {
+    position: absolute !important;
+    width: 18px !important;
+    height: 18px !important;
+    background: #fff !important;
+    border-radius: 50% !important;
+    top: 3px !important;
+    left: 3px !important;
+    transition: left 0.25s ease !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
+}
+
+#smart-random-switch.active {
+    background: var(--accent-color, #9b59b6) !important;
+}
+
+#smart-random-switch.active .setting-pill-knob {
+    left: 23px !important;
+}
+/* 主动发送开关样式 */
+#auto-send-switch {
+    width: 44px !important;
+    height: 24px !important;
+    background: #ccc !important;
+    border-radius: 24px !important;
+    position: relative !important;
+    cursor: pointer !important;
+    transition: background 0.3s ease !important;
+}
+
+#auto-send-switch .setting-pill-knob {
+    position: absolute !important;
+    width: 18px !important;
+    height: 18px !important;
+    background: #fff !important;
+    border-radius: 50% !important;
+    top: 3px !important;
+    left: 3px !important;
+    transition: left 0.25s ease !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
+}
+
+#auto-send-switch.active {
+    background: var(--accent-color, #9b59b6) !important;
+}
+
+#auto-send-switch.active .setting-pill-knob {
+    left: 23px !important;
+}
+/* ==================== 远方来信（完全匹配信封投递样式） ==================== */
+
+#farletter-modal .modal-content {
+    padding: 0 !important;
+    overflow: hidden !important;
+    border-radius: 20px;
+    background: transparent !important;
+}
+
+#farletter-modal .env-wrapper {
+    background: var(--secondary-bg);
+    border-radius: 20px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    max-height: 88vh;
+}
+
+/* 头部 - 使用和信封投递一样的 flap 样式 */
+#farletter-modal .env-header-flip {
+    position: relative;
+    background: var(--accent-color);
+    padding: 22px 24px 42px;
+    clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%);
+    text-align: center;
+    color: white;
+}
+
+#farletter-modal .env-header-flip::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(160deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.04) 55%, transparent 100%);
+    pointer-events: none;
+}
+
+#farletter-modal .env-header-flip::after {
+    content: '';
+    position: absolute;
+    bottom: 38px;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: rgba(255,255,255,0.2);
+    pointer-events: none;
+}
+
+#farletter-modal .env-header-icon {
+    display: block;
+    margin: 0 auto 8px;
+    opacity: 0.95;
+}
+
+#farletter-modal .env-header-flip-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+#farletter-modal .env-settings-icon {
+    background: rgba(255,255,255,0.15);
+    border: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    color: rgba(255,255,255,0.8);
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+#farletter-modal .env-settings-icon:hover {
+    background: rgba(255,255,255,0.3);
+    color: white;
+    transform: rotate(30deg);
+}
+
+#farletter-modal .env-header-title {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.25);
+}
+
+#farletter-modal .env-header-subtitle {
+    font-size: 10px;
+    opacity: 0.7;
+    letter-spacing: 2px;
+    margin-top: 3px;
+    text-transform: uppercase;
+    font-style: italic;
+}
+
+/* 主体内容 */
+#farletter-modal .env-body {
+    padding: 14px 18px 4px;
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+/* Tab 栏 */
+#farletter-modal .env-tab-bar {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+}
+
+#farletter-modal .env-tab-btn {
+    flex: 1;
+    padding: 9px 6px;
+    background: var(--primary-bg);
+    border: 1.5px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: var(--font-family);
+    color: var(--text-secondary);
+    position: relative;
+    transition: all 0.25s;
+    letter-spacing: 0.5px;
+}
+
+#farletter-modal .env-tab-btn.active {
+    background: rgba(var(--accent-color-rgb), 0.08);
+    border: 1.5px solid var(--accent-color);
+    color: var(--accent-color);
+    font-weight: 600;
+}
+
+/* 红点徽章 */
+#farletter-modal .env-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    background: #ff4757;
+    color: #fff;
+    border-radius: 8px;
+    font-size: 10px;
+    padding: 1px 5px;
+    min-width: 16px;
+    text-align: center;
+    border: 2px solid var(--secondary-bg);
+}
+
+/* 信件列表项 */
+#farletter-modal .farletter-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+#farletter-modal .farletter-list-item {
+    background: var(--primary-bg);
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+    position: relative;
+    overflow: hidden;
+    padding: 10px 12px;
+}
+
+#farletter-modal .farletter-list-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(var(--accent-color-rgb), 0.12);
+    border-color: rgba(var(--accent-color-rgb), 0.35);
+}
+
+/* 信件项头部 */
+#farletter-modal .farletter-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+#farletter-modal .farletter-item-date {
+    font-size: 10px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#farletter-modal .farletter-unread-dot {
+    width: 8px;
+    height: 8px;
+    background: #ff4757;
+    border-radius: 50%;
+    display: inline-block;
+    box-shadow: 0 0 4px #ff4757;
+}
+
+#farletter-modal .farletter-item-status {
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    background: rgba(var(--accent-color-rgb), 0.1);
+    color: var(--accent-color);
+}
+
+/* 信件预览 */
+#farletter-modal .farletter-item-preview {
+    font-size: 12px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 90%;
+    font-style: italic;
+    opacity: 0.8;
+}
+
+/* 删除按钮 */
+#farletter-modal .farletter-item-delete {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 12px;
+    opacity: 0.35;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+#farletter-modal .farletter-item-delete:hover {
+    color: #ff4757;
+    opacity: 1;
+}
+
+/* 空状态 */
+#farletter-modal .farletter-empty-state {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    opacity: 0.65;
+}
+
+#farletter-modal .farletter-empty-state i {
+    font-size: 48px;
+    opacity: 0.4;
+    margin-bottom: 16px;
+    display: block;
+}
+
+#farletter-modal .farletter-empty-state p {
+    margin-bottom: 6px;
+}
+
+#farletter-modal .farletter-empty-state span {
+    font-size: 11px;
+    opacity: 0.6;
+}
+
+/* 写信面板（回复） */
+#farletter-modal .farletter-compose-panel {
+    padding: 0;
+}
+
+#farletter-modal .env-compose-paper {
+    background: var(--primary-bg);
+    border-radius: 12px;
+    border: 1px solid rgba(var(--accent-color-rgb), 0.2);
+    padding: 16px 16px 12px;
+    margin-bottom: 10px;
+    position: relative;
+    overflow: hidden;
+}
+
+#farletter-modal .env-compose-paper::before {
+    content: '';
+    position: absolute;
+    left: 38px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: rgba(220, 80, 80, 0.25);
+    pointer-events: none;
+}
+
+#farletter-modal .env-compose-paper::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+        transparent,
+        transparent 28px,
+        rgba(var(--accent-color-rgb), 0.07) 28px,
+        rgba(var(--accent-color-rgb), 0.07) 29px
+    );
+    pointer-events: none;
+    border-radius: 12px;
+}
+
+#farletter-modal .env-compose-heading {
+    font-size: 11px;
+    color: var(--accent-color);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    opacity: 0.8;
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#farletter-modal .env-compose-greeting {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    font-style: italic;
+    position: relative;
+    z-index: 1;
+}
+
+#farletter-modal #farletter-reply-input {
+    background: transparent !important;
+    border: none !important;
+    outline: none !important;
+    font-family: var(--font-family) !important;
+    font-size: 14px !important;
+    line-height: 2 !important;
+    color: var(--text-primary) !important;
+    width: 100%;
+    resize: none;
+    padding-left: 16px;
+    min-height: 140px;
+    position: relative;
+    z-index: 1;
+}
+
+/* 底部按钮区域 */
+#farletter-modal .env-send-area {
+    display: flex;
+    gap: 12px;
+    padding: 12px 18px 16px;
+}
+
+#farletter-modal .env-write-btn {
+    flex: 2;
+    width: auto;
+    padding: 12px 0;
+    background: var(--accent-color);
+    color: white;
+    border: none;
+    border-radius: 14px;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: var(--font-family);
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.25s;
+    box-shadow: 0 4px 16px rgba(var(--accent-color-rgb), 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+#farletter-modal .env-write-btn:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+
+#farletter-modal .env-close-btn {
+    flex: 1;
+    width: auto;
+    padding: 12px 0;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-family: var(--font-family);
+    transition: all 0.2s;
+}
+
+#farletter-modal .env-close-btn:hover {
+    background: var(--primary-bg);
+}
+
+/* 复选框样式 */
+#farletter-modal input[type="checkbox"] {
+    accent-color: var(--accent-color);
+}
+
+/* ==================== 远方来信设置面板样式 ==================== */
+
+#farletter-settings-modal .modal-content {
+    max-width: 380px;
+    width: 90%;
+}
+
+#farletter-settings-modal .settings-section {
+    margin-bottom: 20px;
+}
+
+#farletter-settings-modal .settings-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* 周期按钮 - 居中 */
+#farletter-settings-modal .period-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin: 8px 0;
+}
+
+#farletter-settings-modal .period-btn {
+    flex: 0 0 auto;
+    min-width: 70px;
+    padding: 8px 16px;
+    border: 1px solid var(--border-color);
+    background: var(--primary-bg);
+    border-radius: 30px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: var(--text-primary);
+    text-align: center;
+}
+
+#farletter-settings-modal .period-btn.active {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: white;
+}
+
+/* 双滑块区域 */
+#farletter-settings-modal .dual-slider-container {
+    margin: 16px 0;
+}
+
+/* 双滑块区域 - 字体调小 */
+#farletter-settings-modal .min-max-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 11px;  /* 原来可能是 12px 或更大，改小 */
+    color: var(--text-secondary);
+}
+
+#farletter-settings-modal .min-max-labels span {
+    font-size: 11px;  /* 保持一致 */
+}
+
+/* 双滑块轨道 */
+#farletter-settings-modal .dual-slider-track {
+    position: relative;
+    height: 4px;
+    background: var(--border-color);
+    border-radius: 4px;
+    margin: 20px 0 30px;
+}
+
+#farletter-settings-modal .dual-slider-fill {
+    position: absolute;
+    height: 4px;
+    background: var(--accent-color);
+    border-radius: 4px;
+}
+
+#farletter-settings-modal input[type="range"] {
+    position: absolute;
+    width: 100%;
+    background: transparent;
+    pointer-events: none;
+    -webkit-appearance: none;
+}
+
+#farletter-settings-modal input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    pointer-events: auto;
+    border: 2px solid #fff;
+}
+
+/* 设置面板底部按钮 */
+#farletter-settings-modal .settings-modal-buttons {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-color);
+}
+
+/* 设置面板中的开关行 */
+#farletter-settings-modal .setting-pill-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    cursor: pointer;
+}
+
+#farletter-settings-modal .setting-pill-switch {
+    width: 44px;
+    height: 24px;
+    border-radius: 24px;
+    background: var(--border-color);
+    position: relative;
+    transition: background 0.3s;
+    flex-shrink: 0;
+}
+
+#farletter-settings-modal .setting-pill-switch.active {
+    background: var(--accent-color);
+}
+
+#farletter-settings-modal .setting-pill-knob {
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    top: 3px;
+    right: 23px;
+    transition: right 0.25s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+#farletter-settings-modal .setting-pill-switch.active .setting-pill-knob {
+    right: 3px;
+}
+
+/* ==================== 确保模态框在最上层 ==================== */
+
+#farletter-modal,
+#farletter-settings-modal,
+#farletter-view-modal {
+    z-index: 2100 !important;
+}
+
+#farletter-modal .modal-content,
+#farletter-settings-modal .modal-content,
+#farletter-view-modal .modal-content {
+    z-index: 2101 !important;
+}
+/* 状态点样式 */
+.farletter-status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 6px;
+    flex-shrink: 0;
+}
+
+.farletter-status-unread {
+    background: #ff4757;
+    box-shadow: 0 0 4px #ff4757;
+}
+
+.farletter-status-viewed {
+    background: #2ed573;
+    box-shadow: 0 0 4px #2ed573;
+}
+/* 强制修复数据管理弹窗滚动 */
+#data-modal .modal-content {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 85vh !important;
+    max-height: 85vh !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+}
+
+#data-modal .modal-content > * {
+    flex: 1;
+    min-height: 0;
+}
+
+.dm6-body {
+    flex: 1;
+    overflow-y: auto !important;
+}
