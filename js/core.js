@@ -189,7 +189,14 @@ autoSendInterval: 5,
                     const cssValue = value.startsWith('url(') ? value : `url(${value})`;
                     document.documentElement.style.setProperty('--chat-bg-image', cssValue);
                 }
-                document.body.classList.add('with-background');
+                // 移除这行！不要添加 with-background 类
+                // document.body.classList.add('with-background');
+
+                // 可选：添加一个标记到聊天容器而不是 body
+                const chatContainer = document.querySelector('.chat-container');
+                if (chatContainer) {
+                    chatContainer.setAttribute('data-has-bg', 'true');
+                }
             } catch (e) {
                 if (typeof removeBackground === 'function') removeBackground();
             }

@@ -1,6 +1,7 @@
 /**
  * highfunctions/farletter.js - 远方来信模块
  * 最终版：信件不移动，支持状态标记、编辑功能，查看回复使用独立弹窗
+ * 新增：催信预定机制 + 回复已收到预定机制 + 聊天通知跳转
  */
 
 (function() {
@@ -8,7 +9,9 @@
     const STORAGE_KEYS = {
         RECEIVED: 'farLetters_received',
         REPLIED: 'farLetters_replied',
-        SETTINGS: 'farLetters_settings'
+        SETTINGS: 'farLetters_settings',
+        SCHEDULED: 'farLetters_scheduled',           // 催信预定
+        DELIVERED_SCHEDULED: 'farLetters_deliveredScheduled'  // 已收到预定
     };
 
     // 默认设置
@@ -24,7 +27,7 @@
     };
 
     // 全局变量
-    let farLetters = { received: [], replied: [] };
+    let farLetters = { received: [], replied: [], scheduled: [], deliveredScheduled: [] };
     let farSettings = { ...DEFAULT_SETTINGS };
     let tempSettings = { ...DEFAULT_SETTINGS };
     let currentViewingLetter = null;
@@ -32,6 +35,8 @@
     let currentReplyingLetter = null;
     let urgeCooldownActive = false;
     let periodicCheckInterval = null;
+    let scheduledCheckInterval = null;
+    let deliveredCheckInterval = null;
 
     // ========== 辅助函数 ==========
     function getPartnerName() {
@@ -77,15 +82,90 @@
         return div.innerHTML;
     }
 
+    // ========== 聊天页面通知（带跳转按钮） ==========
+    function addChatNotificationWithButton(letterId, partnerName) {
+        const chatContainer = document.getElementById('chat-container');
+        if (!chatContainer) return;
+
+        const existingNotif = document.querySelector('.farletter-chat-notification[data-letter-id="' + letterId + '"]');
+        if (existingNotif) return;
+
+        const notifDiv = document.createElement('div');
+        notifDiv.className = 'farletter-chat-notification system-message';
+        notifDiv.setAttribute('data-letter-id', letterId);
+        notifDiv.style.cssText = 'background: rgba(var(--accent-color-rgb, 255,107,157), 0.1); border-left: 3px solid var(--accent-color, #ff6b9d); margin: 8px 0; padding: 10px 12px; border-radius: 12px; cursor: pointer; transition: all 0.2s;';
+        notifDiv.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 20px;">📬</span>
+                    <span style="font-size: 13px; color: var(--text-primary);"><strong>${escapeHtml(partnerName)}</strong> 给你寄来了一封信 ✨</span>
+                </div>
+                <button class="farletter-jump-btn" data-letter-id="${letterId}" style="background: var(--accent-color, #ff6b9d); border: none; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; cursor: pointer; font-weight: 500;">📖 查看信件</button>
+            </div>
+        `;
+
+        notifDiv.addEventListener('click', (e) => {
+            if (e.target.classList.contains('farletter-jump-btn')) return;
+            jumpToFarLetter(letterId);
+        });
+
+        const jumpBtn = notifDiv.querySelector('.farletter-jump-btn');
+        if (jumpBtn) {
+            jumpBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                jumpToFarLetter(letterId);
+            });
+        }
+
+        chatContainer.appendChild(notifDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+
+        setTimeout(() => {
+            if (notifDiv.parentNode) {
+                notifDiv.style.transition = 'opacity 0.5s';
+                notifDiv.style.opacity = '0';
+                setTimeout(() => {
+                    if (notifDiv.parentNode) notifDiv.remove();
+                }, 500);
+            }
+        }, 10000);
+    }
+
+    function jumpToFarLetter(letterId) {
+        const farModal = document.getElementById('farletter-modal');
+        if (farModal && typeof showModal === 'function') {
+            showModal(farModal);
+        } else if (farModal) {
+            farModal.style.display = 'flex';
+        }
+
+        if (typeof window.switchFarLetterTab === 'function') {
+            window.switchFarLetterTab('received');
+        }
+
+        setTimeout(() => {
+            const letter = farLetters.received.find(l => l.id === letterId);
+            if (letter) {
+                viewLetterDetail(letter, 'received');
+            } else {
+                showToast('信件不存在或已被删除', 'warning');
+            }
+        }, 300);
+    }
+
     // ========== 数据操作 ==========
     async function loadData() {
         try {
             const received = await localforage.getItem(STORAGE_KEYS.RECEIVED);
             const replied = await localforage.getItem(STORAGE_KEYS.REPLIED);
             const settings = await localforage.getItem(STORAGE_KEYS.SETTINGS);
+            const scheduled = await localforage.getItem(STORAGE_KEYS.SCHEDULED);
+            const deliveredScheduled = await localforage.getItem(STORAGE_KEYS.DELIVERED_SCHEDULED);
 
             farLetters.received = received || [];
             farLetters.replied = replied || [];
+            farLetters.scheduled = scheduled || [];
+            farLetters.deliveredScheduled = deliveredScheduled || [];
             farSettings = { ...DEFAULT_SETTINGS, ...(settings || {}) };
             tempSettings = { ...farSettings };
 
@@ -111,6 +191,8 @@
             await localforage.setItem(STORAGE_KEYS.RECEIVED, farLetters.received);
             await localforage.setItem(STORAGE_KEYS.REPLIED, farLetters.replied);
             await localforage.setItem(STORAGE_KEYS.SETTINGS, farSettings);
+            await localforage.setItem(STORAGE_KEYS.SCHEDULED, farLetters.scheduled);
+            await localforage.setItem(STORAGE_KEYS.DELIVERED_SCHEDULED, farLetters.deliveredScheduled);
         } catch (e) {
             console.error('[远方来信] 保存数据失败', e);
         }
@@ -120,19 +202,24 @@
     async function getReplyLibrary() {
         let replyLibrary = [];
         try {
-            const stored = await localforage.getItem('customReplies');
-            if (stored && stored.reply && stored.reply.length) {
-                replyLibrary = stored.reply;
+            // 优先使用 envelope_customReplies
+            const stored = await localforage.getItem('envelope_customReplies');
+            if (stored && stored.length) {
+                replyLibrary = stored;
+            } else {
+                // 兼容旧的 customReplies 格式
+                const oldStored = await localforage.getItem('customReplies');
+                if (oldStored && oldStored.reply && oldStored.reply.length) {
+                    replyLibrary = oldStored.reply;
+                }
             }
         } catch(e) {}
         if (replyLibrary.length === 0) {
+            // 保留 fallback 字卡，避免完全空白
             replyLibrary = [
                 "今天天气真好，想和你一起散步。",
                 "你吃饭了吗？要注意身体哦。",
-                "想你了，你在做什么呢？",
-                "晚安，好梦。",
-                "早安，今天也要元气满满。",
-                "记得多喝水，照顾好自己。"
+                // ...
             ];
         }
         return replyLibrary;
@@ -146,7 +233,7 @@
             const j = Math.floor(Math.random() * (i + 1));
             [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
         }
-        return shuffled.slice(0, Math.min(count, shuffled.length)).join('\n\n');
+        return shuffled.slice(0, Math.min(count, shuffled.length)).join('  ');
     }
 
     // ========== 生成信件 ==========
@@ -165,7 +252,11 @@
         farLetters.received.unshift(newLetter);
         if (triggerType !== 'anniversary') farSettings.currentCycleCount++;
         await saveData();
+
+        const partnerName = getPartnerName();
+        addChatNotificationWithButton(newLetter.id, partnerName);
         await sendArrivalNotification(newLetter);
+
         renderReceivedList();
         updateUnreadBadge();
         return newLetter;
@@ -180,9 +271,6 @@
                     icon: window.settings?.partnerAvatar || ''
                 });
             } catch(e) {}
-        }
-        if (!document.hidden) {
-            addSystemMessage(`📬 ${partnerName}给你寄来了一封信，快去看吧~`);
         }
     }
 
@@ -237,26 +325,57 @@
         }, 30 * 60 * 1000);
     }
 
-    // ========== 催信 ==========
+    // ========== 催信（预定机制） ==========
     async function urgeLetter() {
         const partnerName = getPartnerName();
-        if (urgeCooldownActive) {
-            showToast(`不要着急嘛，${partnerName}还在慢慢写呢💕`, 'warning');
+
+        // 检查是否已有未完成的预定任务
+        const hasPendingScheduled = farLetters.scheduled && farLetters.scheduled.some(s => s.status === 'pending');
+        if (hasPendingScheduled) {
+            showToast(`已经提醒${partnerName}啦，${partnerName}还在慢慢写呢💕`, 'warning');
             return;
         }
-        urgeCooldownActive = true;
-        farSettings.lastUrgeTime = Date.now();
+
+        // 随机计算 2-15 小时后的发信时间
+        const delayHours = Math.random() * (15 - 2) + 2;
+        const replyTime = Date.now() + delayHours * 60 * 60 * 1000;
+
+        const scheduledLetter = {
+            id: generateUUID(),
+            replyTime: replyTime,
+            status: 'pending',
+            createdAt: Date.now()
+        };
+
+        farLetters.scheduled.push(scheduledLetter);
         await saveData();
-        showToast(`已催促${partnerName}，Ta会在2-15小时内回信~`, 'success');
-        const delayMs = (Math.random() * (15 - 2) + 2) * 60 * 60 * 1000;
-        setTimeout(async () => {
-            await generateRandomLetter('manual');
-            urgeCooldownActive = false;
-            await saveData();
-        }, delayMs);
+
+        showToast(`已提醒${partnerName}，${partnerName}会尽快写信~`, 'success');
     }
 
-    // ========== 回复信件 ==========
+    async function checkScheduledLetters() {
+        if (!farLetters.scheduled || farLetters.scheduled.length === 0) return;
+
+        const now = Date.now();
+        let changed = false;
+
+        for (let i = 0; i < farLetters.scheduled.length; i++) {
+            const scheduled = farLetters.scheduled[i];
+            if (scheduled.status === 'pending' && now >= scheduled.replyTime) {
+                scheduled.status = 'completed';
+                await generateRandomLetter('manual');
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            farLetters.scheduled = farLetters.scheduled.filter(s => s.status !== 'completed');
+            await saveData();
+            urgeCooldownActive = false;
+        }
+    }
+
+    // ========== 回复信件（使用预定机制标记已收到） ==========
     async function replyToLetter(letterId, replyContent, sendToChat) {
         const letter = farLetters.received.find(l => l.id === letterId);
         if (!letter || letter.replied) return;
@@ -267,6 +386,7 @@
         const repliedLetter = { ...letter, replyEdited: false, replyEditedContent: null };
         farLetters.replied.unshift(repliedLetter);
         await saveData();
+
         if (sendToChat && typeof window.sendMessage === 'function') {
             window.sendMessage(replyContent);
         }
@@ -274,21 +394,51 @@
             const dateStr = new Date(letter.sendTime).toLocaleDateString();
             addSystemMessage(`📮 你回复了${partnerName}在 ${dateStr} 的来信`);
         }
-        const deliveryDelay = Math.random() * 18 * 60 * 60 * 1000;
-        setTimeout(async () => {
-            const targetLetter = farLetters.replied.find(l => l.id === letterId);
-            if (targetLetter) {
-                targetLetter.deliveredAt = Date.now();
-                await saveData();
-                renderRepliedList();
-            }
-        }, deliveryDelay);
+
+        // 预定“已收到”标记（0-18 小时）
+        const deliveryDelayMs = Math.random() * 18 * 60 * 60 * 1000;
+        const deliveredTime = Date.now() + deliveryDelayMs;
+
+        if (!farLetters.deliveredScheduled) farLetters.deliveredScheduled = [];
+        farLetters.deliveredScheduled.push({
+            letterId: letterId,
+            targetTime: deliveredTime,
+            status: 'pending'
+        });
+        await saveData();
+
         renderReceivedList();
         renderRepliedList();
         updateUnreadBadge();
         closeReplyCompose();
         showToast('回复已寄出✨', 'success');
         return true;
+    }
+
+    // 检查预定的“已收到”标记
+    async function checkDeliveredScheduled() {
+        if (!farLetters.deliveredScheduled || farLetters.deliveredScheduled.length === 0) return;
+
+        const now = Date.now();
+        let changed = false;
+
+        for (let i = 0; i < farLetters.deliveredScheduled.length; i++) {
+            const scheduled = farLetters.deliveredScheduled[i];
+            if (scheduled.status === 'pending' && now >= scheduled.targetTime) {
+                scheduled.status = 'completed';
+                const repliedLetter = farLetters.replied.find(l => l.id === scheduled.letterId);
+                if (repliedLetter) {
+                    repliedLetter.deliveredAt = Date.now();
+                    changed = true;
+                }
+            }
+        }
+
+        if (changed) {
+            farLetters.deliveredScheduled = farLetters.deliveredScheduled.filter(s => s.status !== 'completed');
+            await saveData();
+            renderRepliedList();
+        }
     }
 
     // ========== 删除信件 ==========
@@ -683,88 +833,84 @@
         }
     };
 
-        // ========== 设置面板 ==========
-        function openSettingsModal() {
-            updateFarLetterDynamicNames();
-            tempSettings = { ...farSettings };
+    // ========== 设置面板 ==========
+    function openSettingsModal() {
+        updateFarLetterDynamicNames();
+        tempSettings = { ...farSettings };
 
-            // 更新周期按钮状态
-            document.querySelectorAll('#farletter-settings-modal .period-btn').forEach(btn => {
-                btn.classList.remove('active');
-                if (parseInt(btn.dataset.period) === tempSettings.period) {
-                    btn.classList.add('active');
+        document.querySelectorAll('#farletter-settings-modal .period-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (parseInt(btn.dataset.period) === tempSettings.period) {
+                btn.classList.add('active');
+            }
+        });
+
+        document.getElementById('farletter-min-val').textContent = tempSettings.minCount;
+        document.getElementById('farletter-max-val').textContent = tempSettings.maxCount;
+
+        const minMinus = document.getElementById('farletter-min-minus');
+        const minPlus = document.getElementById('farletter-min-plus');
+        const maxMinus = document.getElementById('farletter-max-minus');
+        const maxPlus = document.getElementById('farletter-max-plus');
+
+        if (minMinus) {
+            const newMinMinus = minMinus.cloneNode(true);
+            minMinus.parentNode.replaceChild(newMinMinus, minMinus);
+            newMinMinus.onclick = () => {
+                let val = tempSettings.minCount;
+                if (val > 1) {
+                    val--;
+                    if (val > tempSettings.maxCount) val = tempSettings.maxCount;
+                    tempSettings.minCount = val;
+                    document.getElementById('farletter-min-val').textContent = val;
                 }
-            });
-
-            // 更新数字显示
-            document.getElementById('farletter-min-val').textContent = tempSettings.minCount;
-            document.getElementById('farletter-max-val').textContent = tempSettings.maxCount;
-
-            // ========== 绑定加减按钮事件 ==========
-            const minMinus = document.getElementById('farletter-min-minus');
-            const minPlus = document.getElementById('farletter-min-plus');
-            const maxMinus = document.getElementById('farletter-max-minus');
-            const maxPlus = document.getElementById('farletter-max-plus');
-
-            if (minMinus) {
-                const newMinMinus = minMinus.cloneNode(true);
-                minMinus.parentNode.replaceChild(newMinMinus, minMinus);
-                newMinMinus.onclick = () => {
-                    let val = tempSettings.minCount;
-                    if (val > 1) {
-                        val--;
-                        if (val > tempSettings.maxCount) val = tempSettings.maxCount;
-                        tempSettings.minCount = val;
-                        document.getElementById('farletter-min-val').textContent = val;
-                    }
-                };
-            }
-
-            if (minPlus) {
-                const newMinPlus = minPlus.cloneNode(true);
-                minPlus.parentNode.replaceChild(newMinPlus, minPlus);
-                newMinPlus.onclick = () => {
-                    let val = tempSettings.minCount;
-                    if (val < 10) {
-                        val++;
-                        if (val > tempSettings.maxCount) val = tempSettings.maxCount;
-                        tempSettings.minCount = val;
-                        document.getElementById('farletter-min-val').textContent = val;
-                    }
-                };
-            }
-
-            if (maxMinus) {
-                const newMaxMinus = maxMinus.cloneNode(true);
-                maxMinus.parentNode.replaceChild(newMaxMinus, maxMinus);
-                newMaxMinus.onclick = () => {
-                    let val = tempSettings.maxCount;
-                    if (val > 1) {
-                        val--;
-                        if (val < tempSettings.minCount) val = tempSettings.minCount;
-                        tempSettings.maxCount = val;
-                        document.getElementById('farletter-max-val').textContent = val;
-                    }
-                };
-            }
-
-            if (maxPlus) {
-                const newMaxPlus = maxPlus.cloneNode(true);
-                maxPlus.parentNode.replaceChild(newMaxPlus, maxPlus);
-                newMaxPlus.onclick = () => {
-                    let val = tempSettings.maxCount;
-                    if (val < 10) {
-                        val++;
-                        if (val < tempSettings.minCount) val = tempSettings.minCount;
-                        tempSettings.maxCount = val;
-                        document.getElementById('farletter-max-val').textContent = val;
-                    }
-                };
-            }
-
-            // 显示设置面板
-            showModal(document.getElementById('farletter-settings-modal'));
+            };
         }
+
+        if (minPlus) {
+            const newMinPlus = minPlus.cloneNode(true);
+            minPlus.parentNode.replaceChild(newMinPlus, minPlus);
+            newMinPlus.onclick = () => {
+                let val = tempSettings.minCount;
+                if (val < 10) {
+                    val++;
+                    if (val > tempSettings.maxCount) val = tempSettings.maxCount;
+                    tempSettings.minCount = val;
+                    document.getElementById('farletter-min-val').textContent = val;
+                }
+            };
+        }
+
+        if (maxMinus) {
+            const newMaxMinus = maxMinus.cloneNode(true);
+            maxMinus.parentNode.replaceChild(newMaxMinus, maxMinus);
+            newMaxMinus.onclick = () => {
+                let val = tempSettings.maxCount;
+                if (val > 1) {
+                    val--;
+                    if (val < tempSettings.minCount) val = tempSettings.minCount;
+                    tempSettings.maxCount = val;
+                    document.getElementById('farletter-max-val').textContent = val;
+                }
+            };
+        }
+
+        if (maxPlus) {
+            const newMaxPlus = maxPlus.cloneNode(true);
+            maxPlus.parentNode.replaceChild(newMaxPlus, maxPlus);
+            newMaxPlus.onclick = () => {
+                let val = tempSettings.maxCount;
+                if (val < 10) {
+                    val++;
+                    if (val < tempSettings.minCount) val = tempSettings.minCount;
+                    tempSettings.maxCount = val;
+                    document.getElementById('farletter-max-val').textContent = val;
+                }
+            };
+        }
+
+        showModal(document.getElementById('farletter-settings-modal'));
+    }
 
     function updateTempPeriod(btn) {
         tempSettings.period = parseInt(btn.dataset.period);
@@ -891,6 +1037,21 @@
         updateUnreadBadge();
         updateFarLetterDynamicNames();
         startNameChangeWatcher();
+
+        // 每 5 分钟检查一次催信预定
+        if (scheduledCheckInterval) clearInterval(scheduledCheckInterval);
+        scheduledCheckInterval = setInterval(async () => {
+            await checkScheduledLetters();
+        }, 5 * 60 * 1000);
+        await checkScheduledLetters();
+
+        // 每 5 分钟检查一次“已收到”预定
+        if (deliveredCheckInterval) clearInterval(deliveredCheckInterval);
+        deliveredCheckInterval = setInterval(async () => {
+            await checkDeliveredScheduled();
+        }, 5 * 60 * 1000);
+        await checkDeliveredScheduled();
+
         console.log('[远方来信] 初始化完成');
     }
     

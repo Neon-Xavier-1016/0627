@@ -1387,3 +1387,185 @@ window.showAppearancePanel = function(panelId) {
         bind();
     }
 })();
+// ========== 头像形状完整修复（含头像框预览）==========
+(function ultimateAvatarAndHeaderFixWithFrame() {
+    console.log('启动完整头像形状修复（含头像框预览）');
+
+    // ---------- 清理冲突 ----------
+    const conflictIds = [
+        'force-chat-avatar-shape', 'avatar-shape-fix', 'avatar-shape-control',
+        'force-header-shape', 'ultimate-header-shape'
+    ];
+    conflictIds.forEach(id => {
+        const style = document.getElementById(id);
+        if (style) style.remove();
+    });
+
+    // ---------- 注入主样式（包含头像框预览）----------
+    const masterStyle = document.createElement('style');
+    masterStyle.id = 'master-avatar-shape';
+    masterStyle.textContent = `
+        .message-avatar.shape-circle { border-radius: 50% !important; }
+        .message-avatar.shape-square { border-radius: var(--square-radius, 8px) !important; }
+        .message-avatar.shape-circle img, .message-avatar.shape-square img { border-radius: inherit !important; }
+
+        #partner-avatar, #partner-avatar *, #my-avatar, #my-avatar * {
+            border-radius: var(--header-radius, 50%) !important;
+        }
+        #partner-avatar, #my-avatar { overflow: hidden !important; }
+
+        #preview-my-avatar, #preview-partner-avatar { transition: border-radius 0.1s ease; }
+
+        /* 头像框预览（关键修复） */
+        #my-frame-preview-2, #partner-frame-preview-2,
+        #my-frame-preview-2 *, #partner-frame-preview-2 * {
+            border-radius: var(--header-radius, 50%) !important;
+        }
+    `;
+    document.head.appendChild(masterStyle);
+
+    // ---------- 读取设置 ----------
+    let currentShape = localStorage.getItem('avatar_shape') || 'circle';
+    let currentRadius = localStorage.getItem('avatar_corner_radius') || '8';
+    document.documentElement.style.setProperty('--square-radius', currentRadius + 'px');
+    document.documentElement.style.setProperty('--header-radius', currentShape === 'circle' ? '50%' : currentRadius + 'px');
+
+    // ---------- 更新聊天消息头像 ----------
+    function updateMessageAvatar(avatarEl) {
+        if (!avatarEl) return;
+        avatarEl.classList.remove('shape-circle', 'shape-square');
+        avatarEl.classList.add(`shape-${currentShape}`);
+        if (currentShape === 'square') {
+            avatarEl.style.borderRadius = currentRadius + 'px';
+        } else {
+            avatarEl.style.borderRadius = '';
+        }
+        const img = avatarEl.querySelector('img');
+        if (img) img.style.borderRadius = currentShape === 'circle' ? '50%' : currentRadius + 'px';
+    }
+    function updateAllMessageAvatars() {
+        document.querySelectorAll('#chat-container .message-avatar').forEach(updateMessageAvatar);
+    }
+
+    // ---------- 更新顶部头像（CSS 变量已处理，但确保变量正确）----------
+    function updateHeaderAvatars() {
+        const borderRadius = currentShape === 'circle' ? '50%' : currentRadius + 'px';
+        document.documentElement.style.setProperty('--header-radius', borderRadius);
+    }
+
+    // ---------- 更新实时预览 ----------
+    function updateRealTimePreviews() {
+        const myPreview = document.getElementById('preview-my-avatar');
+        const partnerPreview = document.getElementById('preview-partner-avatar');
+        if (!myPreview && !partnerPreview) return;
+        const borderRadius = currentShape === 'circle' ? '50%' : currentRadius + 'px';
+        const myUrl = localStorage.getItem('my_avatar_url');
+        const partnerUrl = localStorage.getItem('partner_avatar_url');
+        const setPreview = (container, url) => {
+            if (!container) return;
+            container.innerHTML = '';
+            container.style.borderRadius = borderRadius;
+            if (url && url !== 'null' && url.trim() !== '') {
+                const img = document.createElement('img');
+                img.src = url;
+                img.style.width = '100%';
+                img.style.height = '100%';
+                img.style.objectFit = 'cover';
+                img.style.borderRadius = borderRadius;
+                container.appendChild(img);
+            } else {
+                const icon = document.createElement('i');
+                icon.className = 'fas fa-user';
+                icon.style.fontSize = '14px';
+                icon.style.color = 'var(--text-secondary)';
+                container.appendChild(icon);
+            }
+        };
+        setPreview(myPreview, myUrl);
+        setPreview(partnerPreview, partnerUrl);
+    }
+
+    function applyAllUpdates() {
+        updateAllMessageAvatars();
+        updateHeaderAvatars();
+        updateRealTimePreviews();
+    }
+
+    function setShape(shape, radius) {
+        currentShape = shape;
+        currentRadius = radius;
+        localStorage.setItem('avatar_shape', shape);
+        localStorage.setItem('avatar_corner_radius', radius);
+        document.documentElement.style.setProperty('--square-radius', radius + 'px');
+        applyAllUpdates();
+    }
+
+    // ---------- 绑定形状按钮 ----------
+    const shapeBtns = document.querySelectorAll('.avatar-shape-btn-2');
+    shapeBtns.forEach(btn => {
+        const newBtn = btn.cloneNode(true);
+        btn.parentNode.replaceChild(newBtn, btn);
+        newBtn.onclick = (e) => {
+            e.stopPropagation();
+            const shape = newBtn.getAttribute('data-shape');
+            setShape(shape, currentRadius);
+            shapeBtns.forEach(b => {
+                b.classList.remove('modal-btn-primary');
+                b.classList.add('modal-btn-secondary');
+            });
+            newBtn.classList.remove('modal-btn-secondary');
+            newBtn.classList.add('modal-btn-primary');
+            const cornerControl = document.getElementById('avatar-corner-radius-control-2');
+            if (cornerControl) cornerControl.style.display = shape === 'square' ? 'flex' : 'none';
+        };
+    });
+
+    // ---------- 圆角滑块 ----------
+    const cornerSlider = document.getElementById('avatar-corner-radius-slider-2');
+    const cornerValue = document.getElementById('avatar-corner-radius-value-2');
+    if (cornerSlider && cornerValue) {
+        cornerSlider.value = currentRadius;
+        cornerValue.innerText = `${currentRadius}px`;
+        cornerSlider.oninput = () => {
+            const val = cornerSlider.value;
+            cornerValue.innerText = `${val}px`;
+            if (currentShape === 'square') {
+                setShape('square', val);
+            } else {
+                localStorage.setItem('avatar_corner_radius', val);
+                currentRadius = val;
+                document.documentElement.style.setProperty('--square-radius', val + 'px');
+                updateHeaderAvatars();
+                updateRealTimePreviews();
+            }
+        };
+        const cornerControl = document.getElementById('avatar-corner-radius-control-2');
+        if (cornerControl) cornerControl.style.display = currentShape === 'square' ? 'flex' : 'none';
+    }
+
+    // ---------- 劫持 renderMessages 和 MutationObserver ----------
+    const origRender = window.renderMessages;
+    if (typeof origRender === 'function') {
+        window.renderMessages = function(preserve) {
+            origRender(preserve);
+            setTimeout(updateAllMessageAvatars, 30);
+        };
+    }
+    const container = document.getElementById('chat-container');
+    if (container) {
+        new MutationObserver(() => updateAllMessageAvatars()).observe(container, { childList: true, subtree: true });
+    }
+
+    // ---------- 监听 localStorage 变化 ----------
+    window.addEventListener('storage', (e) => {
+        if (e.key === 'avatar_shape' || e.key === 'avatar_corner_radius') {
+            currentShape = localStorage.getItem('avatar_shape') || 'circle';
+            currentRadius = localStorage.getItem('avatar_corner_radius') || '8';
+            applyAllUpdates();
+        }
+    });
+
+    // 初始应用
+    applyAllUpdates();
+    console.log(`✅ 完整头像形状修复已生效（含头像框预览）。当前：${currentShape}，圆角：${currentRadius}px`);
+})();
