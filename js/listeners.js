@@ -23,6 +23,27 @@ function setupEventListeners() {
 function initChatActionListeners() {
             DOMElements.chatContainer.addEventListener('click', (e) => {
 
+                // 1️⃣ 点击空白区域 → 关闭所有操作栏
+                if (!e.target.closest('.message-wrapper')) {
+                    document.querySelectorAll('.message-meta-actions.active').forEach(el => el.classList.remove('active'));
+                }
+
+                // 2️⃣ 点击消息本身 → 切换操作栏（你之前加的）
+                const msgWrapper = e.target.closest('.message-wrapper');
+                if (msgWrapper && !e.target.closest('.message-meta-actions') && !e.target.closest('.meta-action-btn')) {
+                    document.querySelectorAll('.message-wrapper .message-meta-actions.active').forEach(el => {
+                        if (el.closest('.message-wrapper') !== msgWrapper) {
+                            el.classList.remove('active');
+                        }
+                    });
+                    const actions = msgWrapper.querySelector('.message-meta-actions');
+                    if (actions) {
+                        actions.classList.toggle('active');
+                    }
+                    return;
+                }
+
+
                 if (isBatchFavoriteMode) {
                     const wrapper = e.target.closest('.message-wrapper');
                     if (wrapper && !e.target.closest('.message-meta-actions')) {

@@ -1159,8 +1159,8 @@
 
         .input-buttons {
             display: flex;
-            gap: 8px;
-            position: relative;
+            align-items: center;
+            gap: 6px;   /* 控制按钮间距 */
         }
         .input-btn {
             border: none;
@@ -10944,4 +10944,136 @@ html[data-theme="dark"] .period-stat-value { color: var(--accent-color-dark); }
     .period-stats-grid { grid-template-columns: 1fr; gap: 10px; }
     .period-stat-item { padding: 12px; }
     .period-stat-value { font-size: 20px; }
+}
+
+
+.ann-type-btn {
+    cursor: pointer;
+    transition: all 0.2s ease;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--primary-bg);
+    color: var(--text-secondary);
+    text-align: center;
+    flex: 1;
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+}
+
+/* 覆盖所有伪类，使其与普通状态一致 */
+.ann-type-btn:active,
+.ann-type-btn:focus,
+.ann-type-btn:focus-visible {
+    background-color: var(--primary-bg) !important;
+    color: var(--text-secondary) !important;
+    border-color: var(--border-color) !important;
+    box-shadow: none !important;
+    transform: scale(1) !important;
+}
+
+/* 当同时拥有 .active 类时，使用高亮样式，并且也要覆盖伪类 */
+.ann-type-btn.active,
+.ann-type-btn.active:active,
+.ann-type-btn.active:focus,
+.ann-type-btn.active:focus-visible {
+    background: var(--accent-color) !important;
+    color: #fff !important;
+    border-color: var(--accent-color) !important;
+    box-shadow: 0 4px 12px rgba(var(--accent-color-rgb), 0.3) !important;
+}
+
+.ann-type-btn:hover {
+    background: rgba(var(--accent-color-rgb), 0.1);
+}
+
+.ann-type-btn i {
+    display: block;
+    font-size: 20px;
+    margin-bottom: 4px;
+}
+
+.ann-type-btn span {
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.ann-type-hint {
+    font-size: 10px;
+    opacity: 0.6;
+    display: block;
+    margin-top: 2px;
+}
+
+
+/* 强制输入按钮区域使用弹性布局 */
+.input-buttons {
+    display: flex !important;
+    align-items: center;
+    gap: 6px;
+}
+
+/* 左侧按钮（继续/打断）保持靠左 */
+#continue-btn-wrapper {
+    order: 0 !important;
+    margin-right: auto !important;  /* 把后面的按钮推到右边 */
+}
+
+/* 批量发送按钮 */
+#batch-btn {
+    order: 1 !important;
+}
+
+/* 👇 表情按钮：放在右侧，但紧挨发送键左边 */
+#combo-btn {
+    order: 2 !important;
+}
+
+/* 👇 发送按钮：永远在最右边 */
+#send-btn {
+    order: 3 !important;
+}
+
+
+/* 夜间模式下的聊天背景变暗 */
+[data-theme="dark"] #chat-container::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background: rgba(0, 0, 0, 0.55); /* 调整透明度控制暗度 */
+    transition: background 0.3s ease;
+}
+
+/* 确保聊天内容在蒙层之上 */
+[data-theme="dark"] .message-wrapper,
+[data-theme="dark"] .system-message,
+[data-theme="dark"] .date-divider,
+[data-theme="dark"] .call-event-message {
+    position: relative;
+    z-index: 1;
+}
+
+/* 如果背景是渐变或纯色，也可以同时降低亮度 */
+[data-theme="dark"] #chat-container {
+    background-blend-mode: multiply;
+    background-color: rgba(0, 0, 0, 0.3);
+}
+
+
+/* 默认隐藏操作栏 */
+.message-meta-actions {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    position: absolute;
+    /* 根据你的布局调整位置 */
+}
+
+/* 点击激活后显示 */
+.message-meta-actions.active {
+    opacity: 1;
+    pointer-events: auto;
 }

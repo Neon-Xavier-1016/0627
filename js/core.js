@@ -1058,7 +1058,12 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
     }
 
     const isImageOnly = !msg.text && !!msg.image;
-    let content = msg.text ? `<div>${msg.text.replace(/\n/g, '<br>')}</div>` : '';
+    let content = '';
+    if (msg.text) {
+        let textHtml = msg.text.replace(/\n/g, '<br>');
+        content = `<div>${textHtml}</div>`;
+    }
+    
     if (msg.image) content += `<img src="${msg.image}" class="message-image${isImageOnly ? ' message-image-only' : ''}" alt="图片" style="max-width:${isImageOnly ? '100px' : '100px'}; border-radius: 12px;${!isImageOnly ? ' margin-top: 6px;' : ''} cursor: pointer;" onclick="viewImage('${msg.image}')">`;
     messageHTML += content;
 
@@ -1070,12 +1075,16 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
     }
     messageDiv.innerHTML = messageHTML;
 
-    let actionsHTML = '';
-    if (settings.replyEnabled) actionsHTML += `<button class="meta-action-btn reply-btn" title="回复"><i class="fas fa-reply"></i></button>`;
-    const starIcon = msg.favorited ? 'fas fa-star' : 'far fa-star';
-    actionsHTML += `<button class="meta-action-btn favorite-action-btn ${msg.favorited ? 'favorited' : ''}" title="${msg.favorited ? '取消收藏' : '收藏'}"><i class="${starIcon}"></i></button>`;
-    actionsHTML += `<button class="meta-action-btn delete-btn" title="删除"><i class="fas fa-trash-alt"></i></button>`;
-    const actionsDiv = document.createElement('div');
+   let actionsHTML = '';
+   if (settings.replyEnabled) actionsHTML += `<button class="meta-action-btn reply-btn" title="回复"><i class="fas fa-reply"></i></button>`;
+   const starIcon = msg.favorited ? 'fas fa-star' : 'far fa-star';
+   actionsHTML += `<button class="meta-action-btn favorite-action-btn ${msg.favorited ? 'favorited' : ''}" title="${msg.favorited ? '取消收藏' : '收藏'}"><i class="${starIcon}"></i></button>`;
+   // 👇 新增编辑按钮（仅自己的消息显示）
+   if (msg.sender === 'user') {
+       actionsHTML += `<button class="meta-action-btn edit-btn" title="编辑消息" onclick="editMessage('${msg.id}')"><i class="fas fa-pen"></i></button>`;
+   }
+   actionsHTML += `<button class="meta-action-btn delete-btn" title="删除"><i class="fas fa-trash-alt"></i></button>`;
+   const actionsDiv = document.createElement('div');
     actionsDiv.className = 'message-meta-actions';
     actionsDiv.innerHTML = actionsHTML;
 
@@ -2321,5 +2330,24 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+// ========== 消息编辑功能 ==========
+window.editMessage = function(id) {
+    // 查找消息
+    const msg = messages.find(m => String(m.id) === String(id));
+    if (!msg) {
+        alert('消息不存在');
+        return;
+    }
+    const newText = prompt('✏️ 编辑消息：', msg.text);
+    if (newText === null) return; // 取消
+    const trimmed = newText.trim();
+    if (trimmed === '' || trimmed === msg.text) return; // 无变化
 
+    msg.text = trimmed;
+    msg.edited = true; // 标记已编辑
 
+    // 保存数据
+    throttledSaveData();
+    // 刷新界面（保留滚动位置）
+    renderMessages(true);
+};
