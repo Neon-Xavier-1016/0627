@@ -37,7 +37,7 @@
         let customEmojis = [];
         let anniversaries = [];
         let stickerLibrary = []; 
-        let myStickerLibrary = []; 
+        window.myStickerLibrary = window.myStickerLibrary || [];
         let currentAnniversaryType = 'anniversary';
         let customThemes = [];
         let themeSchemes = []; 

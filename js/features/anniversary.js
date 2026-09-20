@@ -494,11 +494,10 @@
         if (!window.pendingImportantDay) return;
         const { ann, msg } = window.pendingImportantDay;
         const type = (ann && ann.type) ? ann.type : 'anniversary';
-        // 标题使用纪念日名称
         const title = ann.name || '重要日';
-        // 获取对方昵称（默认“梦角”）
-        const partnerName = (window.settings && window.settings.partnerName) ? window.settings.partnerName : '梦角';
-        // 组装消息，若 msg 为空则使用默认
+        // 从页面顶部读取对方昵称（更准确）
+        const partnerNameEl = document.querySelector('#partner-name');
+        const partnerName = partnerNameEl ? partnerNameEl.textContent.trim() : '梦角';
         let content = msg;
         if (!content) {
             content = type === 'birthday' ? '生日快乐！' : '纪念日快乐！';
@@ -508,7 +507,6 @@
         localStorage.setItem('lastSpecialNotifyDate', new Date().toDateString());
         window.pendingImportantDay = null;
     };
-
     window.showImportantDayModalIfNeeded = function() {
         if (!window.pendingImportantDay) return;
         const periodModal = document.getElementById('period-reminder-modal');

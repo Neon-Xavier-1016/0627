@@ -1,3 +1,28 @@
+// ═════════ 关键修复：统一 stickerLibrary 的引用 ═════════
+// state.js 里用 let 声明，不会挂到 window；
+// 上传代码用了 window.stickerLibrary，两者是不同变量。
+// 这段强制让两者指向同一个数组，无论上传还是渲染都用同一个。
+(function _syncStickerLibrary() {
+    if (typeof stickerLibrary === 'undefined') {
+        // 等 state.js 声明完成
+        setTimeout(_syncStickerLibrary, 30);
+        return;
+    }
+    if (!window.stickerLibrary) {
+        // 场景1：window 上还没有 → 绑定到裸名
+        window.stickerLibrary = stickerLibrary;
+    } else if (window.stickerLibrary !== stickerLibrary) {
+        // 场景2：window 已有独立数组 → 把内容合并进裸名，然后统一引用
+        if (Array.isArray(window.stickerLibrary) && window.stickerLibrary.length > 0) {
+            window.stickerLibrary.forEach(function (item) {
+                if (!stickerLibrary.includes(item)) stickerLibrary.push(item);
+            });
+        }
+        window.stickerLibrary = stickerLibrary;
+    }
+    console.log('✅ stickerLibrary 已统一，共', stickerLibrary.length, '张');
+})();
+
 if (typeof customReplyGroups === 'undefined') window.customReplyGroups = [];
 if (typeof replyGroupsEnabled === 'undefined') window.replyGroupsEnabled = false;
 if (typeof customPokeGroups === 'undefined') window.customPokeGroups = [];
@@ -190,7 +215,14 @@ function renderReplyLibrary() {
     const list = document.getElementById('custom-replies-list');
     const titleEl = document.getElementById('cr-modal-title');
     if (!list) return;
-
+    
+    // ★ 防御：如果状态变量丢失，给默认值
+    if (!currentMajorTab || !LIBRARY_CONFIG[currentMajorTab]) currentMajorTab = 'reply';
+    var _cc = LIBRARY_CONFIG[currentMajorTab];
+    if (!currentSubTab || !_cc.tabs.some(t => t.id === currentSubTab)) {
+        currentSubTab = _cc.tabs[0].id;
+    }
+    
     const currentConfig = LIBRARY_CONFIG[currentMajorTab];
     if (titleEl) titleEl.textContent = currentConfig.title;
 

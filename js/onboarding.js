@@ -260,6 +260,28 @@
     }
 
     function updateUI() {
+
+     // ===== 🆕 强制同步名字到 settings 和 localStorage =====
+        var domMyName = document.getElementById('my-name')?.textContent?.trim() || '我';
+        var domPartnerName = document.getElementById('partner-name')?.textContent?.trim() || '梦角';
+
+        if (window.settings) {
+            window.settings.myName = domMyName;
+            window.settings.partnerName = domPartnerName;
+        }
+        localStorage.setItem('myName', domMyName);
+        localStorage.setItem('partnerName', domPartnerName);
+
+        // ===== 刷新朋友圈（如果已打开） =====
+        if (window.moments && typeof window.moments.render === 'function') {
+            // 更新顶部名字
+            var topName = document.querySelector('#moments-user-name');
+            if (topName) topName.textContent = domMyName;
+            // 刷新卡片
+            window.moments.render();
+        }
+
+
         var prevBtn  = document.getElementById('splash-prev-btn');
         var nextBtn  = document.getElementById('splash-next-btn');
         var enterBtn = document.getElementById('splash-enter-btn');

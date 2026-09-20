@@ -12,8 +12,8 @@ function setupEventListeners() {
         initAnniversaryModule(); 
         initThemeEditor(); 
         initThemeSchemes();
-        
-        initComboMenu(); 
+        initStickerUploadListeners();
+        initComboMenu();
         
     } catch (e) {
         console.error("事件绑定过程中发生错误:", e);
@@ -163,6 +163,10 @@ if (target.classList.contains('delete-btn')) {
         function initModalListeners() {
             const modals = document.querySelectorAll('.modal');
             modals.forEach(modal => {
+                // 跳过这三个模态框，不自动绑定取消关闭
+                if (modal.id === 'settings-modal' || modal.id === 'session-modal' || modal.id === 'group-chat-modal') {
+                    return; // 直接跳过，不绑定
+                }
                 const cancelBtns = modal.querySelectorAll('.modal-buttons .modal-btn-secondary');
                 cancelBtns.forEach(cancelBtn => {
                     if (!cancelBtn.getAttribute('onclick') && !cancelBtn.dataset.noAutoClose) {
@@ -182,6 +186,14 @@ if (target.classList.contains('delete-btn')) {
             if (closeDataBtn) {
                 closeDataBtn.addEventListener('click', () => {
                     hideModal(DOMElements.dataModal.modal);
+                });
+            }
+
+            const closeSettingsBtn = document.getElementById('cancel-settings');
+            if (closeSettingsBtn && !closeSettingsBtn._bound) {
+                closeSettingsBtn._bound = true;
+                closeSettingsBtn.addEventListener('click', () => {
+                    hideModal(DOMElements.settingsModal.modal);
                 });
             }
 
@@ -523,7 +535,13 @@ if (_chatSettingsEl) _chatSettingsEl.addEventListener('click', () => {
 
             const _dataSettingsEl = document.getElementById('data-settings');
             if (_dataSettingsEl) _dataSettingsEl.addEventListener('click', () => {
-                hideModal(DOMElements.settingsModal.modal);
+                // 🔥 强制隐藏设置模态框（绕过拦截器，确保它能关掉）
+                const settingsModal = DOMElements.settingsModal.modal;
+                if (settingsModal) {
+                    settingsModal.style.display = 'none';
+                    settingsModal.classList.add('hidden');
+                }
+                // 打开数据管理模态框
                 showModal(DOMElements.dataModal.modal);
                 (async function calcDmStorage() {
                     try {
@@ -3275,3 +3293,76 @@ window.exitCollapseMode = function() {
         setTimeout(tryApply, 400);
     }
 })();
+
+
+function initStickerUploadListeners() {
+    // 通用处理：target = 'my' 或 'partner'
+    async function handleFiles(files, target) {
+        if (!files || !files.length) return;
+
+        const arr = target === 'partner'
+            ? (stickerLibrary = stickerLibrary || [])
+            : (window.myStickerLibrary = window.myStickerLibrary || []);
+
+        let added = 0;
+        for (const file of Array.from(files)) {
+            if (!file.type.startsWith('image/')) continue;
+            if (file.size > 5 * 1024 * 1024) {
+                if (typeof showNotification === 'function')
+                    showNotification(`「${file.name}」超过 5MB`, 'warning');
+                continue;
+            }
+            try {
+                const base64 = await new Promise((res, rej) => {
+                    const r = new FileReader();
+                    r.onload = e => res(e.target.result);
+                    r.onerror = rej;
+                    r.readAsDataURL(file);
+                });
+                arr.push(base64);
+                added++;
+            } catch (err) {
+                console.error('表情读取失败:', err);
+            }
+        }
+
+        // 保存到对应 key
+        try {
+            const key = target === 'partner' ? 'stickerLibrary' : 'myStickerLibrary';
+            await localforage.setItem(getStorageKey(key), arr);
+        } catch (err) {
+            console.error('保存失败:', err);
+            if (typeof showNotification === 'function')
+                showNotification('保存失败，存储可能已满', 'error');
+        }
+
+        if (added > 0) {
+            if (typeof showNotification === 'function')
+                showNotification(`已添加 ${added} 个${target === 'partner' ? '对方' : ''}表情`, 'success');
+            if (typeof renderComboMenu === 'function') renderComboMenu();
+            if (typeof renderReplyLibrary === 'function') renderReplyLibrary();
+        }
+    }
+
+    // ★ 快速上传 = 我的表情
+    const quick = document.getElementById('my-sticker-quick-upload');
+    if (quick && !quick._bound) {
+        quick._bound = true;
+        quick.addEventListener('change', async e => {
+            await handleFiles(e.target.files, 'my');
+            e.target.value = '';
+        });
+        console.log('✅ 我的表情上传已绑定');
+    }
+
+    // ★ 管理上传 = 对方表情
+    const manage = document.getElementById('sticker-file-input');
+    if (manage && !manage._bound) {
+        manage._bound = true;
+        manage.addEventListener('change', async e => {
+            await handleFiles(e.target.files, 'partner');
+            e.target.value = '';
+        });
+        console.log('✅ 对方表情上传已绑定');
+    }
+}

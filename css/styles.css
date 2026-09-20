@@ -876,6 +876,7 @@
 
         .main-chat-area {
             flex: 1;
+            min-height: 0;              /* ★ 加这一行 */
             position: relative;
             display: flex;
             flex-direction: column;
@@ -883,8 +884,10 @@
             overflow-x: hidden;
             padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px));
         }
+
         .chat-container {
             flex: 1;
+            min-height: 0;              /* ★ 关键！加这一行 */
             overflow-y: auto;
             overflow-x: hidden;
             padding: 25px 15px;
@@ -2436,13 +2439,6 @@
             background: none; border: none; color: var(--text-secondary);
             cursor: pointer; font-size: 12px; opacity: 0.35;
             padding: 4px; border-radius: 4px; transition: all 0.2s;
-        }
-        .env-letter-delete-btn:hover { color: #ff4757; opacity: 1; }
-        .env-letter-item.reply .env-letter-status::before {
-            content: '已回信';
-            font-size: 9px; color: #6BCB77; border: 1px solid #6BCB77;
-            border-radius: 4px; padding: 1px 5px; letter-spacing: 0.5px;
-            margin-right: 4px;
         }
         .env-compose-paper {
             background: var(--primary-bg);
@@ -11076,4 +11072,539 @@ html[data-theme="dark"] .period-stat-value { color: var(--accent-color-dark); }
 .message-meta-actions.active {
     opacity: 1;
     pointer-events: auto;
+}
+
+
+
+
+/* 朋友圈样式 */
+.moments-container {
+    background: var(--primary-bg);
+    color: var(--text-primary);
+}
+.moments-filter-btn {
+    cursor: pointer;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    transition: 0.2s;
+}
+.moments-filter-btn.active {
+    background: var(--accent-color);
+    color: #fff;
+}
+.moment-card {
+    background: var(--secondary-bg);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 14px;
+    border: 1px solid var(--border-color);
+}
+
+.moment-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: nowrap;         /* 禁止换行 */
+  gap: 8px;                 /* 各元素间距（可调） */
+  width: 100%;
+}
+
+.moment-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.moment-info {
+    display: flex;
+    flex-direction: column;
+    justify-content: center; /* 让文字在垂直方向居中 */
+    min-height: 40px; /* 与头像高度一致 */
+}
+
+/* 用户区（头像+名字） */
+.moment-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;           /* 不被压缩 */
+}
+
+.moment-name {
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+/* 时间：紧挨名字 */
+.moment-time {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-secondary);
+  /* 不要加 margin-left:auto，让它自然跟在名字后面 */
+}
+
+/* 三点菜单：推到最右边 */
+.moment-more {
+  margin-left: auto;        /* 自动占满剩余空间，推到右端 */
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.moment-content {
+    font-size: 15px;
+    line-height: 1.6;
+    margin-bottom: 8px;
+    word-break: break-word;
+}
+.moment-images {
+    display: grid;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+.moment-grid-1 {
+    grid-template-columns: 1fr;
+    max-width: 60%;
+}
+.moment-grid-2 {
+    grid-template-columns: 1fr 1fr;
+}
+.moment-grid-3 {
+    grid-template-columns: 1fr 1fr 1fr;
+}
+.moment-image img {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    border-radius: 4px;
+}
+.moment-actions {
+    display: flex;
+    gap: 20px;
+    padding: 8px 0;
+    border-top: 1px solid var(--border-color);
+    margin-top: 6px;
+}
+.moment-actions span {
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+.moment-actions .liked {
+    color: #ff4d4f;
+}
+.moment-comments {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color);
+}
+.moment-comment {
+    font-size: 14px;
+    padding: 4px 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+}
+.comment-sender {
+    font-weight: 600;
+    margin-right: 4px;
+}
+.comment-reply-to {
+    color: var(--text-secondary);
+    margin-right: 4px;
+}
+.comment-text {
+    flex: 1;
+}
+.comment-actions {
+    cursor: pointer;
+    color: var(--text-secondary);
+    margin-left: 6px;
+    font-size: 12px;
+}
+.moment-comment-input {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+.moment-comment-input input {
+    flex: 1;
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    font-size: 14px;
+    background: var(--primary-bg);
+    color: var(--text-primary);
+}
+.moment-comment-input button {
+    padding: 6px 14px;
+    background: var(--accent-color);
+    color: #fff;
+    border: none;
+    border-radius: 20px;
+    cursor: pointer;
+}
+.moment-red-dot {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 10px;
+    height: 10px;
+    background: #ff4d4f;
+    border-radius: 50%;
+    border: 2px solid var(--primary-bg);
+}
+.moments-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-secondary);
+    font-size: 15px;
+}
+
+/* 编辑器身份切换按钮 */
+.editor-identity-btn {
+    flex: 1;
+    padding: 10px 16px;
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--primary-bg);
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    font-family: var(--font-family);
+    text-align: center;
+    user-select: none;
+}
+
+.editor-identity-btn.active {
+    border-color: var(--accent-color);
+    background: var(--accent-color);
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(var(--accent-color-rgb), 0.35);
+}
+
+.editor-identity-btn:not(.active):hover {
+    border-color: var(--accent-color);
+    background: rgba(var(--accent-color-rgb), 0.08);
+}
+
+.moments-title-bar {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    height: 44px;
+    line-height: 44px;
+    padding: 0 16px;
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-align: center;
+    letter-spacing: 0.5px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    pointer-events: none;
+}
+
+/* 暗色模式适配 */
+[data-theme="dark"] .moments-title-bar {
+    background: rgba(0, 0, 0, 0.6);
+    border-bottom-color: rgba(255,255,255,0.05);
+}
+
+.moments-cover {
+    transition: opacity 0.1s, transform 0.1s;
+    will-change: transform, opacity;
+}
+
+/* 确保列表在封面图上面滚动 */
+#moments-list {
+    position: relative;
+    z-index: 1;
+    background: transparent !important;
+    /* 列表背景透明，让封面图透出来 */
+}
+
+/* 模态框容器背景变白（或主题色） */
+.moments-container {
+    background: var(--primary-bg);
+}
+
+.moments-cover {
+    height: 200px; /* 或者用 vh 单位：35vh */
+}
+
+#moments-list {
+    background: transparent !important;
+}
+.moment-card {
+    background: var(--secondary-bg); /* 卡片本身有背景，避免文字看不清 */
+    border-radius: 12px;
+    margin-bottom: 12px;
+    padding: 14px;
+}
+
+/* 1. 滚动容器：设置相对定位 */
+#momentsContainer {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* 2. 顶部固定导航栏 */
+.moments-nav {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 50px;
+    z-index: 999;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 10px;
+    box-sizing: border-box;
+    background: rgba(255, 255, 255, 0); /* 初始完全透明 */
+    backdrop-filter: blur(0px);
+    -webkit-backdrop-filter: blur(0px);
+    transition: background 0.3s ease, backdrop-filter 0.3s ease;
+}
+
+/* 下滑后的毛玻璃效果 (浅色模式默认) */
+.moments-nav.scrolled {
+    /* ⭐ 透明度调节在这里 ⭐ */
+    /* 0.75 表示 75% 不透明，你觉得太白就改成 0.6 或 0.5，觉得不够清晰就改回 0.85 */
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(15px) saturate(180%);
+    -webkit-backdrop-filter: blur(15px) saturate(180%);
+    border-bottom: 1px solid var(--border-color); /* 跟随主题边框色 */
+}
+/* 🌙 跟随系统深夜模式 */
+@media (prefers-color-scheme: dark) {
+    .moments-nav.scrolled {
+        /* 改成纯黑色 0,0,0，并把透明度提高到 0.85 让黑色更实 */
+        background: rgba(0, 0, 0, 0.95);
+        backdrop-filter: blur(15px) saturate(180%);
+        -webkit-backdrop-filter: blur(15px) saturate(180%);
+        border-bottom: 1px solid var(--border-color);
+    }
+}
+
+/* 左右按钮容器 */
+.moments-nav-left, .moments-nav-right {
+    width: 40px;
+    display: flex;
+    align-items: center;
+}
+.moments-nav-right { justify-content: flex-end; }
+
+.moments-nav-btn {
+    background: none;
+    border: none;
+    color: #fff; /* 封面上始终用白色 */
+    font-size: 20px;
+    padding: 8px;
+    cursor: pointer;
+    transition: color 0.3s ease;
+}
+.moments-nav.scrolled .moments-nav-btn {
+    color: var(--text-primary); /* 跟随主题文字颜色 */
+}
+
+/* 标题居中 */
+.moments-nav-title {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text-primary); /* 跟随主题文字颜色 */
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+.moments-nav.scrolled .moments-nav-title {
+    opacity: 1;
+}
+
+/* 让朋友圈的文字、图片、评论区整体向右偏移，与用户名对齐 */
+.moment-card .moment-content,
+.moment-card .moment-single-image,
+.moment-card .moment-images,
+.moment-card .moment-actions,
+.moment-card .moment-comments,
+.moment-card .moment-comment-input {
+    margin-left: 52px; /* 这个值决定了向右偏移的距离，可自行调整 */
+}
+
+/* 为了保证操作栏（点赞评论）的图标与文字对齐，微调一下内边距 */
+.moment-card .moment-actions {
+    padding-left: 0;
+}
+
+/* 点赞人列表 */
+.moment-likes-list {
+    padding: 2px 12px 4px 12px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    border-bottom: 1px solid rgba(var(--border-color-rgb, 0,0,0), 0.06);
+    margin-bottom: 2px;
+}
+.moment-likes-list .moment-like-name {
+    color: #4a9eff !important;
+    font-weight: 700 !important;
+    cursor: default;
+}
+.moment-likes-list .moment-like-name + .moment-like-name::before {
+    content: '、';
+    color: var(--text-secondary);
+    font-weight: 400;
+}
+
+.moment-comments {
+  margin-left: 0 !important;
+}
+
+/* 互动区域（点赞 + 评论列表） */
+.moment-interactions {
+  background: var(--secondary-bg, #f7f7f7);   /* 浅灰背景，适配深色模式 */
+  border-radius: 8px;                          /* 圆角，像微信 */
+  padding: 6px 12px 4px 12px;                 /* 内边距，让内容不贴边 */
+  margin-top: 8px;                            /* 与上方内容保持间距 */
+  border: 1px solid var(--border-color, #eee); /* 可选细边框，更精致 */
+}
+
+
+.moment-avatar {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+.moment-name {
+    margin: 0 !important;
+    padding: 0 !important;
+    margin-left: 2px !important;
+}
+.moment-user {
+    gap: 6px !important;
+}
+
+
+/* ============ 信封接收 · Incoming Letter ============ */
+.inc-gear-btn {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.18);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    transition: all 0.25s;
+    z-index: 5;
+}
+.inc-gear-btn:hover {
+    background: rgba(255,255,255,0.32);
+    transform: rotate(45deg);
+}
+
+.inc-read-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 6px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    border: 1px solid;
+    flex-shrink: 0;
+    line-height: 1.4;
+}
+.inc-read-badge.read {
+    color: #4caf50;
+    border-color: rgba(76,175,80,0.55);
+    background: rgba(76,175,80,0.12);
+}
+.inc-read-badge.unread {
+    color: var(--text-secondary);
+    border-color: var(--border-color);
+    background: rgba(0,0,0,0.04);
+}
+
+.inc-opt-btn {
+    flex: 1;
+    padding: 10px 14px;
+    border: 1.5px solid var(--border-color);
+    background: var(--primary-bg);
+    color: var(--text-secondary);
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: var(--font-family);
+    transition: all 0.2s;
+}
+.inc-opt-btn.active {
+    border-color: var(--accent-color);
+    background: rgba(var(--accent-color-rgb), 0.1);
+    color: var(--accent-color);
+    font-weight: 600;
+}
+
+/* ========================================================= */
+/* 夜间模式专属修复：请确保清空之前的代码，只保留这一份 */
+/* ========================================================= */
+
+/* 1. 夜间模式下，顶部栏和底部栏完全透明，消除分层根源 */
+[data-theme="dark"] body.with-background .header,
+[data-theme="dark"] body.with-background .input-area-wrapper,
+[data-theme="dark"] .header,
+[data-theme="dark"] .input-area-wrapper {
+    background-color: transparent !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border-top: none !important;
+    border-bottom: none !important;
+    box-shadow: none !important;
+}
+
+/* 2. 夜间模式下，输入框本身稍微透出一点底，避免完全看不见 */
+[data-theme="dark"] body.with-background .message-input,
+[data-theme="dark"] .message-input {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+/* 3. 核心：夜间模式全局黑色蒙层。只作用于黑暗模式，白天绝不受影响 */
+[data-theme="dark"] #chat-container::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background: rgba(0, 0, 0, 0.55) !important; /* 55%黑度，你可以按需调成 0.6 或 0.5 */
+    transition: background 0.3s ease;
+}
+
+/* 4. 压缩夜间模式下输入框的上下内边距，解决底部过高的问题 */
+[data-theme="dark"] .input-area {
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
 }
