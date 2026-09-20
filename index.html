@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" type="image/png" sizes="192x192" href="https://file.youtochat.com/images/20260216/1771224856844_qdqqd.jpeg">
     <link rel="apple-touch-icon" href="https://file.youtochat.com/images/20260216/1771224856844_qdqqd.jpeg">
-    <meta name="apple-mobile-web-app-title" content="ʚ𝑳𝑶𝑽𝑬ɞ">
+    <meta name="apple-mobile-web-app-title" content="ʚ 𝑿𝒂𝒗𝒊𝒆𝒓 ɞ">
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -102,7 +102,7 @@
                     <!-- 红点由JS动态添加 -->
                 </button>
                 <button id="session-manager-btn" class="action-btn" title="会话管理"><i class="fas fa-comments"></i></button>
-                <button id="group-chat-btn" class="action-btn" title="群聊设置"><i class="fas fa-users"></i></button>
+                <button id="what-are-you-doing-btn" class="action-btn" title="你在干嘛" onclick="window.openWYD && window.openWYD()"><i class="fas fa-satellite-dish"></i></button>
                 <button id="daily-greeting-btn" class="action-btn" title="今日公告" onclick="reopenDailyGreeting()"><i class="fas fa-newspaper"></i></button>
                 <button id="theme-toggle" class="action-btn" title="切换主题"><i class="fas fa-moon"></i></button>
                 <button id="settings-btn" class="action-btn" title="设置"><i class="fas fa-cog"></i></button>
@@ -2427,6 +2427,21 @@
     </div>
 </div>
 
+        <div class="modal" id="wyd-modal">
+            <div class="modal-content" style="max-width:400px;max-height:82vh;display:flex;flex-direction:column;padding:0;overflow:hidden;">
+                <div class="wyd-tabs" id="wyd-tabs">
+                    <button class="wyd-tab active" data-tab="eat">🍚 吃饭了吗</button>
+                    <button class="wyd-tab" data-tab="mood">💭 此刻心情</button>
+                    <button class="wyd-tab disabled" data-tab="doing" disabled>✨ 在做什么</button>
+                </div>
+                <div class="wyd-body" id="wyd-meals-container"></div>
+                <div class="wyd-footer">
+                    <button class="modal-btn modal-btn-primary" id="wyd-ask-btn" style="flex:1;">Ta 吃了没</button>
+                    <button class="modal-btn modal-btn-secondary" onclick="hideModal(document.getElementById('wyd-modal'))">关闭</button>
+                </div>
+            </div>
+        </div>
+
 <div id="dg-editor-modal" style="display:none;"></div>
     <!-- == 核心层 == -->
     <script src="js/config.js"></script>
@@ -2440,7 +2455,6 @@
     <script src="js/features/envelope.js"></script>
     <script src="js/features/reply-library.js"></script>
     <script src="js/features/theme-editor.js"></script>
-    <script src="js/features/group-chat.js"></script>
     <script src="js/features/call.js"></script>
     <script src="js/features/period.js"></script>
     <script src="js/features/period-care.js"></script>
@@ -2449,6 +2463,8 @@
     <script src="js/features/anniversary.js"></script>
     <script src="js/features/moments.js"></script>
     <script src="js/features/incoming-letter.js"></script>
+    <script src="js/features/core-utils.js"></script>
+    <script src="js/features/what-are-you-doing.js"></script>
 
 
     <!-- == 合并模块 == -->

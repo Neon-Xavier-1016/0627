@@ -395,9 +395,11 @@
         }
 
         var commentInputHtml =
-            '<div class="moment-comment-input" data-moment-id="' + moment.id + '" style="display:none;margin-top:8px;gap:6px;align-items:center;padding:4px 0;">' +
-                '<input type="text" placeholder="写评论..." class="comment-input-field" style="flex:1;padding:6px 10px;border:1px solid var(--border-color);border-radius:16px;font-size:13px;background:var(--primary-bg);color:var(--text-primary);outline:none;font-family:var(--font-family);">' +
-                '<button class="comment-send-btn" style="padding:5px 14px;background:var(--accent-color);color:#fff;border:none;border-radius:16px;font-size:12px;cursor:pointer;font-weight:600;">发送</button>' +
+            // 关键点：加负的 margin-left 和 margin-right，强行突破父容器的内边距，让输入框整体往左移！
+            '<div class="moment-comment-input" data-moment-id="' + moment.id + '" style="display:none;margin-top:8px;gap:8px;align-items:center;padding:0;margin-left:-8px;margin-right:-8px;width:calc(100% + 16px);box-sizing:border-box;">' +
+                // 纯白/纯背景色底，去掉灰底和边框，padding稍微调大一点看起来舒服
+                '<input type="text" placeholder="写评论..." class="comment-input-field" style="flex:1;padding:8px 12px;border:1px solid var(--border-color);border-radius:18px;font-size:13px;background:var(--primary-bg);color:var(--text-primary);outline:none;font-family:var(--font-family);box-sizing:border-box;">' +
+                '<button class="comment-send-btn" style="padding:8px 16px;background:var(--accent-color);color:#fff;border:none;border-radius:18px;font-size:13px;cursor:pointer;font-weight:600;flex-shrink:0;box-sizing:border-box;">发送</button>' +
             '</div>';
 
         var footerHtml =
@@ -1212,15 +1214,22 @@
 
     // ==================== 封面双击 ====================
     function bindCoverDblClick() {
-        var coverContainer = document.getElementById('momentsCover');
+        // 只绑定到封面图片本身，而不是整个容器
+        var coverImg = document.getElementById('moments-cover-img');
         var coverInput = document.getElementById('moments-cover-input');
-        if (!coverContainer || !coverInput) return;
+        // 如果图片不存在，退回绑定到容器（防止报错）
+        var targetEl = coverImg || document.getElementById('momentsCover');
 
-        if (coverContainer._clickHandler) {
-            coverContainer.removeEventListener('click', coverContainer._clickHandler);
+        if (!targetEl || !coverInput) return;
+
+        if (targetEl._clickHandler) {
+            targetEl.removeEventListener('click', targetEl._clickHandler);
         }
         var lastClickTime = 0;
-        coverContainer._clickHandler = function(e) {
+        targetEl._clickHandler = function(e) {
+            // 排除点击到右下角头像和名字区域的情况
+            if (e.target.closest('.moments-profile')) return;
+
             var now = Date.now();
             if (now - lastClickTime < 400) {
                 e.stopPropagation();
@@ -1230,7 +1239,7 @@
                 lastClickTime = now;
             }
         };
-        coverContainer.addEventListener('click', coverContainer._clickHandler);
+        targetEl.addEventListener('click', targetEl._clickHandler);
     }
 
     // ==================== 进入朋友圈 ====================
@@ -1449,25 +1458,47 @@
         closeEditor();
     }
 
-    function addImagePreview(src) {
-        var modal = dom.editorModal;
-        if (!modal) return;
-        var container = modal.querySelector('#editor-image-preview');
-        if (!container) return;
-        var wrapper = document.createElement('div');
-        wrapper.className = 'editor-image-wrapper';
-        wrapper.style.cssText = 'position:relative;display:inline-block;margin:4px;';
-        var img = document.createElement('img');
-        img.src = src;
-        img.style.cssText = 'width:80px;height:80px;object-fit:cover;border-radius:6px;border:1px solid var(--border-color);';
-        var del = document.createElement('button');
-        del.textContent = '×';
-        del.style.cssText = 'position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--accent-color);color:#fff;border:none;font-size:14px;line-height:20px;text-align:center;cursor:pointer;';
-        del.onclick = function() { wrapper.remove(); };
-        wrapper.appendChild(img);
-        wrapper.appendChild(del);
-        container.appendChild(wrapper);
-    }
+        function addImagePreview(src) {
+            var modal = dom.editorModal;
+            if (!modal) return;
+            var container = modal.querySelector('#editor-image-preview');
+            if (!container) return;
+
+            // 确保容器启用了拖拽排序
+            enableImageDragSort(container);
+
+            var wrapper = document.createElement('div');
+            wrapper.className = 'editor-image-wrapper';
+            // 关键：draggable + touch-action: none 让触摸拖拽不被滚动打断
+            wrapper.setAttribute('draggable', 'true');
+            wrapper.style.cssText =
+                'position:relative;display:inline-block;margin:4px;cursor:grab;' +
+                'touch-action:none;-webkit-user-select:none;user-select:none;' +
+                'transition:opacity 0.15s ease;';
+
+            var img = document.createElement('img');
+            img.src = src;
+            img.style.cssText =
+                'width:80px;height:80px;object-fit:cover;border-radius:6px;' +
+                'border:1px solid var(--border-color);pointer-events:none;display:block;';
+            img.draggable = false; // 关键：阻止 img 自身拖拽（会出幽灵图）
+
+            var del = document.createElement('button');
+            del.textContent = '×';
+            del.style.cssText =
+                'position:absolute;top:-6px;right:-6px;width:20px;height:20px;' +
+                'border-radius:50%;background:var(--accent-color);color:#fff;' +
+                'border:none;font-size:14px;line-height:20px;text-align:center;' +
+                'cursor:pointer;padding:0;';
+            del.onclick = function(e) {
+                e.stopPropagation();
+                wrapper.remove();
+            };
+
+            wrapper.appendChild(img);
+            wrapper.appendChild(del);
+            container.appendChild(wrapper);
+        }
 
     window.handleImageUpload = function(files) {
         var modal = dom.editorModal;
@@ -1489,6 +1520,88 @@
                 .catch(function(err) { console.error('图片压缩失败:', err); showToast('图片处理失败'); });
         });
     };
+
+        // ==================== 图片拖拽排序（微信风格） ====================
+        function enableImageDragSort(container) {
+            if (!container || container._dragSortEnabled) return;
+            container._dragSortEnabled = true;
+
+            var dragEl = null;
+
+            // ---- 桌面端原生拖拽 ----
+            container.addEventListener('dragstart', function(e) {
+                var wrapper = e.target.closest('.editor-image-wrapper');
+                if (!wrapper) return;
+                dragEl = wrapper;
+                wrapper.style.opacity = '0.4';
+                wrapper.style.cursor = 'grabbing';
+                try {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', '');
+                } catch (err) {}
+            });
+
+            container.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                if (!dragEl) return;
+                var target = e.target.closest('.editor-image-wrapper');
+                if (!target || target === dragEl) return;
+                var rect = target.getBoundingClientRect();
+                var after = (e.clientX - rect.left) > rect.width / 2;
+                if (after) container.insertBefore(dragEl, target.nextSibling);
+                else container.insertBefore(dragEl, target);
+            });
+
+            container.addEventListener('drop', function(e) { e.preventDefault(); });
+
+            container.addEventListener('dragend', function() {
+                if (dragEl) {
+                    dragEl.style.opacity = '1';
+                    dragEl.style.cursor = 'grab';
+                    dragEl = null;
+                }
+            });
+
+            // ---- 触摸端：用 pointer events 模拟拖拽 ----
+            container.addEventListener('pointerdown', function(e) {
+                if (e.pointerType === 'mouse') return; // 鼠标走原生 drag
+                var wrapper = e.target.closest('.editor-image-wrapper');
+                if (!wrapper) return;
+                dragEl = wrapper;
+                wrapper.style.opacity = '0.5';
+                wrapper.style.transform = 'scale(1.08)';
+                wrapper.style.zIndex = '1000';
+                wrapper.style.transition = 'transform 0.15s ease';
+                try { wrapper.setPointerCapture(e.pointerId); } catch (err) {}
+            });
+
+            container.addEventListener('pointermove', function(e) {
+                if (!dragEl || e.pointerType === 'mouse') return;
+                e.preventDefault();
+                var el = document.elementFromPoint(e.clientX, e.clientY);
+                var target = el && el.closest ? el.closest('.editor-image-wrapper') : null;
+                if (target && target !== dragEl && target.parentNode === container) {
+                    var rect = target.getBoundingClientRect();
+                    var centerX = rect.left + rect.width / 2;
+                    if (e.clientX < centerX) {
+                        container.insertBefore(dragEl, target);
+                    } else {
+                        container.insertBefore(dragEl, target.nextSibling);
+                    }
+                }
+            }, { passive: false });
+
+            function endTouchDrag() {
+                if (!dragEl) return;
+                dragEl.style.opacity = '1';
+                dragEl.style.transform = '';
+                dragEl.style.zIndex = '';
+                dragEl = null;
+            }
+            container.addEventListener('pointerup', endTouchDrag);
+            container.addEventListener('pointercancel', endTouchDrag);
+            container.addEventListener('pointerleave', endTouchDrag);
+        }
 
     function compressImage(file, maxWidth, quality) {
         return new Promise(function(resolve, reject) {

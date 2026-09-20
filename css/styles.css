@@ -11567,44 +11567,31 @@ html[data-theme="dark"] .period-stat-value { color: var(--accent-color-dark); }
     font-weight: 600;
 }
 
-/* ========================================================= */
-/* 夜间模式专属修复：请确保清空之前的代码，只保留这一份 */
-/* ========================================================= */
-
-/* 1. 夜间模式下，顶部栏和底部栏完全透明，消除分层根源 */
-[data-theme="dark"] body.with-background .header,
-[data-theme="dark"] body.with-background .input-area-wrapper,
-[data-theme="dark"] .header,
-[data-theme="dark"] .input-area-wrapper {
-    background-color: transparent !important;
+/* 1. 强制底部输入区彻底透明，干掉任何灰色底、模糊和边框 */
+.input-area-wrapper,
+.input-area {
     background: transparent !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
-    border-top: none !important;
-    border-bottom: none !important;
+    border: none !important;
     box-shadow: none !important;
 }
 
-/* 2. 夜间模式下，输入框本身稍微透出一点底，避免完全看不见 */
-[data-theme="dark"] body.with-background .message-input,
-[data-theme="dark"] .message-input {
-    background-color: rgba(255, 255, 255, 0.08) !important;
-    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+/* 2. 让输入框在深色模式下与背景完美融合（半透明深色，不再突兀） */
+html[data-theme="dark"] .message-input {
+    background: rgba(0, 0, 0, 0.25) !important; /* 半透明黑，透出后面的星空 */
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    color: #ffffff !important;
 }
 
-/* 3. 核心：夜间模式全局黑色蒙层。只作用于黑暗模式，白天绝不受影响 */
-[data-theme="dark"] #chat-container::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 0;
-    background: rgba(0, 0, 0, 0.55) !important; /* 55%黑度，你可以按需调成 0.6 或 0.5 */
-    transition: background 0.3s ease;
+/* 3. 修复白天模式的输入框（保持白色底，但不要死白） */
+html[data-theme="light"] .message-input {
+    background: rgba(255, 255, 255, 0.95) !important;
+    color: #333333 !important;
 }
 
-/* 4. 压缩夜间模式下输入框的上下内边距，解决底部过高的问题 */
-[data-theme="dark"] .input-area {
-    padding-top: 10px !important;
-    padding-bottom: 10px !important;
+/* 4. 如果底部依然有亮色残留，说明你的背景图只加在了聊天区，没有延伸到最底部 */
+/* 这段代码强制让整个页面底层（body）的颜色与聊天区保持一致，透明后才能露出正确的底色 */
+html, body {
+    background-color: var(--primary-bg) !important; /* 让全局底色跟随你的主题或背景图 */
 }

@@ -164,8 +164,8 @@ if (target.classList.contains('delete-btn')) {
             const modals = document.querySelectorAll('.modal');
             modals.forEach(modal => {
                 // 跳过这三个模态框，不自动绑定取消关闭
-                if (modal.id === 'settings-modal' || modal.id === 'session-modal' || modal.id === 'group-chat-modal') {
-                    return; // 直接跳过，不绑定
+                if (modal.id === 'settings-modal' || modal.id === 'session-modal') {
+                    return;
                 }
                 const cancelBtns = modal.querySelectorAll('.modal-buttons .modal-btn-secondary');
                 cancelBtns.forEach(cancelBtn => {
@@ -440,9 +440,6 @@ fileInput.addEventListener('change', function(e) {
             });
             DOMElements.settingsModal.settingsBtn.addEventListener('click', () => {
                 showModal(DOMElements.settingsModal.modal);
-            });
-            DOMElements.favoritesModal.favoritesBtn.addEventListener('click', () => {
-                showModal(document.getElementById('group-chat-modal'));
             });
 
 
