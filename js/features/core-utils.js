@@ -1,6 +1,6 @@
 /* ============================================================
  * 通用工具 · 从 group-chat.js 提取
- * 包含：统计 tab / 消息搜索 / 备份按钮 / 公告天气编辑 / 输入框滚动
+ * 包含：统计 tab / 消息搜索 / 备份按钮 / 公告天气编辑 / 输入框滚动 / 消息撤回
  * ============================================================ */
 
 /* ---------- 统计弹窗 Tab 切换 ---------- */
@@ -319,3 +319,366 @@ window.scrollToMessage = function(msgId) {
         setTimeout(function() { el.style.background = ''; }, 1500);
     }
 };
+
+
+/* ============================================================
+ * 消息撤回 & 对方消息编辑
+ * ------------------------------------------------------------
+ * · 自己发的消息：2 分钟内可通过消息菜单「撤回」
+ * · 对方发的消息：5% 概率在 5~10 秒后自动撤回
+ * · 撤回后替换为灰色胶囊提示条；≤ 1 分钟时带「重新编辑」
+ * · 数据侧同步从 messages[] 删除并 throttledSaveData()
+ * · 对方消息菜单新增「编辑」按钮，复用 editMessage(id)
+ * 对外接口：window.RecallFeature.onRecall(info) 可覆盖
+ * ============================================================ */
+(function () {
+    'use strict';
+
+    /* ---------- 可调参数 ---------- */
+    const CFG = {
+        RECALL_WINDOW_MS:  2 * 60 * 1000,   // 2 分钟可撤回
+        REEDIT_WINDOW_MS:  60 * 1000,       // 1 分钟内显示「重新编辑」
+        PARTNER_CHANCE:    0.05,            // 对方撤回概率 5%
+        PARTNER_DELAY_MIN: 5000,            // 对方撤回延迟下限
+        PARTNER_DELAY_MAX: 10000            // 对方撤回延迟上限
+    };
+
+    /* ---------- 样式 ---------- */
+        function injectStyle() {
+            if (document.getElementById('recall-style')) return;
+            const s = document.createElement('style');
+            s.id = 'recall-style';
+            s.textContent = `
+                /* ---- 撤回提示条 ---- */
+                .recall-tip {
+                    width: 100%;
+                    box-sizing: border-box;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    padding: 6px 12px;
+                    margin: 4px 0;
+                }
+                .recall-tip-inner {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 5px 16px;
+                    border: 1px solid var(--border-color, rgba(0,0,0,0.12));
+                    border-radius: 20px;
+                    font-size: 12.5px;
+                    color: var(--text-secondary, #999);
+                    background: transparent;
+                    font-family: var(--font-family, inherit);
+                    line-height: 1.4;
+                    animation: recallFadeIn .28s ease;
+                }
+                @keyframes recallFadeIn {
+                    from { opacity: 0; transform: scale(.96); }
+                    to   { opacity: 1; transform: scale(1); }
+                }
+                .recall-tip-reedit {
+                    color: var(--accent-color, #4a7bd9);
+                    cursor: pointer;
+                    font-weight: 500;
+                    margin-left: 2px;
+                    user-select: none;
+                    -webkit-tap-highlight-color: transparent;
+                }
+                .recall-tip-reedit:active { opacity: .55; }
+
+                /* ---- Toast ---- */
+                .recall-toast {
+                    position: fixed;
+                    left: 50%;
+                    bottom: 100px;
+                    transform: translateX(-50%) translateY(10px);
+                    background: rgba(0,0,0,.78);
+                    color: #fff;
+                    padding: 9px 18px;
+                    border-radius: 20px;
+                    font-size: 13px;
+                    z-index: 10000;
+                    opacity: 0;
+                    pointer-events: none;
+                    transition: opacity .22s ease, transform .22s ease;
+                    white-space: nowrap;
+                    font-family: var(--font-family, inherit);
+                }
+                .recall-toast.show {
+                    opacity: 1;
+                    transform: translateX(-50%) translateY(0);
+                }
+
+                /* ---- 消息菜单：不裁切 + 紧凑布局，能塞下 5 个按钮 ---- */
+                .message-meta-actions,
+                .message-content-wrapper,
+                .message-wrapper {
+                    overflow: visible !important;
+                }
+                .message-meta-actions {
+                    flex-wrap: nowrap !important;
+                    white-space: nowrap;
+                    max-width: none !important;
+                    gap: 0 !important;                   /* 按钮之间不留缝 */
+                }
+                .message-meta-actions .meta-action-btn {
+                    padding: 5px 6px !important;         /* 原 padding 太大，缩一缩 */
+                    min-width: 0 !important;
+                    flex-shrink: 0 !important;           /* 不允许被压缩 */
+                    margin: 0 !important;
+                }
+                .message-meta-actions .meta-action-btn i {
+                    font-size: 13.5px !important;        /* 图标略缩 */
+                }
+                /* 撤回按钮：继承默认灰色，不再用强调色 */
+            /* ---- 自己的消息菜单：整体向左微调 ---- */
+            .message-wrapper.sent .message-meta-actions {
+                transform: translateX(-8px);
+            }
+            `;
+            document.head.appendChild(s);
+        }
+
+    /* ---------- Toast ---------- */
+    let toastTimer = null;
+    function showToast(msg) {
+        let el = document.getElementById('recall-toast');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'recall-toast';
+            el.className = 'recall-toast';
+            document.body.appendChild(el);
+        }
+        el.textContent = msg;
+        el.classList.remove('show');
+        void el.offsetWidth;
+        el.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
+    }
+
+    /* ---------- 工具 ---------- */
+    function getSentAt(idStr) {
+        const n = Number(idStr);
+        if (!isFinite(n) || n <= 0) return Date.now();
+        return n < 1000000000000 ? n * 1000 : n;   // 兼容秒级时间戳
+    }
+
+    function findMessage(idStr) {
+        if (typeof messages === 'undefined' || !Array.isArray(messages)) return null;
+        return messages.find(m => String(m.id) === String(idStr)) || null;
+    }
+
+    function removeMessage(idStr) {
+        if (typeof messages === 'undefined' || !Array.isArray(messages)) return;
+        const idx = messages.findIndex(m => String(m.id) === String(idStr));
+        if (idx < 0) return;
+        messages.splice(idx, 1);
+        if (typeof throttledSaveData === 'function') {
+            try { throttledSaveData(); } catch (e) { console.warn('[Recall] save fail', e); }
+        }
+    }
+
+    function getPartnerName() {
+        if (typeof settings !== 'undefined' && settings.partnerName) return settings.partnerName;
+        const el = document.getElementById('partner-name');
+        return (el && el.textContent.trim()) || '对方';
+    }
+
+    /* ---------- 构建撤回提示条 ---------- */
+    function buildTip(who, reeditText) {
+        const tip   = document.createElement('div');
+        tip.className = 'recall-tip';
+
+        const inner = document.createElement('div');
+        inner.className = 'recall-tip-inner';
+
+        const label = document.createElement('span');
+        label.textContent = who + '撤回了一条消息';
+        inner.appendChild(label);
+
+        if (reeditText) {
+            const btn = document.createElement('span');
+            btn.className = 'recall-tip-reedit';
+            btn.textContent = '重新编辑';
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                const input = document.getElementById('message-input');
+                if (!input) return;
+                input.value = reeditText;
+                input.focus();
+                try { input.setSelectionRange(reeditText.length, reeditText.length); } catch (err) {}
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+            inner.appendChild(btn);
+        }
+
+        tip.appendChild(inner);
+        return tip;
+    }
+
+    /* ---------- 执行撤回 ---------- */
+    function doRecall(wrapper, idStr, isMine) {
+        const sentAt = getSentAt(idStr);
+        const msg    = findMessage(idStr);
+        const text   = msg && msg.text ? msg.text : '';
+
+        // 「重新编辑」条件：自己发的 且 ≤ 1 分钟 且 有文本 且 不是图片消息
+        const canReedit = isMine
+            && (Date.now() - sentAt <= CFG.REEDIT_WINDOW_MS)
+            && !!text
+            && !(msg && msg.image);
+
+        // 同步删除数据
+        removeMessage(idStr);
+
+        // DOM 替换
+        const who = isMine ? '你' : getPartnerName();
+        const tip = buildTip(who, canReedit ? text : '');
+        if (wrapper.isConnected) wrapper.replaceWith(tip);
+
+        // 对外回调
+        const hook = window.RecallFeature && window.RecallFeature.onRecall;
+        if (typeof hook === 'function') {
+            try { hook({ id: idStr, mine: !!isMine }); } catch (e) {}
+        }
+    }
+
+    /* ---------- 给自己的消息注入「撤回」按钮 ---------- */
+    function injectRecallBtn(menu, wrapper, idStr) {
+        if (menu.querySelector('.recall-btn')) return;
+
+        const sentAt = getSentAt(idStr);
+        if (Date.now() - sentAt > CFG.RECALL_WINDOW_MS) return;    // 已超时，不插入
+
+        const editBtn = menu.querySelector('.edit-btn');
+        if (!editBtn) return;   // 只有自己的消息才有 edit-btn
+
+        const btn = document.createElement('button');
+        btn.className = 'meta-action-btn recall-btn';
+        btn.title = '撤回';
+        btn.innerHTML = '<i class="fas fa-undo-alt"></i>';
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            e.preventDefault();
+
+            if (Date.now() - getSentAt(idStr) > CFG.RECALL_WINDOW_MS) {
+                showToast('超过 2 分钟的消息无法撤回');
+                return;
+            }
+            doRecall(wrapper, idStr, true);
+        });
+
+        editBtn.parentNode.insertBefore(btn, editBtn);
+    }
+
+    /* ---------- 给对方的「第一条消息」注入编辑按钮 ---------- */
+    function injectEditBtnForPartner(menu, idStr) {
+        if (menu.querySelector('.edit-btn')) return;   // 已有编辑按钮就不重复
+
+        const favoriteBtn = menu.querySelector('.favorite-action-btn');
+        const btn = document.createElement('button');
+        btn.className = 'meta-action-btn edit-btn';
+        btn.title = '编辑消息';
+        btn.innerHTML = '<i class="fas fa-pen"></i>';
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            e.preventDefault();
+            if (typeof editMessage === 'function') {
+                editMessage(idStr);
+            } else {
+                showToast('编辑功能未就绪');
+            }
+        });
+
+        // 插到收藏按钮后面（和「我的消息」编辑按钮位置一致）
+        if (favoriteBtn && favoriteBtn.nextSibling) {
+            favoriteBtn.parentNode.insertBefore(btn, favoriteBtn.nextSibling);
+        } else {
+            menu.appendChild(btn);
+        }
+    }
+
+    /* ---------- 对方 5% 概率撤回 ---------- */
+    function schedulePartnerRecall(wrapper, idStr) {
+        const msg = findMessage(idStr);
+        if (msg && msg.type === 'system') return;   // 系统消息不参与撤回
+
+        if (Math.random() >= CFG.PARTNER_CHANCE) return;
+
+        const delay = CFG.PARTNER_DELAY_MIN +
+                      Math.random() * (CFG.PARTNER_DELAY_MAX - CFG.PARTNER_DELAY_MIN);
+
+        setTimeout(function () {
+            if (!wrapper.isConnected) return;
+            if (!findMessage(idStr)) return;   // 已被撤回或已删除
+            doRecall(wrapper, idStr, false);
+        }, delay);
+    }
+
+    /* ---------- 处理单条消息 ---------- */
+    const seen = new WeakSet();
+
+    function processWrapper(wrapper) {
+        if (!wrapper || seen.has(wrapper)) return;
+        seen.add(wrapper);
+
+        const idStr = wrapper.dataset.id || wrapper.dataset.msgId;
+        if (!idStr) return;
+
+        // 【关键】只用 class 判断归属，别用 .edit-btn 兜底，
+        // 否则给对方注入编辑按钮后自己会被误判
+        const isMine = wrapper.classList.contains('sent');
+        const menu = wrapper.querySelector('.message-meta-actions');
+
+        if (isMine) {
+            if (menu) injectRecallBtn(menu, wrapper, idStr);
+        } else {
+            if (menu) injectEditBtnForPartner(menu, idStr);
+            schedulePartnerRecall(wrapper, idStr);
+        }
+    }
+
+    /* ---------- 初始化 ---------- */
+    function init() {
+        injectStyle();
+
+        // 已存在的消息
+        document.querySelectorAll('.message-wrapper').forEach(processWrapper);
+
+        // 监听新消息
+        const chat = document.getElementById('chat-container');
+        if (!chat) { setTimeout(init, 500); return; }
+
+        const observer = new MutationObserver(function (mutations) {
+            for (const m of mutations) {
+                for (const node of m.addedNodes) {
+                    if (node.nodeType !== 1) continue;
+                    if (node.classList && node.classList.contains('message-wrapper')) {
+                        processWrapper(node);
+                    }
+                    if (node.querySelectorAll) {
+                        node.querySelectorAll('.message-wrapper').forEach(processWrapper);
+                    }
+                }
+            }
+        });
+        observer.observe(chat, { childList: true, subtree: true });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => setTimeout(init, 100));
+    } else {
+        setTimeout(init, 100);
+    }
+
+    /* ---------- 对外接口 ---------- */
+    window.RecallFeature = {
+        onRecall: null,   // 宿主可覆盖：window.RecallFeature.onRecall = info => {...}
+        recall: function (idStr) {
+            const wrapper = document.querySelector('.message-wrapper[data-id="' + idStr + '"]');
+            if (wrapper) doRecall(wrapper, idStr, wrapper.classList.contains('sent'));
+        }
+    };
+})();

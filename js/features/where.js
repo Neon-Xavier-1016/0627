@@ -124,12 +124,11 @@
       ]},
       { category: '会议中', texts: [
         '在会议室里开会',
-        '听取上级的任务汇报',
+        '听取下级的任务汇报',
         '和其他猎人讨论作战方案'
       ]},
       { category: '训练中', texts: [
         '在训练场练习射击',
-        '陪新兵过过招',
         '自己也在体能训练'
       ]},
       { category: '整理文件中', texts: [
@@ -152,7 +151,7 @@
       { category: '做饭中', texts: ['进厨房大显身手，有没有成功呢？'] },
       { category: '做家务中', texts: ['整理家中，干完活一脸"我值得休息"的表情去零食架旁放松'] },
       { category: '睡前看书中', texts: ['生活仪式感拉满，睡前必翻几页书'] },
-      { category: '洗漱中', texts: ['我爱洗澡皮肤好好'] },
+      { category: '洗漱中', texts: ['我爱洗漱，干干净净'] },
       { category: '吃饭中', texts: ['在吃自己的作战成果，好像还不错'] },
       { category: '发呆中', texts: [
         '坐在窗边发呆，什么也没想',
@@ -296,7 +295,7 @@
         '队伍慢慢往前挪'
       ]},
       { category: '坐设施中', texts: [
-        '在过山车上喊得很大声',
+        '在过山车上感觉车开的好慢',
         '坐旋转木马，转得有点晕',
         '试了摩天轮，从高处看下来'
       ]},
@@ -503,20 +502,19 @@
     let cursor = leaveMin;
     let remaining = totalWindow;
     let midHomeUsed = false;
-    let isFirstStop = true;
 
     if (remaining < 45) return visits;
 
     while (remaining >= 50) {
-      if (!isFirstStop) {
-        const c = Math.min(randInt(COMMUTE_MIN, COMMUTE_MAX), remaining - 30);
-        if (c < 10) break;
-        visits.push({ placeId: null, start: cursor, end: cursor + c, phase: 'commute' });
-        cursor += c;
-        remaining -= c;
-      }
+      // 1) 每次换地点前都加通勤（含从家出门）
+      const c = Math.min(randInt(COMMUTE_MIN, COMMUTE_MAX), remaining - 30);
+      if (c < 10) break;
+      visits.push({ placeId: null, start: cursor, end: cursor + c, phase: 'commute' });
+      cursor += c;
+      remaining -= c;
 
-      if (!isFirstStop && !midHomeUsed && remaining >= 120 && Math.random() < MID_HOME_RATE) {
+      // 2) 中途回家（一天最多一次）
+      if (!midHomeUsed && remaining >= 120 && Math.random() < MID_HOME_RATE) {
         const maxDur = Math.min(120, remaining - 30);
         if (maxDur >= 60) {
           const dur = randInt(60, maxDur);
@@ -524,11 +522,11 @@
           cursor += dur;
           remaining -= dur;
           midHomeUsed = true;
-          isFirstStop = false;
           continue;
         }
       }
 
+      // 3) 选地点
       const place = pickPlace(remaining, usedIds);
       if (!place) break;
 
@@ -546,7 +544,6 @@
         usedIds.add(sp.id);
         cursor += dur;
         remaining -= dur;
-        isFirstStop = false;
         continue;
       }
 
@@ -555,7 +552,6 @@
       usedIds.add(place.id);
       cursor += dur;
       remaining -= dur;
-      isFirstStop = false;
     }
 
     return visits;
@@ -904,11 +900,11 @@
   const MAP_RATIO = MAP_W / MAP_H;
 
   let _mapState = {
-    scale: 1.35,
-    tx: 0, ty: 0,
-    minScale: 1,
-    maxScale: 2,
-    initialized: false
+      scale: 2.2,       // 1.35 → 2.2，默认放大
+      tx: 0, ty: 0,
+      minScale: 1.6,    // 1 → 1.6，防止缩太小
+      maxScale: 4.0,    // 2 → 4.0，上限也放宽一点
+      initialized: false
   };
 
   function buildMapHTML() {
@@ -1104,7 +1100,7 @@
 
     let html = buildMapHTML();
 
-    // 当前卡片
+    /* ========== 当前卡片 ========== */
     const placeName = cur.placeId ? (getPlace(cur.placeId)?.name || '未知') : '在路上';
     const curSeg    = getCurrentSegment(cur);
     const prevSegs  = getPrevSegments(cur);
@@ -1122,7 +1118,12 @@
       }
     }
 
-    html += `<div class="wyd-where-card wyd-where-current">
+    const isCurCommute  = !cur.placeId;
+    const curCardClass  = isCurCommute
+      ? 'wyd-where-card wyd-where-commute'
+      : 'wyd-where-card wyd-where-current';
+
+    html += `<div class="${curCardClass}">
       <div class="wyd-card-head">
         <span class="wyd-card-title">📍 ${placeName} · ${fmtHM(curSeg.start || cur.start)} 起</span>
       </div>
@@ -1131,47 +1132,56 @@
       ${prevHint}
     </div>`;
 
-    // 已过去
+    /* ========== 已过去（倒序：最新在前） ========== */
     const t = nowMin();
-    const passed = plan.visits.filter(v => v.end <= t && v !== cur);
+    const passed = plan.visits.filter(v => v.end <= t && v !== cur).reverse();
+
     if (passed.length) {
       html += `<div class="wyd-where-timeline-title">今天去过</div>`;
+
       passed.forEach(v => {
         const pName = v.placeId ? (getPlace(v.placeId)?.name || '未知') : '在路上';
 
-        let catHtml = '';
-        let textHtml = '';
-
+        let segHtml = '';
         if (v.segments && v.segments.length) {
-          const cats = v.segments.map(s => s.category).filter(Boolean);
-          const uniq = [];
-          let last = null;
-          cats.forEach(c => { if (c !== last) { uniq.push(c); last = c; } });
-          catHtml = `<div class="wyd-where-category">${uniq.join(' · ')}</div>`;
-
-          const texts = v.segments
-            .map(s => (s.text || '').replace(/\{user\}/g, getUserName()))
-            .filter(Boolean);
-          textHtml = `<div class="wyd-card-text">${texts.slice(0, 2).join('　')}${texts.length > 2 ? '…' : ''}</div>`;
+          segHtml = v.segments.map(s => {
+            const c = s.category || '';
+            const x = (s.text || '').replace(/\{user\}/g, getUserName());
+            if (!c && !x) return '';
+            return `<div class="wyd-seg-row">
+              <span class="wyd-seg-cat">${c}</span>
+              <span class="wyd-seg-text">${x}</span>
+            </div>`;
+          }).filter(Boolean).join('');
         } else {
-          catHtml = v.category ? `<div class="wyd-where-category">${v.category}</div>` : '';
-          textHtml = `<div class="wyd-card-text">${(v.text || '').replace(/\{user\}/g, getUserName())}</div>`;
+          const c = v.category || '';
+          const x = (v.text || '').replace(/\{user\}/g, getUserName());
+          if (c || x) {
+            segHtml = `<div class="wyd-seg-row">
+              <span class="wyd-seg-cat">${c}</span>
+              <span class="wyd-seg-text">${x}</span>
+            </div>`;
+          }
         }
 
-        html += `<div class="wyd-where-past-card">
+        const isCommute = !v.placeId;
+        const cardClass = isCommute
+          ? 'wyd-where-past-card wyd-past-commute'
+          : 'wyd-where-past-card';
+
+        html += `<div class="${cardClass}">
           <div class="wyd-card-head">
             <span class="wyd-card-title">📍 ${pName} · ${fmtHM(v.start)}-${fmtHM(v.end)}</span>
             <span class="wyd-card-time">已过去</span>
           </div>
-          ${catHtml}
-          ${textHtml}
+          <div class="wyd-seg-list">${segHtml}</div>
         </div>`;
       });
     }
 
     box.innerHTML = html;
 
-    // 地图
+    /* ========== 地图 ========== */
     requestAnimationFrame(() => {
       _mapState.initialized = false;
       initMapTransform();
@@ -1211,19 +1221,19 @@
   .wyd-map-img{display:block;width:100%;height:100%;-webkit-user-drag:none;user-select:none;pointer-events:none;}
   .wyd-map-pins{position:absolute;inset:0;pointer-events:none;}
   .wyd-map-pin{
-    position:absolute;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;border-radius:50%;
+    position:absolute;width:4px;height:4px;margin:-2px 0 0 -2px;border-radius:50%;
     background:var(--accent-color);
-    box-shadow:0 0 0 1.5px rgba(255,255,255,.7),0 1px 3px rgba(0,0,0,.35);
+    box-shadow:0 0 0 1px rgba(255,255,255,.7),0 1px 3px rgba(0,0,0,.35);
     opacity:.4;
   }
   .wyd-map-pin.current{
-    width:11px;height:11px;margin:-5.5px 0 0 -5.5px;opacity:1;
+    width:8px;height:8px;margin:-4px 0 0 -4px;opacity:1;
     animation:wyd-pin-pulse 1.8s ease-out infinite;
   }
   @keyframes wyd-pin-pulse{
-    0%  {box-shadow:0 0 0 1.5px rgba(255,255,255,.7),0 0 0 0 rgba(var(--accent-color-rgb),.7);}
-    70% {box-shadow:0 0 0 1.5px rgba(255,255,255,.7),0 0 0 14px rgba(var(--accent-color-rgb),0);}
-    100%{box-shadow:0 0 0 1.5px rgba(255,255,255,.7),0 0 0 0 rgba(var(--accent-color-rgb),0);}
+    0%  {box-shadow:0 0 0 1px rgba(255,255,255,.7),0 0 0 0 rgba(var(--accent-color-rgb),.7);}
+    70% {box-shadow:0 0 0 1px rgba(255,255,255,.7),0 0 0 10px rgba(var(--accent-color-rgb),0);}
+    100%{box-shadow:0 0 0 1px rgba(255,255,255,.7),0 0 0 0 rgba(var(--accent-color-rgb),0);}
   }
   .wyd-map-recenter{
     position:absolute;right:10px;bottom:10px;width:32px;height:32px;border-radius:50%;
@@ -1235,34 +1245,106 @@
     width:28px;height:28px;border-radius:50%;border:none;background:rgba(0,0,0,.5);
     color:#fff;font-size:14px;cursor:pointer;
   }
+
+  /* ---------- 卡片基础 ---------- */
   .wyd-where-card{
-    background:var(--secondary-bg);border:1px solid var(--border-color);
-    border-radius:14px;padding:14px 16px;flex-shrink:0;
+    background:var(--secondary-bg);
+    border:1px solid var(--border-color);
+    border-radius:14px;
+    padding:14px 16px;
+    flex-shrink:0;
   }
+
+  /* ---------- 当前卡片：地点（主题色提亮） ---------- */
   .wyd-where-current{
-    border-color:rgba(var(--accent-color-rgb),.3);
-    background:rgba(var(--accent-color-rgb),.04);
+    background:rgba(var(--accent-color-rgb),.07);
+    border-color:rgba(var(--accent-color-rgb),.35);
   }
   .wyd-where-current .wyd-card-title{color:var(--accent-color);}
+
+  /* ---------- 当前卡片：通勤（白色框） ---------- */
+  .wyd-where-commute{
+    background:var(--primary-bg);
+    border-color:var(--border-color);
+  }
+  .wyd-where-commute .wyd-card-title{color:var(--text-secondary);}
+  .wyd-where-commute .wyd-where-category{color:var(--text-secondary);opacity:.75;}
+
+  /* ---------- 时间线小标题 ---------- */
   .wyd-where-timeline-title{
     font-size:11px;color:var(--text-secondary);margin:10px 0 4px;
     opacity:.75;letter-spacing:.5px;
   }
+
+  /* ---------- 过去卡片：地点（主题色） ---------- */
   .wyd-where-past-card{
-    background:var(--secondary-bg);border:1px solid var(--border-color);
-    border-radius:14px;padding:12px 14px;flex-shrink:0;opacity:.68;margin-bottom:8px;
+    background:rgba(var(--accent-color-rgb),.04);
+    border:1px solid rgba(var(--accent-color-rgb),.18);
+    border-radius:14px;
+    padding:12px 14px;
+    flex-shrink:0;
+    margin-bottom:8px;
   }
-  .wyd-where-past-card .wyd-card-title{color:var(--text-secondary);font-size:13px;}
+  .wyd-where-past-card .wyd-card-title{
+    color:var(--accent-color);
+    font-size:13px;
+  }
   .wyd-where-past-card .wyd-card-text{font-size:12.5px;}
-  .wyd-where-past-card .wyd-where-category{font-size:12.5px;opacity:.85;margin:4px 0 3px;}
+  .wyd-where-past-card .wyd-seg-cat{
+    background:rgba(var(--accent-color-rgb),.1);
+  }
+
+  /* ---------- 过去卡片：通勤（白色框，压暗） ---------- */
+  .wyd-where-past-card.wyd-past-commute{
+    background:var(--primary-bg);
+    border:1px solid var(--border-color);
+    opacity:.72;
+  }
+  .wyd-where-past-card.wyd-past-commute .wyd-card-title{
+    color:var(--text-secondary);
+  }
+  .wyd-where-past-card.wyd-past-commute .wyd-seg-cat{
+    background:rgba(0,0,0,0.05);
+    color:var(--text-secondary);
+  }
+
+  /* ---------- 通用分类标签 ---------- */
   .wyd-where-category{
     font-size:13px;font-weight:600;color:var(--accent-color);margin:6px 0 4px;
   }
+
+  /* ---------- 当前卡片的"之前在" ---------- */
   .wyd-where-prev-hint{
     font-size:11px;color:var(--text-secondary);opacity:.7;
     margin-top:8px;padding-top:8px;
     border-top:1px dashed var(--border-color);
     letter-spacing:.3px;
+  }
+
+  /* ---------- 过去卡片里的分段列表 ---------- */
+  .wyd-seg-list{
+    display:flex;flex-direction:column;gap:8px;margin-top:10px;
+  }
+  .wyd-seg-row{
+    display:flex;gap:8px;align-items:flex-start;
+    font-size:12.5px;line-height:1.55;
+  }
+  .wyd-seg-cat{
+    flex-shrink:0;
+    color:var(--accent-color);
+    font-weight:600;
+    opacity:.9;
+    background:rgba(var(--accent-color-rgb),.08);
+    padding:2px 8px;
+    border-radius:8px;
+    font-size:11.5px;
+    white-space:nowrap;
+    line-height:1.5;
+  }
+  .wyd-seg-text{
+    color:var(--text-secondary);
+    flex:1;
+    min-width:0;
   }
   `;
   const styleEl = document.createElement('style');
