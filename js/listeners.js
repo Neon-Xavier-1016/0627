@@ -1372,6 +1372,15 @@ autoSendSlider.addEventListener('change', () => {
             showModal(document.getElementById('envelope-modal'));
         });
     }
+    const qaEntryBtn = document.getElementById('qa-function');
+    if (qaEntryBtn && !qaEntryBtn._qaBound) {
+        qaEntryBtn._qaBound = true;
+        qaEntryBtn.addEventListener('click', async () => {
+            hideModal(DOMElements.advancedModal.modal);
+            if (typeof window.openQaModal === 'function') await window.openQaModal();
+        });
+    }
+    
     const galleryBanner = document.getElementById('gallery-banner-entry');
     if (galleryBanner) {
         galleryBanner.addEventListener('click', () => {

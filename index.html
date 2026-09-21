@@ -1250,6 +1250,9 @@
                         <i class="fas fa-envelope-open-text"></i><span>信封接收</span>
                         <span class="env-badge" id="inc-entry-badge" style="display:none; position:absolute; top:6px; right:10px;"></span>
                     </div>
+                    <div class="settings-item" id="qa-function" onclick="window.openQaModal && window.openQaModal()">
+                        <i class="fas fa-comments"></i><span>Q & A</span>
+                    </div>
                 </div>
             </div>
 
@@ -1516,6 +1519,53 @@
 
                 <div class="modal-buttons">
                     <button class="modal-btn modal-btn-secondary" id="close-period">关闭</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal" id="qa-modal">
+            <div class="modal-content" id="qa-modal-content" style="max-height:92vh;overflow-y:auto;">
+                <div class="modal-title">
+                    <i class="fas fa-comments"></i><span>Q & A</span>
+                </div>
+
+                <div class="qa-home-grid">
+                    <div class="qa-home-card" onclick="window._qaRouteTo && window._qaRouteTo('his-question')">
+                        <div class="qa-home-card-icon">💭</div>
+                        <div class="qa-home-card-body">
+                            <div class="qa-home-card-title">他的问题</div>
+                            <div class="qa-home-card-sub">梦角来问你</div>
+                        </div>
+                        <div class="qa-home-card-badge" id="qa-badge-his"></div>
+                    </div>
+                    <div class="qa-home-card" onclick="window._qaRouteTo && window._qaRouteTo('my-question')">
+                        <div class="qa-home-card-icon">✨</div>
+                        <div class="qa-home-card-body">
+                            <div class="qa-home-card-title">我的问题</div>
+                            <div class="qa-home-card-sub">你来问梦角</div>
+                        </div>
+                        <div class="qa-home-card-badge" id="qa-badge-mine"></div>
+                    </div>
+                    <div class="qa-home-card" onclick="window._qaRouteTo && window._qaRouteTo('yes-no')">
+                        <div class="qa-home-card-icon">📝</div>
+                        <div class="qa-home-card-body">
+                            <div class="qa-home-card-title">问一句</div>
+                            <div class="qa-home-card-sub">是 / 否，快速确认</div>
+                        </div>
+                        <div class="qa-home-card-badge" id="qa-badge-yn"></div>
+                    </div>
+                    <div class="qa-home-card" id="qa-card-persona" onclick="window._qaRouteTo && window._qaRouteTo('persona')">
+                        <div class="qa-home-card-icon">🪪</div>
+                        <div class="qa-home-card-body">
+                            <div class="qa-home-card-title">人设卡</div>
+                            <div class="qa-home-card-sub" id="qa-persona-sub">关于我的一切</div>
+                        </div>
+                        <div class="qa-home-card-badge" id="qa-badge-persona"></div>
+                    </div>
+                </div>
+
+                <div class="modal-buttons">
+                    <button class="modal-btn modal-btn-secondary" onclick="hideModal(document.getElementById('qa-modal'))">关闭</button>
                 </div>
             </div>
         </div>
@@ -2443,6 +2493,8 @@
         </div>
 
 <div id="dg-editor-modal" style="display:none;"></div>
+
+
     <!-- == 核心层 == -->
     <script src="js/config.js"></script>
     <script src="js/utils.js"></script>
@@ -2466,6 +2518,7 @@
     <script src="js/features/core-utils.js"></script>
     <script src="js/features/where.js"></script>
     <script src="js/features/what-are-you-doing.js"></script>
+    <script src="js/features/qa.js"></script>
 
 
     <!-- == 合并模块 == -->
