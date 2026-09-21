@@ -374,6 +374,14 @@
         if (!data || data.date !== todayStr()) {
             data = initToday();
             try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) {}
+
+            // 新增：如果今天有火锅，清掉 where plan（下次打开"在做什么"会重新生成并联动）
+            const hasHotpot = ['lunch', 'dinner'].some(k =>
+                data.meals[k] && data.meals[k].eat && data.meals[k].special === 'hotpot'
+            );
+            if (hasHotpot) {
+                try { localStorage.removeItem('wyd_where_plan'); } catch (e) {}
+            }
         }
         return data;
     }
@@ -652,6 +660,16 @@
     window.openWYD = function () {
         render();
         showModal(document.getElementById('wyd-modal'));
+    };
+    /* ============================================================
+     * 十三、导出给 where.js 使用
+     * ============================================================ */
+    window.WydMeal = {
+        ensureToday: function () { return loadToday(); },
+        getToday: function () {
+            try { return JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); }
+            catch (e) { return null; }
+        }
     };
 
     document.addEventListener('DOMContentLoaded', function () {
