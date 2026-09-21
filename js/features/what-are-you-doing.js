@@ -1,5 +1,5 @@
 /* ============================================================
- * 你在干嘛 · 吃饭了吗 + 此刻心情
+ * 你在干嘛 · 吃饭了吗 + 此刻心情 + 在做什么
  * ============================================================ */
 (function () {
     'use strict';
@@ -99,92 +99,92 @@
      * 二、此刻心情 —— 数据池
      * ============================================================ */
 
- const MOOD_POOL = [
-     { mood: '平静',   emoji: '🌿', color: '#8fbf8f', texts: [
-         '窗外有风，心里什么都没想',
-         '什么都没做，也不觉得浪费',
-         '呼吸很稳，时间过得很慢',
-         '坐着发呆，挺好的',
-         '心是软的，没什么波澜'
-     ]},
-     { mood: '开心',   emoji: '☀️', color: '#C58AFF', texts: [
-         '莫名其妙地心情好',
-         '嘴角压不下去，也不知道在高兴什么',
-         '今天什么都顺，连红灯都变绿',
-         '想找人分享，第一个想到你',
-         '笑得有点傻，但停不下来'
-     ]},
-     { mood: '想你',   emoji: '💭', color: '#FF8AEC', texts: [
-         '看到你头像的时候愣了一下',
-         '突然很想听见你的声音',
-         '明明才分开一会儿',
-         '手机拿起来又放下，想找你说话',
-         '心空了一块，是你不在的那块'
-     ]},
-     { mood: '疲惫',   emoji: '😮‍💨', color: '#8a9aad', texts: [
-         '骨头都是软的，什么都不想干',
-         '眼睛酸，脑子转不动',
-         '只想找个地方躺着，谁也别叫',
-         '一整天的力气都用完了',
-         '累到连叹气都懒'
-     ]},
-     { mood: '心不在焉', emoji: '🌫️', color: '#a8a8a8', texts: [
-         '一下午都在神游',
-         '看着屏幕，其实什么也没看进去',
-         '别人说话我要听两遍',
-         '心飘到很远的地方去了',
-         '手在做事，魂不在身上'
-     ]},
-     { mood: '期待',   emoji: '✨', color: '#8AFFE8', texts: [
-         '有什么好事要发生的感觉',
-         '心里痒痒的，坐不太住',
-         '总觉得今天会有惊喜',
-         '数着时间等一件事',
-         '心里揣着一只小兔子'
-     ]},
-     { mood: '发呆',   emoji: '🫧', color: '#8fb8cc', texts: [
-         '盯着一处看了很久，什么都没想',
-         '时间好像在打盹',
-         '脑袋空的，但很舒服',
-         '不知道自己在想什么，也不想想',
-         '一晃神，半小时就过去了'
-     ]},
-     { mood: '安心',   emoji: '🕯️', color: '#d8a878', texts: [
-         '一切都刚刚好',
-         '心是踏实的，落在地上',
-         '没有什么担心的',
-         '暖洋洋的，像晒过太阳',
-         '就这样待着，很好'
-     ]},
-     { mood: '有点丧', emoji: '🌧️', color: '#9a90b8', texts: [
-         '没什么特别的原因，就是提不起劲',
-         '灰蒙蒙的，像今天的天气',
-         '不想说话，也不想被打扰',
-         '心里堵着点什么，又说不清',
-         '安静地难过，也不为谁'
-     ]},
-     { mood: '焦躁',   emoji: '🔥', color: '#d88878', texts: [
-         '坐也不是站也不是',
-         '心里有团火，找不到出口',
-         '什么都觉得烦',
-         '想砸点东西，又没理由',
-         '时间过得太慢，慢得让人烦'
-     ]},
-     { mood: '温柔',   emoji: '🌸', color: '#e8a8bc', texts: [
-         '看什么都觉得可爱',
-         '心里软软的，像化了的糖',
-         '想对全世界都好一点',
-         '想起你的时候，眼睛弯弯的',
-         '风都变得温柔了'
-     ]},
-     { mood: '空空的', emoji: '🌌', color: '＃708090', texts: [
-         '什么都没想，也什么都不想做',
-         '心里像空了一块',
-         '像房间没开灯',
-         '有点寂寞，但说不上来',
-         '就这么空着，也挺好'
-     ]}
- ];
+    const MOOD_POOL = [
+        { mood: '平静',   emoji: '🌿', color: '#8fbf8f', texts: [
+            '窗外有风，心里什么都没想',
+            '什么都没做，也不觉得浪费',
+            '呼吸很稳，时间过得很慢',
+            '坐着发呆，挺好的',
+            '心是软的，没什么波澜'
+        ]},
+        { mood: '开心',   emoji: '☀️', color: '#C58AFF', texts: [
+            '莫名其妙地心情好',
+            '嘴角压不下去，也不知道在高兴什么',
+            '今天什么都顺，连红灯都变绿',
+            '想找人分享，第一个想到你',
+            '笑得有点傻，但停不下来'
+        ]},
+        { mood: '想你',   emoji: '💭', color: '#FF8AEC', texts: [
+            '看到你头像的时候愣了一下',
+            '突然很想听见你的声音',
+            '明明才分开一会儿',
+            '手机拿起来又放下，想找你说话',
+            '心空了一块，是你不在的那块'
+        ]},
+        { mood: '疲惫',   emoji: '😮‍💨', color: '#8a9aad', texts: [
+            '骨头都是软的，什么都不想干',
+            '眼睛酸，脑子转不动',
+            '只想找个地方躺着，谁也别叫',
+            '一整天的力气都用完了',
+            '累到连叹气都懒'
+        ]},
+        { mood: '心不在焉', emoji: '🌫️', color: '#a8a8a8', texts: [
+            '一下午都在神游',
+            '看着屏幕，其实什么也没看进去',
+            '别人说话我要听两遍',
+            '心飘到很远的地方去了',
+            '手在做事，魂不在身上'
+        ]},
+        { mood: '期待',   emoji: '✨', color: '#8AFFE8', texts: [
+            '有什么好事要发生的感觉',
+            '心里痒痒的，坐不太住',
+            '总觉得今天会有惊喜',
+            '数着时间等一件事',
+            '心里揣着一只小兔子'
+        ]},
+        { mood: '发呆',   emoji: '🫧', color: '#8fb8cc', texts: [
+            '盯着一处看了很久，什么都没想',
+            '时间好像在打盹',
+            '脑袋空的，但很舒服',
+            '不知道自己在想什么，也不想想',
+            '一晃神，半小时就过去了'
+        ]},
+        { mood: '安心',   emoji: '🕯️', color: '#d8a878', texts: [
+            '一切都刚刚好',
+            '心是踏实的，落在地上',
+            '没有什么担心的',
+            '暖洋洋的，像晒过太阳',
+            '就这样待着，很好'
+        ]},
+        { mood: '有点丧', emoji: '🌧️', color: '#9a90b8', texts: [
+            '没什么特别的原因，就是提不起劲',
+            '灰蒙蒙的，像今天的天气',
+            '不想说话，也不想被打扰',
+            '心里堵着点什么，又说不清',
+            '安静地难过，也不为谁'
+        ]},
+        { mood: '焦躁',   emoji: '🔥', color: '#d88878', texts: [
+            '坐也不是站也不是',
+            '心里有团火，找不到出口',
+            '什么都觉得烦',
+            '想砸点东西，又没理由',
+            '时间过得太慢，慢得让人烦'
+        ]},
+        { mood: '温柔',   emoji: '🌸', color: '#e8a8bc', texts: [
+            '看什么都觉得可爱',
+            '心里软软的，像化了的糖',
+            '想对全世界都好一点',
+            '想起你的时候，眼睛弯弯的',
+            '风都变得温柔了'
+        ]},
+        { mood: '空空的', emoji: '🌌', color: '#708090', texts: [
+            '什么都没想，也什么都不想做',
+            '心里像空了一块',
+            '像房间没开灯',
+            '有点寂寞，但说不上来',
+            '就这么空着，也挺好'
+        ]}
+    ];
 
     /* ============================================================
      * 三、通用工具
@@ -227,18 +227,25 @@
         } catch (e) { return '梦角'; }
     }
 
-
-    /* ============================================================
-     * 四、揭晓状态（当天首次打开 → 空状态；点按钮 → 揭晓）
-     * ============================================================ */
-
-   function hexToRgba(hex, alpha) {
+    function hexToRgba(hex, alpha) {
         const h = hex.replace('#', '');
         const r = parseInt(h.substring(0, 2), 16);
         const g = parseInt(h.substring(2, 4), 16);
         const b = parseInt(h.substring(4, 6), 16);
         return `rgba(${r},${g},${b},${alpha})`;
     }
+
+    function cardSleeping(text) {
+        return `
+        <div class="wyd-card wyd-card-sleep">
+            <div class="wyd-sleep-emoji">🌙</div>
+            <div class="wyd-sleep-text">${text}</div>
+        </div>`;
+    }
+
+    /* ============================================================
+     * 四、揭晓状态
+     * ============================================================ */
 
     function isRevealed(tab) {
         try { return localStorage.getItem('wyd_revealed_' + tab) === todayStr(); }
@@ -254,7 +261,7 @@
         const map = {
             eat:   { icon: '🍚', line1: '今天还没问过 Ta 吃了什么',  line2: '点下方按钮，问一下 Ta' },
             mood:  { icon: '💭', line1: '今天还没问过 Ta 的心情',    line2: '点下方按钮，问一下 Ta' },
-            doing: { icon: '✨', line1: '今天还没问过 Ta 在做什么',  line2: '点下方按钮，问一下 Ta' }
+            where: { icon: '📍', line1: '今天还没问过 Ta 在做什么',  line2: '点下方按钮，问一下 Ta' }
         };
         const h = map[tab] || map.eat;
         return `
@@ -268,7 +275,25 @@
     }
 
     /* ============================================================
-     * 五、吃饭逻辑
+     * 五、和 where.js 联动
+     * ============================================================ */
+
+    function isPartnerSleeping() {
+        try {
+            if (!window.WydWhere || typeof window.WydWhere.loadPlan !== 'function') return false;
+            const plan = window.WydWhere.loadPlan();
+            if (!plan || !plan.visits) return false;
+
+            const t = nowMin();
+            for (const v of plan.visits) {
+                if (t >= v.start && t < v.end) return v.phase === 'sleep';
+            }
+        } catch (e) {}
+        return false;
+    }
+
+    /* ============================================================
+     * 六、吃饭逻辑
      * ============================================================ */
 
     function randTimeInWindow(type) {
@@ -361,14 +386,6 @@
         return 'allThree';
     }
 
-    function cardSleeping(text) {
-        return `
-        <div class="wyd-card wyd-card-sleep">
-            <div class="wyd-sleep-emoji">🌙</div>
-            <div class="wyd-sleep-text">${text}</div>
-        </div>`;
-    }
-
     function cardFull(type, meal) {
         const emoji = MEAL_EMOJI[type];
         const name  = MEAL_NAME[type];
@@ -437,24 +454,26 @@
     }
 
     function renderEat() {
-        const data  = loadToday();
-        const stage = getStage();
-        const box   = document.getElementById('wyd-meals-container');
+        const box = document.getElementById('wyd-meals-container');
         if (!box) return;
 
-        let html = '';
-        if (stage === 'sleeping') {
-            html = cardSleeping('Ta 还没醒，今天还没开始呢');
-        } else {
-            html += renderMeal('breakfast', data.meals.breakfast);
-            if (stage !== 'breakfastOnly') html += renderMeal('lunch', data.meals.lunch);
-            if (stage === 'allThree')    html += renderMeal('dinner', data.meals.dinner);
+        if (isPartnerSleeping()) {
+            box.innerHTML = cardSleeping('Ta 还没醒，今天还没开始呢');
+            return;
         }
+
+        const data  = loadToday();
+        const stage = getStage();
+
+        let html = '';
+        html += renderMeal('breakfast', data.meals.breakfast);
+        if (stage !== 'breakfastOnly') html += renderMeal('lunch', data.meals.lunch);
+        if (stage === 'allThree')      html += renderMeal('dinner', data.meals.dinner);
         box.innerHTML = html;
     }
 
     /* ============================================================
-     * 六、心情逻辑
+     * 七、心情逻辑
      * ============================================================ */
 
     function loadMoodData() {
@@ -486,18 +505,23 @@
         return entry;
     }
 
+    /**
+     * renderMood(generate)
+     *   generate = true  → 记录当前小时的心情（如果是新的一小时），然后渲染
+     *   generate = false → 只渲染已记录的心情
+     */
     function renderMood(generate) {
         const box = document.getElementById('wyd-meals-container');
         if (!box) return;
 
-        const h = nowHour();
-
-        if (h < 8) {
+        if (isPartnerSleeping()) {
             box.innerHTML = cardSleeping('Ta 还没醒，今天的心情还没开始呢');
             return;
         }
 
-        if (generate) ensureMoodForHour(h);
+        if (generate) {
+            ensureMoodForHour(nowHour());
+        }
 
         const data  = loadMoodData();
         const hours = Object.keys(data.moods).map(Number).sort((a, b) => a - b);
@@ -529,13 +553,26 @@
     }
 
     /* ============================================================
-     * 七、Tab 与按钮
+     * 八、在做什么（委托给 where.js）
+     * ============================================================ */
+
+    function renderWhere(generate) {
+        if (window.WydWhere && typeof window.WydWhere.render === 'function') {
+            window.WydWhere.render(generate);
+        } else {
+            const box = document.getElementById('wyd-meals-container');
+            if (box) box.innerHTML = cardSleeping('地图模块还没加载');
+        }
+    }
+
+    /* ============================================================
+     * 九、Tab 与按钮
      * ============================================================ */
 
     const TAB_META = {
-        eat:   { btn: 'Ta 吃了没',  toast: '吃了没' },
-        mood:  { btn: 'Ta 的心情',  toast: '的心情' },
-        doing: { btn: 'Ta 在干嘛',  toast: '在干嘛' }
+        eat:   { btn: 'Ta 吃了没',    toast: '吃了没' },
+        mood:  { btn: 'Ta 的心情',    toast: '的心情' },
+        where: { btn: 'Ta 在做什么',  toast: '在做什么' }
     };
 
     let currentTab = 'eat';
@@ -547,7 +584,7 @@
         if (meta) btn.textContent = meta.btn;
     }
 
-    /** 渲染（不生成数据）：先检查是否已揭晓 */
+    /** 切换 tab / 打开时渲染：如果今天还没揭晓过，显示占位符 */
     function render() {
         const box = document.getElementById('wyd-meals-container');
         if (!box) return;
@@ -558,30 +595,28 @@
             return;
         }
 
-        if (currentTab === 'eat')       renderEat();
-        else if (currentTab === 'mood') renderMood(false);
-        else                            box.innerHTML = cardSleeping('这个功能还在路上 ✦');
+        if (currentTab === 'eat')        renderEat();
+        else if (currentTab === 'mood')  renderMood(false);
+        else if (currentTab === 'where') renderWhere(false);
+        else                             box.innerHTML = cardSleeping('这个功能还在路上 ✦');
         updateBottomBtn();
     }
 
-    /** 点击底部按钮：揭晓 */
+    /** 点击底部按钮：揭晓 + 生成当前数据 */
     function handleAsk() {
         const pname = getPartnerName();
         const meta  = TAB_META[currentTab];
 
-        // 标记已揭晓
         markRevealed(currentTab);
 
-        // 真正渲染对应内容
         if (currentTab === 'eat') {
             renderEat();
         } else if (currentTab === 'mood') {
-            renderMood(true);
-        } else {
-            // doing 待实现
+            renderMood(true);      // 记录当前小时
+        } else if (currentTab === 'where') {
+            renderWhere(true);     // 定位到当前地点
         }
 
-        // 揭晓动画
         const box = document.getElementById('wyd-meals-container');
         if (box) {
             box.classList.remove('wyd-revealing');
@@ -593,7 +628,7 @@
     }
 
     /* ============================================================
-     * 八、Toast
+     * 十、Toast
      * ============================================================ */
 
     function toast(msg) {
@@ -611,7 +646,7 @@
     }
 
     /* ============================================================
-     * 九、初始化
+     * 十一、初始化
      * ============================================================ */
 
     window.openWYD = function () {
@@ -633,10 +668,29 @@
 
         const btn = document.getElementById('wyd-ask-btn');
         if (btn) btn.addEventListener('click', handleAsk);
+
+        // 跨零点自动刷新
+        let lastDate = todayStr();
+        setInterval(() => {
+            const now = todayStr();
+            if (now !== lastDate) {
+                lastDate = now;
+                render();
+            }
+        }, 60 * 1000);
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) return;
+            const now = todayStr();
+            if (now !== lastDate) {
+                lastDate = now;
+                render();
+            }
+        });
     });
 
     /* ============================================================
-     * 十、样式注入
+     * 十二、样式注入
      * ============================================================ */
 
     const css = `
