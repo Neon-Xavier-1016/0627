@@ -1,6 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════
-//  Q&A 模块 —— 完整版
-//  字卡回应统一规则：多张字卡用 3 个空格拼接成一段
+//  Q&A 模块 —— 完整版（含调查问卷：慢回答 / 快问快答）
 // ═══════════════════════════════════════════════════════════════════
 
 // ─────────── 常量 ───────────
@@ -35,7 +34,7 @@ const QA_PERSONA_QUESTIONS = [
 const QA_YES_VARIANTS = ['是', '嗯，是', '是啊', '对', '嗯…是', '是的呢'];
 const QA_NO_VARIANTS  = ['否', '不是', '才没有', '没有啦', '不', '嗯…不是'];
 const QA_WEEK_MS      = 7 * 24 * 60 * 60 * 1000;
-const QA_CARD_SEP     = '   ';   // ★ 字卡之间的分隔：3 个空格
+const QA_CARD_SEP     = '   ';   // 字卡之间的分隔：3 个空格
 
 // ─────────── 数据层 ───────────
 let qaData = null;
@@ -54,7 +53,11 @@ function _qaDefaultData() {
         myQuestions: { history: [], currentPending: null },
         yesNo: { history: [] },
         recentCards: [],
-        questionLibrary: []
+        questionLibrary: [],
+        surveys: {
+            slow: { history: [], currentPending: null },
+            fast: { history: [], currentPending: null }
+        }
     };
 }
 
@@ -71,6 +74,13 @@ async function loadQaData() {
     if (!Array.isArray(qaData.persona.evaluation.cards)) qaData.persona.evaluation.cards = [];
     if (typeof qaData.persona.evaluation.text !== 'string') qaData.persona.evaluation.text = '';
     if (!Array.isArray(qaData.questionLibrary)) qaData.questionLibrary = [];
+
+    // 兼容 surveys
+    if (!qaData.surveys) qaData.surveys = def.surveys;
+    ['slow', 'fast'].forEach(t => {
+        if (!qaData.surveys[t]) qaData.surveys[t] = def.surveys[t];
+        if (!Array.isArray(qaData.surveys[t].history)) qaData.surveys[t].history = [];
+    });
 
     _qaMigrateOldGroup();
     _qaSeedQuestionLibrary();
@@ -177,11 +187,37 @@ function _qaBindBacks(content) {
     });
 }
 
-// ★ 统一：把字卡数组渲染成一段话
 function _qaCardsParagraph(cards) {
     const list = (cards && cards.length) ? cards : ['（梦角暂时想不出话）'];
     const text = list.join(QA_CARD_SEP);
     return `<div class="qa-persona-eval-text" style="margin-top:6px;padding:12px 14px;font-size:13px;line-height:2;white-space:pre-wrap;">${_qaEsc(text)}</div>`;
+}
+
+function _qaCardsText(h) {
+    if (h.cardsText != null) return h.cardsText;
+    if (h.cards && h.cards.length) return h.cards.join(QA_CARD_SEP);
+    return '（梦角暂时想不出话）';
+}
+
+function _qaCardsBlock(h, idx) {
+    return `
+        <div class="qa-cards-block" data-idx="${idx}" style="margin-top:6px;">
+            <div class="qa-persona-eval-text" style="padding:12px 14px;font-size:13px;line-height:2;white-space:pre-wrap;">${_qaEsc(_qaCardsText(h))}</div>
+        </div>
+    `;
+}
+
+function _qaHistoryActionsHTML(idx) {
+    return `
+        <div style="display:flex;gap:4px;flex-shrink:0;">
+            <button class="qa-eval-edit-btn qa-edit-toggle" type="button" data-idx="${idx}" style="font-size:11px;padding:2px 8px;">
+                <i class="fas fa-pen" style="font-size:9px;margin-right:2px;"></i>编辑
+            </button>
+            <button class="qa-eval-edit-btn qa-del-toggle" type="button" data-idx="${idx}" style="font-size:11px;padding:2px 8px;color:#ef4444;">
+                <i class="fas fa-trash" style="font-size:9px;"></i>
+            </button>
+        </div>
+    `;
 }
 
 // ─────────── 状态检查 ───────────
@@ -237,6 +273,33 @@ function checkAllQaStatus() {
                            : QA_NO_VARIANTS[Math.floor(Math.random() * QA_NO_VARIANTS.length)];
             });
             pops.push({ type: 'yn-reply', emoji: '✓', title: '问一句有回应啦', sub: `Ta 回答了你的 ${batch.questions.length} 道问题` });
+            changed = true;
+        }
+    });
+
+    // 调查问卷
+    ['slow', 'fast'].forEach(type => {
+        const surveyData = qaData.surveys[type];
+        const pending = surveyData.currentPending;
+        if (pending && pending.replyTime <= now) {
+            const answers = pending.questions.map(q => {
+                const opts = q.options.filter(o => o.trim() !== '');
+                return opts[Math.floor(Math.random() * opts.length)];
+            });
+            pending.answers = answers;
+            pending.status = 'replied';
+            pending.viewed = false;
+
+            surveyData.history.unshift(pending);
+            if (surveyData.history.length > 5) surveyData.history.length = 5;
+            surveyData.currentPending = null;
+
+            pops.push({
+                type: `survey-${type}-reply`,
+                emoji: '📊',
+                title: '问卷结果出炉',
+                sub: `Ta 回答了你发出的 ${pending.questions.length} 道题`
+            });
             changed = true;
         }
     });
@@ -316,6 +379,23 @@ function _qaRenderHome() {
                 </div>
                 <div class="qa-home-card-badge" id="qa-badge-yn"></div>
             </div>
+            <!-- 调查问卷入口 -->
+            <div class="qa-home-card" data-target="survey-slow">
+                <div class="qa-home-card-icon">📊 </div>
+                <div class="qa-home-card-body">
+                    <div class="qa-home-card-title">调查问卷</div>
+                    <div class="qa-home-card-sub">1-10题 · 每题2分钟</div>
+                </div>
+                <div class="qa-home-card-badge" id="qa-badge-survey-slow"></div>
+            </div>
+            <div class="qa-home-card" data-target="survey-fast">
+                <div class="qa-home-card-icon">⚡</div>
+                <div class="qa-home-card-body">
+                    <div class="qa-home-card-title">快问快答</div>
+                    <div class="qa-home-card-sub">1-10题 · 每题30秒</div>
+                </div>
+                <div class="qa-home-card-badge" id="qa-badge-survey-fast"></div>
+            </div>
             <div class="qa-home-card ${personaReady ? '' : 'qa-home-card-locked'}" data-target="persona">
                 <div class="qa-home-card-icon">🪪</div>
                 <div class="qa-home-card-body">
@@ -366,6 +446,18 @@ function _qaUpdateBadges() {
         else if (hasPending) ynBadge.innerHTML = '<span class="qa-badge-spin"></span>';
         else ynBadge.innerHTML = '';
     }
+
+    // 调查问卷红点
+    ['slow', 'fast'].forEach(type => {
+        const el = document.getElementById(`qa-badge-survey-${type}`);
+        if (!el) return;
+        const sData = qaData.surveys[type];
+        const hasDot = sData.history.some(h => !h.viewed);
+        const hasSpin = !!sData.currentPending;
+        if (hasDot) el.innerHTML = '<span class="qa-badge-dot"></span>';
+        else if (hasSpin) el.innerHTML = '<span class="qa-badge-spin"></span>';
+        else el.innerHTML = '';
+    });
 }
 
 // ─────────── 路由 ───────────
@@ -387,6 +479,8 @@ function _qaRouteTo(target) {
     if (target === 'his-question') _qaRenderHisView();
     else if (target === 'my-question') _qaRenderMineView();
     else if (target === 'yes-no') _qaRenderYnView();
+    else if (target === 'survey-slow') _qaRenderSurveyHistory('slow');
+    else if (target === 'survey-fast') _qaRenderSurveyHistory('fast');
 }
 
 // ─────────── 他的问题 ───────────
@@ -430,12 +524,14 @@ function _qaRenderHisView() {
             </button>`;
     }
 
-    // ★ 字卡合并成一段
-    const historyHtml = his.history.length ? his.history.map(h => `
+    const historyHtml = his.history.length ? his.history.map((h, i) => `
         <div class="qa-history-item">
-            <div class="qa-history-q">💭 ${_qaEsc(h.question)}</div>
-            <div class="qa-history-a">我：${_qaEsc(h.answer)}</div>
-            ${_qaCardsParagraph(h.cards)}
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                <div class="qa-history-q" style="flex:1;min-width:0;">💭 ${_qaEsc(h.question)}</div>
+                ${_qaHistoryActionsHTML(i)}
+            </div>
+            <div class="qa-history-a" data-my-text-idx="${i}" data-prefix="我：">我：${_qaEsc(h.answer)}</div>
+            ${_qaCardsBlock(h, i)}
         </div>
     `).join('') : '<div class="qa-empty">还没有记录</div>';
 
@@ -456,6 +552,8 @@ function _qaRenderHisView() {
         </div>`;
 
     _qaBindBacks(content);
+    _qaBindHistoryActions(content, his.history, _qaRenderHisView, 'answer');
+
     const urgeBtn = content.querySelector('#qa-his-urge');
     if (urgeBtn) urgeBtn.onclick = _qaUrgeHis;
     const submitBtn = content.querySelector('#qa-his-submit');
@@ -536,11 +634,13 @@ function _qaRenderMineView() {
             <button class="modal-btn modal-btn-primary" id="qa-mine-submit" style="width:100%;margin-top:10px;">发出</button>`;
     }
 
-    // ★ 字卡合并成一段
-    const historyHtml = mine.history.length ? mine.history.map(h => `
+    const historyHtml = mine.history.length ? mine.history.map((h, i) => `
         <div class="qa-history-item">
-            <div class="qa-history-q">✨ ${_qaEsc(h.question)}</div>
-            ${_qaCardsParagraph(h.cards)}
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                <div class="qa-history-q" style="flex:1;min-width:0;" data-my-text-idx="${i}" data-prefix="✨ ">✨ ${_qaEsc(h.question)}</div>
+                ${_qaHistoryActionsHTML(i)}
+            </div>
+            ${_qaCardsBlock(h, i)}
         </div>
     `).join('') : '<div class="qa-empty">还没有记录</div>';
 
@@ -556,6 +656,8 @@ function _qaRenderMineView() {
         </div>`;
 
     _qaBindBacks(content);
+    _qaBindHistoryActions(content, mine.history, _qaRenderMineView, 'question');
+
     const submitBtn = content.querySelector('#qa-mine-submit');
     if (submitBtn) submitBtn.onclick = _qaSubmitMineQuestion;
 }
@@ -800,12 +902,21 @@ function _qaRenderYnInput() {
     };
 
     const historyWrap = content.querySelector('#qa-yn-history');
-    const replied = yn.history.filter(b => b.status === 'replied');
+    const replied = [];
+    yn.history.forEach((b, idx) => {
+        if (b.status === 'replied') replied.push({ batch: b, realIdx: idx });
+    });
+
     if (!replied.length) {
         historyWrap.innerHTML = '<div class="qa-empty">还没有记录</div>';
     } else {
-        historyWrap.innerHTML = replied.map(batch => `
+        historyWrap.innerHTML = replied.map(({ batch, realIdx }) => `
             <div class="qa-history-item" style="margin-bottom:10px;">
+                <div style="display:flex;justify-content:flex-end;margin-bottom:6px;">
+                    <button class="qa-eval-edit-btn qa-yn-del" type="button" data-idx="${realIdx}" style="font-size:11px;padding:2px 8px;color:#ef4444;">
+                        <i class="fas fa-trash" style="font-size:9px;"></i>
+                    </button>
+                </div>
                 ${batch.questions.map((q, i) => `
                     <div class="qa-yn-history-row">
                         <span class="qa-q">${_qaEsc(q)}</span>
@@ -814,6 +925,17 @@ function _qaRenderYnInput() {
                 `).join('')}
             </div>
         `).join('');
+
+        historyWrap.querySelectorAll('.qa-yn-del').forEach(btn => {
+            btn.onclick = () => {
+                const i = parseInt(btn.dataset.idx);
+                if (!confirm('删除这条记录？')) return;
+                qaData.yesNo.history.splice(i, 1);
+                saveQaData();
+                if (typeof showNotification === 'function') showNotification('已删除', 'success');
+                _qaRenderYnInput();
+            };
+        });
     }
 }
 
@@ -882,11 +1004,137 @@ function _qaRenderYnResult(batch) {
     };
 }
 
-// ═══════════════════════════════════════════════════════════════════
-//  Q&A 问题库子 tab
-// ═══════════════════════════════════════════════════════════════════
+// ─────────── 编辑辅助 ───────────
+function _qaShowEditPicker(anchorBtn, onPick) {
+    const old = document.getElementById('qa-edit-picker');
+    if (old) old.remove();
 
-// ① 注入 tab 到回复库配置
+    const rect = anchorBtn.getBoundingClientRect();
+    const picker = document.createElement('div');
+    picker.id = 'qa-edit-picker';
+    picker.style.cssText = `
+        position:fixed;
+        top:${Math.min(rect.bottom + 4, window.innerHeight - 100)}px;
+        right:${Math.max(window.innerWidth - rect.right, 8)}px;
+        background:var(--secondary-bg);
+        border:1px solid var(--border-color);
+        border-radius:10px;
+        box-shadow:0 6px 24px rgba(0,0,0,0.22);
+        padding:4px;
+        z-index:99999;
+        min-width:130px;
+    `;
+    picker.innerHTML = `
+        <button class="qa-picker-item" data-pick="my" style="width:100%;padding:8px 12px;border:none;background:transparent;text-align:left;font-size:13px;color:var(--text-primary);cursor:pointer;border-radius:7px;font-family:var(--font-family);display:flex;align-items:center;gap:8px;">
+            <i class="fas fa-user" style="font-size:11px;color:var(--accent-color);width:14px;"></i>我的话
+        </button>
+        <button class="qa-picker-item" data-pick="cards" style="width:100%;padding:8px 12px;border:none;background:transparent;text-align:left;font-size:13px;color:var(--text-primary);cursor:pointer;border-radius:7px;font-family:var(--font-family);display:flex;align-items:center;gap:8px;">
+            <i class="fas fa-heart" style="font-size:11px;color:var(--accent-color);width:14px;"></i>梦角的话
+        </button>
+    `;
+    document.body.appendChild(picker);
+
+    picker.querySelectorAll('.qa-picker-item').forEach(item => {
+        item.onclick = (e) => {
+            e.stopPropagation();
+            picker.remove();
+            onPick(item.dataset.pick);
+        };
+    });
+
+    setTimeout(() => {
+        const closeHandler = (e) => {
+            if (!picker.contains(e.target) && e.target !== anchorBtn) {
+                picker.remove();
+                document.removeEventListener('click', closeHandler);
+            }
+        };
+        document.addEventListener('click', closeHandler);
+    }, 30);
+}
+
+function _qaEditMyText(content, list, i, field, afterSave) {
+    const h = list[i];
+    const cur = h[field] || '';
+    const el = content.querySelector(`[data-my-text-idx="${i}"]`);
+    if (!el) return;
+    const prefix = el.dataset.prefix || '';
+
+    el.innerHTML = `
+        ${prefix}
+        <textarea class="qa-answer-input" rows="3" style="width:100%;box-sizing:border-box;line-height:1.7;font-size:13px;margin-top:4px;">${_qaEsc(cur)}</textarea>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
+            <button class="modal-btn modal-btn-secondary qa-my-cancel" style="font-size:12px;padding:6px 14px;">取消</button>
+            <button class="modal-btn modal-btn-primary qa-my-save" style="font-size:12px;padding:6px 14px;">保存</button>
+        </div>
+    `;
+    const ta = el.querySelector('textarea');
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+
+    el.querySelector('.qa-my-cancel').onclick = () => afterSave();
+    el.querySelector('.qa-my-save').onclick = () => {
+        list[i][field] = ta.value;
+        saveQaData();
+        if (typeof showNotification === 'function') showNotification('✓ 已保存', 'success');
+        afterSave();
+    };
+}
+
+function _qaEditCards(content, list, i, afterSave) {
+    const h = list[i];
+    const cur = _qaCardsText(h);
+    const block = content.querySelector(`.qa-cards-block[data-idx="${i}"]`);
+    if (!block) return;
+
+    block.innerHTML = `
+        <textarea class="qa-answer-input" rows="4" style="width:100%;box-sizing:border-box;line-height:1.9;font-size:13px;">${_qaEsc(cur)}</textarea>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+            <button class="modal-btn modal-btn-secondary qa-cards-cancel" style="font-size:12px;padding:6px 14px;">取消</button>
+            <button class="modal-btn modal-btn-primary qa-cards-save" style="font-size:12px;padding:6px 14px;">保存</button>
+        </div>
+    `;
+    const ta = block.querySelector('textarea');
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+
+    block.querySelector('.qa-cards-cancel').onclick = () => afterSave();
+    block.querySelector('.qa-cards-save').onclick = () => {
+        list[i].cardsText = ta.value;
+        saveQaData();
+        if (typeof showNotification === 'function') showNotification('✓ 已保存', 'success');
+        afterSave();
+    };
+}
+
+function _qaBindHistoryActions(content, list, afterSave, myField) {
+    content.querySelectorAll('.qa-edit-toggle').forEach(btn => {
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            const i = parseInt(btn.dataset.idx);
+            if (!list[i]) return;
+            _qaShowEditPicker(btn, (pick) => {
+                if (pick === 'my') _qaEditMyText(content, list, i, myField, afterSave);
+                else _qaEditCards(content, list, i, afterSave);
+            });
+        };
+    });
+
+    content.querySelectorAll('.qa-del-toggle').forEach(btn => {
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            const i = parseInt(btn.dataset.idx);
+            if (!list[i]) return;
+            if (!confirm('删除这条记录？')) return;
+            list.splice(i, 1);
+            saveQaData();
+            if (typeof showNotification === 'function') showNotification('已删除', 'success');
+            afterSave();
+        };
+    });
+}
+
+// ─────────── Q&A 问题库 Tab ───────────
 (function _qaInjectLibTab() {
     const tryInject = () => {
         const cfg = window.LIBRARY_CONFIG || (typeof LIBRARY_CONFIG !== 'undefined' ? LIBRARY_CONFIG : null);
@@ -900,7 +1148,6 @@ function _qaRenderYnResult(batch) {
     tryInject();
 })();
 
-// ② 拦截 renderReplyLibrary
 (function _qaPatchRenderReplyLibrary() {
     const tryPatch = () => {
         const fn = window.renderReplyLibrary || (typeof renderReplyLibrary !== 'undefined' ? renderReplyLibrary : null);
@@ -920,7 +1167,6 @@ function _qaRenderYnResult(batch) {
     tryPatch();
 })();
 
-// ③ Q&A 问题库 tab 渲染
 function _qaRenderQaLibTab() {
     if (!qaData) {
         const _l = document.getElementById('custom-replies-list');
@@ -1042,7 +1288,6 @@ function _qaRenderQaLibTab() {
     list.querySelector('#qa-lib-clear').onclick = window._qaClearAllQuestions;
 }
 
-// ④ 跳到 Q&A 问题库 tab
 function _qaOpenMyQuestionLibrary() {
     if (typeof hideModal === 'function') hideModal(document.getElementById('qa-modal'));
 
@@ -1067,7 +1312,7 @@ function _qaOpenMyQuestionLibrary() {
     }, 200);
 }
 
-// ─────────── 入口 & 弹窗路由 ───────────
+// ─────────── 入口 ───────────
 async function openQaModal() {
     const modal = document.getElementById('qa-modal');
     if (!modal) { console.error('❌ qa-modal 不存在'); return; }
@@ -1084,30 +1329,12 @@ window._qaOpenAndRoute = function(type) {
     const map = {
         'his-ask': 'his-question', 'his-reply': 'his-question',
         'mine-reply': 'my-question', 'yn-reply': 'yes-no',
-        'persona-update': 'persona'
+        'persona-update': 'persona',
+        'survey-slow-reply': 'survey-slow',
+        'survey-fast-reply': 'survey-fast'
     };
     const target = map[type];
     openQaModal().then(() => { if (target) _qaRouteTo(target); });
-};
-
-// ─────────── 挂载 ───────────
-window.openQaModal         = openQaModal;
-window.loadQaData          = loadQaData;
-window.saveQaData          = saveQaData;
-window.drawReplyCards      = drawReplyCards;
-window.drawQuestion        = drawQuestion;
-window.checkAllQaStatus    = checkAllQaStatus;
-window.showQaPopup         = showQaPopup;
-window._qaRouteTo          = _qaRouteTo;
-window._qaRenderHome       = _qaRenderHome;
-window._qaUpdateBadges     = _qaUpdateBadges;
-window._qaRenderYnView     = _qaRenderYnView;
-window._qaRenderQaLibTab   = _qaRenderQaLibTab;
-window._qaOpenMyQuestionLibrary = _qaOpenMyQuestionLibrary;
-window._qaRenderPersonaView = function() {
-    if (!qaData) return;
-    if (qaData.persona.completed) _qaRenderPersonaDisplay();
-    else _qaRenderPersonaQuestionnaire();
 };
 
 // ─────────── 批量添加 ───────────
@@ -1209,727 +1436,392 @@ window._qaClearAllQuestions = function() {
     if (typeof showNotification === 'function') showNotification(`已清空 ${n} 条问题`, 'success');
 };
 
-// ─────────── 预加载 ───────────
+// ═══════════════════════════════════════════════════════════════════
+//  调查问卷模块（慢回答 / 快问快答）
+// ═══════════════════════════════════════════════════════════════════
+
+// ─────────── 发卷视图 ───────────
+function _qaRenderSurveyCreate(type) {
+    const content = document.getElementById('qa-modal-content');
+    if (!content || !qaData) return;
+    const isSlow = type === 'slow';
+    const maxQ = 10; // 🔥 统一改成10题
+    const timePerQ = isSlow ? 2 : 0.5; // 分钟
+
+    let draft = {
+        questions: [{ q: '', options: ['', ''] }]
+    };
+
+    function render() {
+        const titleText = isSlow ? '📊 调查问卷' : '⚡ 快问快答';
+        const descText = isSlow ? '最多10题，每题等待2分钟' : '最多10题，每题等待30秒';
+
+        content.innerHTML = `
+            <div class="qa-subview-head">
+                <button class="qa-back-btn" type="button"><i class="fas fa-arrow-left"></i></button>
+                <span>${titleText} · 发卷</span>
+            </div>
+            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:14px;opacity:0.8;">
+                ${descText}<br>用户自定义题目与选项，Ta 会从中随机选择。
+            </div>
+            <div id="qa-survey-form" style="display:flex;flex-direction:column;gap:16px;"></div>
+            <button class="modal-btn modal-btn-secondary" id="qa-survey-add-q" style="width:100%;margin-top:12px;">
+                <i class="fas fa-plus"></i> 添加题目 (${draft.questions.length}/${maxQ})
+            </button>
+            <button class="modal-btn modal-btn-primary" id="qa-survey-submit" style="width:100%;margin-top:10px;">发出问卷</button>
+        `;
+
+        _qaBindBacks(content);
+        const formWrap = content.querySelector('#qa-survey-form');
+
+        formWrap.innerHTML = draft.questions.map((q, qi) => `
+            <div class="qa-survey-block" data-qi="${qi}" style="background:var(--primary-bg);border:1px solid var(--border-color);border-radius:14px;padding:14px;position:relative;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <span style="font-size:13px;font-weight:600;color:var(--accent-color);">第 ${qi + 1} 题</span>
+                    ${draft.questions.length > 1 ? `<button class="qa-survey-del-q" data-qi="${qi}" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:12px;"><i class="fas fa-trash"></i></button>` : ''}
+                </div>
+                <input type="text" class="qa-answer-input qa-survey-q-input" data-qi="${qi}" value="${_qaEsc(q.q)}" placeholder="输入题目，例如：你是谁？" style="width:100%;padding:10px 12px;margin-bottom:10px;">
+                <div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px;">选项（最多6个，至少2个）</div>
+                <div class="qa-survey-options" style="display:flex;flex-direction:column;gap:6px;">
+                    ${q.options.map((opt, oi) => `
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <input type="text" class="qa-answer-input qa-survey-opt-input" data-qi="${qi}" data-oi="${oi}" value="${_qaEsc(opt)}" placeholder="选项 ${oi + 1}" style="flex:1;padding:8px 10px;font-size:13px;">
+                            ${q.options.length > 2 ? `<button class="qa-survey-del-opt" data-qi="${qi}" data-oi="${oi}" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;padding:4px;"><i class="fas fa-times"></i></button>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+                ${q.options.length < 6 ? `<button class="qa-survey-add-opt" data-qi="${qi}" style="background:none;border:none;color:var(--accent-color);cursor:pointer;font-size:12px;margin-top:8px;padding:0;"><i class="fas fa-plus"></i> 添加选项</button>` : ''}
+            </div>
+        `).join('');
+
+        formWrap.querySelectorAll('.qa-survey-q-input').forEach(inp => {
+            inp.oninput = e => { draft.questions[parseInt(e.target.dataset.qi)].q = e.target.value; };
+        });
+        formWrap.querySelectorAll('.qa-survey-opt-input').forEach(inp => {
+            inp.oninput = e => {
+                const qi = parseInt(e.target.dataset.qi);
+                const oi = parseInt(e.target.dataset.oi);
+                draft.questions[qi].options[oi] = e.target.value;
+            };
+        });
+
+        formWrap.querySelectorAll('.qa-survey-del-q').forEach(btn => {
+            btn.onclick = () => {
+                if (draft.questions.length <= 1) return;
+                draft.questions.splice(parseInt(btn.dataset.qi), 1);
+                render();
+            };
+        });
+
+        formWrap.querySelectorAll('.qa-survey-del-opt').forEach(btn => {
+            btn.onclick = () => {
+                const qi = parseInt(btn.dataset.qi);
+                const oi = parseInt(btn.dataset.oi);
+                if (draft.questions[qi].options.length <= 2) return;
+                draft.questions[qi].options.splice(oi, 1);
+                render();
+            };
+        });
+
+        formWrap.querySelectorAll('.qa-survey-add-opt').forEach(btn => {
+            btn.onclick = () => {
+                const qi = parseInt(btn.dataset.qi);
+                if (draft.questions[qi].options.length >= 6) return;
+                draft.questions[qi].options.push('');
+                render();
+            };
+        });
+
+        content.querySelector('#qa-survey-add-q').onclick = () => {
+            if (draft.questions.length >= maxQ) {
+                if (typeof showNotification === 'function') showNotification(`最多 ${maxQ} 道题`, 'warning');
+                return;
+            }
+            draft.questions.push({ q: '', options: ['', ''] });
+            render();
+        };
+
+        content.querySelector('#qa-survey-submit').onclick = () => {
+            if (qaData.surveys[type].currentPending) {
+                if (typeof showNotification === 'function') showNotification('当前还有一份问卷等待回答，请先等 Ta 交卷', 'warning');
+                return;
+            }
+            for (let i = 0; i < draft.questions.length; i++) {
+                const q = draft.questions[i];
+                if (!q.q.trim()) {
+                    if (typeof showNotification === 'function') showNotification(`第 ${i + 1} 题题干不能为空`, 'warning');
+                    return;
+                }
+                const validOpts = q.options.filter(o => o.trim() !== '');
+                if (validOpts.length < 2) {
+                    if (typeof showNotification === 'function') showNotification(`第 ${i + 1} 题至少需要 2 个有效选项`, 'warning');
+                    return;
+                }
+                q.options = validOpts;
+            }
+
+            const delay = draft.questions.length * timePerQ * 60 * 1000;
+            const replyTime = Date.now() + delay;
+            const newSurvey = {
+                id: 'sv_' + type + '_' + Date.now(),
+                type,
+                title: (isSlow ? '📊 调查问卷' : '快问快答') + ' · ' + draft.questions.length + '题',
+                questions: draft.questions,
+                answers: null,
+                status: 'pending',
+                submittedAt: Date.now(),
+                replyTime,
+                viewed: false
+            };
+
+            qaData.surveys[type].currentPending = newSurvey;
+            saveQaData();
+
+            if (typeof showNotification === 'function') showNotification(`已发出，Ta 将在 ${draft.questions.length * timePerQ} 分钟后交卷`, 'success');
+            _qaRenderSurveyHistory(type);
+
+            setTimeout(() => {
+                if (typeof checkAllQaStatus === 'function') checkAllQaStatus();
+                const hasSurveyHistory = document.querySelector('.qa-survey-history-item');
+                if (hasSurveyHistory) {
+                    _qaRenderSurveyHistory(type);
+                }
+            }, delay + 1000);
+        };
+    }
+
+    render();
+}
+
+// ─────────── 历史列表 ───────────
+function _qaRenderSurveyHistory(type) {
+    const content = document.getElementById('qa-modal-content');
+    if (!content || !qaData) return;
+    const isSlow = type === 'slow';
+    const sData = qaData.surveys[type];
+    const titleText = isSlow ? '📊 调查问卷' : '⚡ 快问快答';
+
+    let listHtml = '';
+
+    // 等待中提示
+    if (sData.currentPending) {
+        const p = sData.currentPending;
+        listHtml += `
+            <div style="background:rgba(var(--accent-color-rgb),0.08);border:1px dashed rgba(var(--accent-color-rgb),0.4);border-radius:14px;padding:14px;margin-bottom:10px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div style="font-size:13px;font-weight:600;color:var(--accent-color);">⏳ 等待 Ta 交卷</div>
+                    <div class="qa-dot-spinner" style="transform:scale(0.7);"><span></span><span></span><span></span></div>
+                </div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:6px;">
+                    ${p.questions.length} 道题 · 预计 ${p.questions.length * (isSlow ? 2 : 0.5)} 分钟后交卷
+                </div>
+            </div>
+        `;
+    }
+
+    // 历史记录
+    if (sData.history.length) {
+        listHtml += sData.history.map((h, idx) => {
+            const q1 = h.questions[0]?.q || '';
+            const q2 = h.questions[1]?.q || '';
+            const hasDot = !h.viewed;
+            return `
+                <div class="qa-survey-history-item" data-idx="${idx}" style="background:var(--primary-bg);border:1px solid var(--border-color);border-radius:14px;padding:14px;margin-bottom:10px;cursor:pointer;position:relative;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                        <span style="font-size:12px;font-weight:600;color:var(--text-primary);">${_qaEsc(h.title)}</span>
+                        <span style="font-size:11px;color:var(--text-secondary);">${new Date(h.submittedAt).toLocaleDateString()}</span>
+                    </div>
+                    <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;">
+                        1. ${_qaEsc(q1.length > 15 ? q1.slice(0, 15) + '...' : q1)}<br>
+                        ${q2 ? `2. ${_qaEsc(q2.length > 15 ? q2.slice(0, 15) + '...' : q2)}` : ''}
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
+                        <span style="font-size:11px;font-weight:600;color:#2ecc71;background:rgba(46,204,113,0.1);padding:3px 10px;border-radius:10px;">✓ 已交卷</span>
+                        <span style="font-size:11px;color:var(--accent-color);">${h.questions.length} 题 · 点击查看详情 <i class="fas fa-chevron-right"></i></span>
+                    </div>
+                    ${hasDot ? `<span style="position:absolute;top:10px;right:12px;width:8px;height:8px;border-radius:50%;background:#ff4757;box-shadow:0 0 0 2px var(--primary-bg);"></span>` : ''}
+                </div>
+            `;
+        }).join('');
+    } else if (!sData.currentPending) {
+        listHtml = `<div class="qa-empty" style="padding:40px 0;">还没有问卷记录<br><span style="font-size:11px;opacity:0.6;">点击下方按钮发起第一份问卷</span></div>`;
+    }
+
+    content.innerHTML = `
+        <div class="qa-subview-head">
+            <button class="qa-back-btn" type="button"><i class="fas fa-arrow-left"></i></button>
+            <span>${titleText} · 历史记录</span>
+        </div>
+        <div style="margin-bottom:14px;">
+            ${listHtml}
+        </div>
+        <button class="modal-btn modal-btn-primary" id="qa-survey-new" style="width:100%;">
+            <i class="fas fa-plus"></i> 发起新问卷
+        </button>
+    `;
+
+    _qaBindBacks(content);
+
+    content.querySelectorAll('.qa-survey-history-item').forEach(el => {
+        el.onclick = () => {
+            const idx = parseInt(el.dataset.idx);
+            const survey = sData.history[idx];
+            _qaRenderSurveyDetail(type, survey, idx);
+        };
+    });
+
+    content.querySelector('#qa-survey-new').onclick = () => {
+        if (sData.currentPending) {
+            if (typeof showNotification === 'function') showNotification('当前还有一份问卷等待回答，请先等 Ta 交卷', 'warning');
+            return;
+        }
+        _qaRenderSurveyCreate(type);
+    };
+}
+
+// ─────────── 问卷详情页 ───────────
+function _qaRenderSurveyDetail(type, survey, historyIdx) {
+    const content = document.getElementById('qa-modal-content');
+    if (!content || !qaData) return;
+    const isFirstView = !survey.viewed;
+
+    survey.viewed = true;
+    saveQaData();
+    _qaUpdateBadges();
+    if (typeof window._qaUpdateEntryBadge === 'function') window._qaUpdateEntryBadge();
+
+    const PAGE_SIZE = 5;
+    let currentPage = 0;
+    const totalPages = Math.ceil(survey.questions.length / PAGE_SIZE);
+
+    // 找到真正的滚动容器（#qa-modal-content 本身有 overflow-y:auto）
+    function getScrollContainer() {
+        return content.scrollHeight > content.clientHeight ? content : content.parentElement;
+    }
+
+    // 用原生平滑滚动，性能最好
+    function scrollToItem(el) {
+        const container = getScrollContainer();
+        const containerRect = container.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect();
+        const relativeTop = elRect.top - containerRect.top + container.scrollTop;
+        const targetTop = Math.max(0, relativeTop - container.clientHeight / 2 + el.clientHeight / 2);
+        container.scrollTo({ top: targetTop, behavior: 'smooth' });
+    }
+
+    function renderPage() {
+        const start = currentPage * PAGE_SIZE;
+        const end = Math.min(start + PAGE_SIZE, survey.questions.length);
+        const pageQuestions = survey.questions.slice(start, end);
+
+        const qHtml = pageQuestions.map((q, localIdx) => {
+            const globalIdx = start + localIdx;
+            const userAnswer = survey.answers ? survey.answers[globalIdx] : null;
+
+            const optionsHtml = q.options.map(opt => {
+                const isSelected = userAnswer === opt;
+                return `<span class="qa-survey-opt-bubble ${isSelected ? 'selected' : ''}">${_qaEsc(opt)}</span>`;
+            }).join('');
+
+            return `
+                <div class="qa-survey-detail-q" data-gidx="${globalIdx}" style="${isFirstView ? 'opacity:0;transform:translateY(16px);transition:opacity 0.5s ease, transform 0.5s ease;' : ''}">
+                    <div style="font-size:14px;font-weight:600;color:var(--text-primary);text-align:center;margin-bottom:14px;">
+                        ${globalIdx + 1}. ${_qaEsc(q.q)}
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin-bottom:24px;">
+                        ${optionsHtml}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        content.innerHTML = `
+            <div class="qa-subview-head">
+                <button class="qa-back-btn" type="button"><i class="fas fa-arrow-left"></i></button>
+                <span>${_qaEsc(survey.title)}</span>
+            </div>
+            <div style="font-size:12px;color:var(--text-secondary);text-align:center;margin-bottom:24px;opacity:0.7;">
+                ${new Date(survey.submittedAt).toLocaleString()} · 共 ${survey.questions.length} 题
+            </div>
+            <div id="qa-survey-detail-body" style="display:flex;flex-direction:column;padding-bottom:20px;">
+                ${qHtml}
+            </div>
+
+            <!-- 🔥 修改后的底部区域：抵消弹窗原有的内边距，紧贴底部 -->
+            <div style="margin: 0 -20px -20px; padding: 12px 20px 0; border-top: 1px solid var(--border-color);">
+                ${totalPages > 1 ? `
+                    <div style="display:flex;justify-content:center;align-items:center;gap:16px;margin-bottom:12px;">
+                        <button class="modal-btn modal-btn-secondary" id="qa-page-prev" ${currentPage === 0 ? 'disabled' : ''} style="padding:6px 16px;font-size:12px;">上一页</button>
+                        <span style="font-size:12px;color:var(--text-secondary);">${currentPage + 1} / ${totalPages}</span>
+                        <button class="modal-btn modal-btn-secondary" id="qa-page-next" ${currentPage === totalPages - 1 ? 'disabled' : ''} style="padding:6px 16px;font-size:12px;">下一页</button>
+                    </div>
+                ` : ''}
+                <button class="modal-btn modal-btn-primary" id="qa-survey-back-list" style="width:100%;">返回列表</button>
+            </div>
+        `;
+
+        _qaBindBacks(content);
+        content.querySelector('#qa-survey-back-list').onclick = () => _qaRenderSurveyHistory(type);
+
+        if (totalPages > 1) {
+            const prevBtn = content.querySelector('#qa-page-prev');
+            const nextBtn = content.querySelector('#qa-page-next');
+            if (prevBtn) prevBtn.onclick = () => { currentPage--; renderPage(); };
+            if (nextBtn) nextBtn.onclick = () => { currentPage++; renderPage(); };
+        }
+
+        // 首次查看：逐条显示 + 滑动
+        if (isFirstView && survey.answers) {
+            const container = getScrollContainer();
+            // 复位到顶部
+            container.scrollTo({ top: 0, behavior: 'auto' });
+
+            const items = content.querySelectorAll('.qa-survey-detail-q');
+            items.forEach((el, i) => {
+                setTimeout(() => {
+                    el.style.opacity = '1';
+                    el.style.transform = 'translateY(0)';
+                    // 稍等一下让入场动画开始，再触发滚动
+                    setTimeout(() => scrollToItem(el), 60);
+                }, 400 + i * 900);
+            });
+        } else {
+            content.querySelectorAll('.qa-survey-detail-q').forEach(el => {
+                el.style.opacity = '1';
+                el.style.transform = 'translateY(0)';
+            });
+        }
+    }
+
+    renderPage();
+}
+// 导出
+window.openQaModal         = openQaModal;
+window.loadQaData          = loadQaData;
+window.saveQaData          = saveQaData;
+window.drawReplyCards      = drawReplyCards;
+window.drawQuestion        = drawQuestion;
+window.checkAllQaStatus    = checkAllQaStatus;
+window.showQaPopup         = showQaPopup;
+window._qaRouteTo          = _qaRouteTo;
+window._qaRenderHome       = _qaRenderHome;
+window._qaUpdateBadges     = _qaUpdateBadges;
+window._qaRenderYnView     = _qaRenderYnView;
+window._qaRenderQaLibTab   = _qaRenderQaLibTab;
+window._qaOpenMyQuestionLibrary = _qaOpenMyQuestionLibrary;
+window._qaRenderPersonaView = function() {
+    if (!qaData) return;
+    if (qaData.persona.completed) _qaRenderPersonaDisplay();
+    else _qaRenderPersonaQuestionnaire();
+};
+window._qaRenderSurveyHistory = _qaRenderSurveyHistory;
+
+// ─────────── 预加载 & 后台检测器 ───────────
 setTimeout(() => {
     if (!qaData && typeof loadQaData === 'function') {
         loadQaData().catch(e => console.warn('qaData 预加载失败', e));
     }
 }, 1500);
-
-console.log('✅ Q&A 模块已加载');
-// ═══════════════════════════════════════════════════════════════════
-//  历史记录 · 字卡段落 + 可编辑（选择编辑"我的话"或"梦角的话"）
-// ═══════════════════════════════════════════════════════════════════
-
-function _qaCardsText(h) {
-    if (h.cardsText != null) return h.cardsText;
-    if (h.cards && h.cards.length) return h.cards.join(QA_CARD_SEP);
-    return '（梦角暂时想不出话）';
-}
-
-// 字卡段落（纯展示）
-function _qaCardsBlock(h, idx) {
-    return `
-        <div class="qa-cards-block" data-idx="${idx}" style="margin-top:6px;">
-            <div class="qa-persona-eval-text" style="padding:12px 14px;font-size:13px;line-height:2;white-space:pre-wrap;">${_qaEsc(_qaCardsText(h))}</div>
-        </div>
-    `;
-}
-
-// 编辑按钮 HTML（问题行右侧）
-function _qaEditBtnHTML(idx) {
-    return `
-        <button class="qa-eval-edit-btn qa-edit-toggle" type="button" data-idx="${idx}" style="flex-shrink:0;font-size:11px;padding:2px 8px;">
-            <i class="fas fa-pen" style="font-size:9px;margin-right:2px;"></i>编辑
-        </button>
-    `;
-}
-
-// ─── 编辑选择浮层 ───
-function _qaShowEditPicker(anchorBtn, onPick) {
-    const old = document.getElementById('qa-edit-picker');
-    if (old) old.remove();
-
-    const rect = anchorBtn.getBoundingClientRect();
-    const picker = document.createElement('div');
-    picker.id = 'qa-edit-picker';
-    picker.style.cssText = `
-        position:fixed;
-        top:${Math.min(rect.bottom + 4, window.innerHeight - 100)}px;
-        right:${Math.max(window.innerWidth - rect.right, 8)}px;
-        background:var(--secondary-bg);
-        border:1px solid var(--border-color);
-        border-radius:10px;
-        box-shadow:0 6px 24px rgba(0,0,0,0.22);
-        padding:4px;
-        z-index:99999;
-        min-width:130px;
-        animation:qaPickerIn 0.12s ease;
-    `;
-    picker.innerHTML = `
-        <style>
-            @keyframes qaPickerIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
-            .qa-picker-item {
-                width:100%;padding:8px 12px;border:none;background:transparent;
-                text-align:left;font-size:13px;color:var(--text-primary);
-                cursor:pointer;border-radius:7px;font-family:var(--font-family);
-                display:flex;align-items:center;gap:8px;transition:background 0.12s;
-            }
-            .qa-picker-item:hover { background:rgba(var(--accent-color-rgb),0.1); }
-        </style>
-        <button class="qa-picker-item" data-pick="my">
-            <i class="fas fa-user" style="font-size:11px;color:var(--accent-color);width:14px;"></i>
-            我的话
-        </button>
-        <button class="qa-picker-item" data-pick="cards">
-            <i class="fas fa-heart" style="font-size:11px;color:var(--accent-color);width:14px;"></i>
-            梦角的话
-        </button>
-    `;
-    document.body.appendChild(picker);
-
-    picker.querySelectorAll('.qa-picker-item').forEach(item => {
-        item.onclick = (e) => {
-            e.stopPropagation();
-            picker.remove();
-            onPick(item.dataset.pick);
-        };
-    });
-
-    setTimeout(() => {
-        const closeHandler = (e) => {
-            if (!picker.contains(e.target) && e.target !== anchorBtn) {
-                picker.remove();
-                document.removeEventListener('click', closeHandler);
-            }
-        };
-        document.addEventListener('click', closeHandler);
-    }, 30);
-}
-
-// ─── 编辑"我的话" ───
-function _qaEditMyText(content, list, i, field, afterSave) {
-    const h = list[i];
-    const cur = h[field] || '';
-    const el = content.querySelector(`[data-my-text-idx="${i}"]`);
-    if (!el) return;
-
-    // 提取前缀（如 "我：" 或 "✨ "）保留
-    const prefix = el.dataset.prefix || '';
-
-    el.innerHTML = `
-        ${prefix}
-        <textarea class="qa-answer-input" rows="3" style="width:100%;box-sizing:border-box;line-height:1.7;font-size:13px;margin-top:4px;">${_qaEsc(cur)}</textarea>
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
-            <button class="modal-btn modal-btn-secondary qa-my-cancel" style="font-size:12px;padding:6px 14px;">取消</button>
-            <button class="modal-btn modal-btn-primary qa-my-save" style="font-size:12px;padding:6px 14px;">保存</button>
-        </div>
-    `;
-    const ta = el.querySelector('textarea');
-    ta.focus();
-    ta.setSelectionRange(ta.value.length, ta.value.length);
-
-    el.querySelector('.qa-my-cancel').onclick = () => afterSave();
-    el.querySelector('.qa-my-save').onclick = () => {
-        list[i][field] = ta.value;
-        saveQaData();
-        if (typeof showNotification === 'function') showNotification('✓ 已保存', 'success');
-        afterSave();
-    };
-}
-
-// ─── 编辑"梦角的话"（字卡）───
-function _qaEditCards(content, list, i, afterSave) {
-    const h = list[i];
-    const cur = _qaCardsText(h);
-    const block = content.querySelector(`.qa-cards-block[data-idx="${i}"]`);
-    if (!block) return;
-
-    block.innerHTML = `
-        <textarea class="qa-answer-input" rows="4" style="width:100%;box-sizing:border-box;line-height:1.9;font-size:13px;">${_qaEsc(cur)}</textarea>
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
-            <button class="modal-btn modal-btn-secondary qa-cards-cancel" style="font-size:12px;padding:6px 14px;">取消</button>
-            <button class="modal-btn modal-btn-primary qa-cards-save" style="font-size:12px;padding:6px 14px;">保存</button>
-        </div>
-    `;
-    const ta = block.querySelector('textarea');
-    ta.focus();
-    ta.setSelectionRange(ta.value.length, ta.value.length);
-
-    block.querySelector('.qa-cards-cancel').onclick = () => afterSave();
-    block.querySelector('.qa-cards-save').onclick = () => {
-        list[i].cardsText = ta.value;
-        saveQaData();
-        if (typeof showNotification === 'function') showNotification('✓ 已保存', 'success');
-        afterSave();
-    };
-}
-
-// ─── 绑定编辑按钮 ───
-function _qaBindCardsEdit(content, list, afterSave, myField) {
-    content.querySelectorAll('.qa-edit-toggle').forEach(btn => {
-        btn.onclick = (e) => {
-            e.stopPropagation();
-            const i = parseInt(btn.dataset.idx);
-            if (!list[i]) return;
-
-            _qaShowEditPicker(btn, (pick) => {
-                if (pick === 'my') {
-                    _qaEditMyText(content, list, i, myField, afterSave);
-                } else {
-                    _qaEditCards(content, list, i, afterSave);
-                }
-            });
-        };
-    });
-}
-
-// ─────────── 覆盖：他的问题 ───────────
-function _qaRenderHisView() {
-    const content = document.getElementById('qa-modal-content');
-    if (!content || !qaData) return;
-    const his = qaData.hisQuestions;
-
-    let stateHtml = '';
-    if (his.currentQuestion) {
-        stateHtml = `
-            <div class="qa-state-card qa-state-active">
-                <div class="qa-state-label">💭 梦角问你</div>
-                <div class="qa-question-text">${_qaEsc(his.currentQuestion.question)}</div>
-            </div>
-            <textarea class="qa-answer-input" id="qa-his-answer" placeholder="写下你的回答..." rows="3"></textarea>
-            <button class="modal-btn modal-btn-primary" id="qa-his-submit" style="width:100%;margin-top:10px;">发送回答</button>`;
-    } else if (his.pendingResponse) {
-        stateHtml = `
-            <div class="qa-state-card qa-state-waiting">
-                <div class="qa-state-label">💬 等 Ta 回应</div>
-                <div class="qa-dot-spinner"><span></span><span></span><span></span></div>
-                <div class="qa-wait-hint">Ta 正在想怎么回复你…</div>
-            </div>`;
-    } else if (his.pendingQuestion) {
-        stateHtml = `
-            <div class="qa-state-card qa-state-waiting">
-                <div class="qa-state-label">💭 等 Ta 来问</div>
-                <div class="qa-dot-spinner"><span></span><span></span><span></span></div>
-                <div class="qa-wait-hint">Ta 正在想一个问题问你…</div>
-            </div>`;
-    } else {
-        const canUrge = _qaCanUrgeHis();
-        stateHtml = `
-            <div class="qa-state-card">
-                <div class="qa-state-label">💭 让 Ta 问你</div>
-                <div class="qa-wait-hint" style="margin-top:6px;">让梦角来问你一个问题<br><span style="opacity:0.6;font-size:11px;">Ta 会在 2-8 小时内来问你</span></div>
-            </div>
-            <button class="modal-btn modal-btn-primary" id="qa-his-urge" style="width:100%;margin-top:10px;" ${canUrge ? '' : 'disabled'}>
-                ${canUrge ? '催一题' : '本周已问完'}
-            </button>`;
-    }
-
-    const historyHtml = his.history.length ? his.history.map((h, i) => `
-        <div class="qa-history-item">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-                <div class="qa-history-q" style="flex:1;min-width:0;">💭 ${_qaEsc(h.question)}</div>
-                ${_qaEditBtnHTML(i)}
-            </div>
-            <div class="qa-history-a" data-my-text-idx="${i}" data-prefix="我：">我：${_qaEsc(h.answer)}</div>
-            ${_qaCardsBlock(h, i)}
-        </div>
-    `).join('') : '<div class="qa-empty">还没有记录</div>';
-
-    content.innerHTML = `
-        <div class="qa-subview-head">
-            <button class="qa-back-btn" type="button"><i class="fas fa-arrow-left"></i></button>
-            <span>他的问题</span>
-        </div>
-        <div class="qa-subview-body">
-            ${stateHtml}
-            <div class="qa-history-title" style="display:flex;justify-content:space-between;align-items:center;">
-                <span>历史记录（${his.history.length}）</span>
-                <button class="qa-eval-edit-btn" id="qa-manage-lib" type="button" style="font-size:11px;">
-                    📚 管理问题库 →
-                </button>
-            </div>
-            ${historyHtml}
-        </div>`;
-
-    _qaBindBacks(content);
-    _qaBindCardsEdit(content, his.history, _qaRenderHisView, 'answer');
-
-    const urgeBtn = content.querySelector('#qa-his-urge');
-    if (urgeBtn) urgeBtn.onclick = _qaUrgeHis;
-    const submitBtn = content.querySelector('#qa-his-submit');
-    if (submitBtn) submitBtn.onclick = _qaSubmitHisAnswer;
-    const libBtn = content.querySelector('#qa-manage-lib');
-    if (libBtn) libBtn.onclick = _qaOpenMyQuestionLibrary;
-}
-
-// ─────────── 覆盖：我的问题 ───────────
-function _qaRenderMineView() {
-    const content = document.getElementById('qa-modal-content');
-    if (!content || !qaData) return;
-    const mine = qaData.myQuestions;
-
-    let stateHtml = '';
-    if (mine.currentPending) {
-        stateHtml = `
-            <div class="qa-state-card qa-state-waiting">
-                <div class="qa-state-label">✨ 等 Ta 回答</div>
-                <div class="qa-question-text" style="margin-top:10px;">${_qaEsc(mine.currentPending.question)}</div>
-                <div class="qa-dot-spinner" style="margin-top:14px;"><span></span><span></span><span></span></div>
-                <div class="qa-wait-hint">Ta 正在思考你的问题…</div>
-            </div>`;
-    } else {
-        stateHtml = `
-            <div class="qa-state-card">
-                <div class="qa-state-label">✨ 问 Ta 一个问题</div>
-                <textarea class="qa-answer-input" id="qa-mine-input" placeholder="写下你想问的..." rows="3" style="margin-top:10px;"></textarea>
-            </div>
-            <button class="modal-btn modal-btn-primary" id="qa-mine-submit" style="width:100%;margin-top:10px;">发出</button>`;
-    }
-
-    const historyHtml = mine.history.length ? mine.history.map((h, i) => `
-        <div class="qa-history-item">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-                <div class="qa-history-q" style="flex:1;min-width:0;" data-my-text-idx="${i}" data-prefix="✨ ">✨ ${_qaEsc(h.question)}</div>
-                ${_qaEditBtnHTML(i)}
-            </div>
-            ${_qaCardsBlock(h, i)}
-        </div>
-    `).join('') : '<div class="qa-empty">还没有记录</div>';
-
-    content.innerHTML = `
-        <div class="qa-subview-head">
-            <button class="qa-back-btn" type="button"><i class="fas fa-arrow-left"></i></button>
-            <span>我的问题</span>
-        </div>
-        <div class="qa-subview-body">
-            ${stateHtml}
-            <div class="qa-history-title">已回答（${mine.history.length}）</div>
-            ${historyHtml}
-        </div>`;
-
-    _qaBindBacks(content);
-    _qaBindCardsEdit(content, mine.history, _qaRenderMineView, 'question');
-
-    const submitBtn = content.querySelector('#qa-mine-submit');
-    if (submitBtn) submitBtn.onclick = _qaSubmitMineQuestion;
-}
-
-window._qaRenderHisView = _qaRenderHisView;
-window._qaRenderMineView = _qaRenderMineView;
-
-console.log('✅ 历史记录 · 编辑可选择"我的话"或"梦角的话"');
-
-// ═══════════════════════════════════════════════════════════════════
-//  历史记录 · 删除按钮（他的问题 / 我的问题 / 问一句）
-// ═══════════════════════════════════════════════════════════════════
-
-function _qaCardsText(h) {
-    if (h.cardsText != null) return h.cardsText;
-    if (h.cards && h.cards.length) return h.cards.join(QA_CARD_SEP);
-    return '（梦角暂时想不出话）';
-}
-
-function _qaCardsBlock(h, idx) {
-    return `
-        <div class="qa-cards-block" data-idx="${idx}" style="margin-top:6px;">
-            <div class="qa-persona-eval-text" style="padding:12px 14px;font-size:13px;line-height:2;white-space:pre-wrap;">${_qaEsc(_qaCardsText(h))}</div>
-        </div>
-    `;
-}
-
-// 历史条目右上角按钮组：编辑 + 删除
-function _qaHistoryActionsHTML(idx) {
-    return `
-        <div style="display:flex;gap:4px;flex-shrink:0;">
-            <button class="qa-eval-edit-btn qa-edit-toggle" type="button" data-idx="${idx}" style="font-size:11px;padding:2px 8px;">
-                <i class="fas fa-pen" style="font-size:9px;margin-right:2px;"></i>编辑
-            </button>
-            <button class="qa-eval-edit-btn qa-del-toggle" type="button" data-idx="${idx}" style="font-size:11px;padding:2px 8px;color:#ef4444;">
-                <i class="fas fa-trash" style="font-size:9px;"></i>
-            </button>
-        </div>
-    `;
-}
-
-// ─── 编辑选择浮层 ───
-function _qaShowEditPicker(anchorBtn, onPick) {
-    const old = document.getElementById('qa-edit-picker');
-    if (old) old.remove();
-
-    const rect = anchorBtn.getBoundingClientRect();
-    const picker = document.createElement('div');
-    picker.id = 'qa-edit-picker';
-    picker.style.cssText = `
-        position:fixed;
-        top:${Math.min(rect.bottom + 4, window.innerHeight - 100)}px;
-        right:${Math.max(window.innerWidth - rect.right, 8)}px;
-        background:var(--secondary-bg);
-        border:1px solid var(--border-color);
-        border-radius:10px;
-        box-shadow:0 6px 24px rgba(0,0,0,0.22);
-        padding:4px;
-        z-index:99999;
-        min-width:130px;
-    `;
-    picker.innerHTML = `
-        <button class="qa-picker-item" data-pick="my" style="width:100%;padding:8px 12px;border:none;background:transparent;text-align:left;font-size:13px;color:var(--text-primary);cursor:pointer;border-radius:7px;font-family:var(--font-family);display:flex;align-items:center;gap:8px;">
-            <i class="fas fa-user" style="font-size:11px;color:var(--accent-color);width:14px;"></i>我的话
-        </button>
-        <button class="qa-picker-item" data-pick="cards" style="width:100%;padding:8px 12px;border:none;background:transparent;text-align:left;font-size:13px;color:var(--text-primary);cursor:pointer;border-radius:7px;font-family:var(--font-family);display:flex;align-items:center;gap:8px;">
-            <i class="fas fa-heart" style="font-size:11px;color:var(--accent-color);width:14px;"></i>梦角的话
-        </button>
-    `;
-    document.body.appendChild(picker);
-
-    picker.querySelectorAll('.qa-picker-item').forEach(item => {
-        item.onclick = (e) => {
-            e.stopPropagation();
-            picker.remove();
-            onPick(item.dataset.pick);
-        };
-    });
-
-    setTimeout(() => {
-        const closeHandler = (e) => {
-            if (!picker.contains(e.target) && e.target !== anchorBtn) {
-                picker.remove();
-                document.removeEventListener('click', closeHandler);
-            }
-        };
-        document.addEventListener('click', closeHandler);
-    }, 30);
-}
-
-function _qaEditMyText(content, list, i, field, afterSave) {
-    const h = list[i];
-    const cur = h[field] || '';
-    const el = content.querySelector(`[data-my-text-idx="${i}"]`);
-    if (!el) return;
-    const prefix = el.dataset.prefix || '';
-
-    el.innerHTML = `
-        ${prefix}
-        <textarea class="qa-answer-input" rows="3" style="width:100%;box-sizing:border-box;line-height:1.7;font-size:13px;margin-top:4px;">${_qaEsc(cur)}</textarea>
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
-            <button class="modal-btn modal-btn-secondary qa-my-cancel" style="font-size:12px;padding:6px 14px;">取消</button>
-            <button class="modal-btn modal-btn-primary qa-my-save" style="font-size:12px;padding:6px 14px;">保存</button>
-        </div>
-    `;
-    const ta = el.querySelector('textarea');
-    ta.focus();
-    ta.setSelectionRange(ta.value.length, ta.value.length);
-
-    el.querySelector('.qa-my-cancel').onclick = () => afterSave();
-    el.querySelector('.qa-my-save').onclick = () => {
-        list[i][field] = ta.value;
-        saveQaData();
-        if (typeof showNotification === 'function') showNotification('✓ 已保存', 'success');
-        afterSave();
-    };
-}
-
-function _qaEditCards(content, list, i, afterSave) {
-    const h = list[i];
-    const cur = _qaCardsText(h);
-    const block = content.querySelector(`.qa-cards-block[data-idx="${i}"]`);
-    if (!block) return;
-
-    block.innerHTML = `
-        <textarea class="qa-answer-input" rows="4" style="width:100%;box-sizing:border-box;line-height:1.9;font-size:13px;">${_qaEsc(cur)}</textarea>
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
-            <button class="modal-btn modal-btn-secondary qa-cards-cancel" style="font-size:12px;padding:6px 14px;">取消</button>
-            <button class="modal-btn modal-btn-primary qa-cards-save" style="font-size:12px;padding:6px 14px;">保存</button>
-        </div>
-    `;
-    const ta = block.querySelector('textarea');
-    ta.focus();
-    ta.setSelectionRange(ta.value.length, ta.value.length);
-
-    block.querySelector('.qa-cards-cancel').onclick = () => afterSave();
-    block.querySelector('.qa-cards-save').onclick = () => {
-        list[i].cardsText = ta.value;
-        saveQaData();
-        if (typeof showNotification === 'function') showNotification('✓ 已保存', 'success');
-        afterSave();
-    };
-}
-
-// 绑定：编辑 + 删除
-function _qaBindHistoryActions(content, list, afterSave, myField) {
-    content.querySelectorAll('.qa-edit-toggle').forEach(btn => {
-        btn.onclick = (e) => {
-            e.stopPropagation();
-            const i = parseInt(btn.dataset.idx);
-            if (!list[i]) return;
-            _qaShowEditPicker(btn, (pick) => {
-                if (pick === 'my') _qaEditMyText(content, list, i, myField, afterSave);
-                else _qaEditCards(content, list, i, afterSave);
-            });
-        };
-    });
-
-    content.querySelectorAll('.qa-del-toggle').forEach(btn => {
-        btn.onclick = (e) => {
-            e.stopPropagation();
-            const i = parseInt(btn.dataset.idx);
-            if (!list[i]) return;
-            if (!confirm('删除这条记录？')) return;
-            list.splice(i, 1);
-            saveQaData();
-            if (typeof showNotification === 'function') showNotification('已删除', 'success');
-            afterSave();
-        };
-    });
-}
-
-// ─────────── 他的问题 ───────────
-function _qaRenderHisView() {
-    const content = document.getElementById('qa-modal-content');
-    if (!content || !qaData) return;
-    const his = qaData.hisQuestions;
-
-    let stateHtml = '';
-    if (his.currentQuestion) {
-        stateHtml = `
-            <div class="qa-state-card qa-state-active">
-                <div class="qa-state-label">💭 梦角问你</div>
-                <div class="qa-question-text">${_qaEsc(his.currentQuestion.question)}</div>
-            </div>
-            <textarea class="qa-answer-input" id="qa-his-answer" placeholder="写下你的回答..." rows="3"></textarea>
-            <button class="modal-btn modal-btn-primary" id="qa-his-submit" style="width:100%;margin-top:10px;">发送回答</button>`;
-    } else if (his.pendingResponse) {
-        stateHtml = `
-            <div class="qa-state-card qa-state-waiting">
-                <div class="qa-state-label">💬 等 Ta 回应</div>
-                <div class="qa-dot-spinner"><span></span><span></span><span></span></div>
-                <div class="qa-wait-hint">Ta 正在想怎么回复你…</div>
-            </div>`;
-    } else if (his.pendingQuestion) {
-        stateHtml = `
-            <div class="qa-state-card qa-state-waiting">
-                <div class="qa-state-label">💭 等 Ta 来问</div>
-                <div class="qa-dot-spinner"><span></span><span></span><span></span></div>
-                <div class="qa-wait-hint">Ta 正在想一个问题问你…</div>
-            </div>`;
-    } else {
-        const canUrge = _qaCanUrgeHis();
-        stateHtml = `
-            <div class="qa-state-card">
-                <div class="qa-state-label">💭 让 Ta 问你</div>
-                <div class="qa-wait-hint" style="margin-top:6px;">让梦角来问你一个问题<br><span style="opacity:0.6;font-size:11px;">Ta 会在 2-8 小时内来问你</span></div>
-            </div>
-            <button class="modal-btn modal-btn-primary" id="qa-his-urge" style="width:100%;margin-top:10px;" ${canUrge ? '' : 'disabled'}>
-                ${canUrge ? '催一题' : '本周已问完'}
-            </button>`;
-    }
-
-    const historyHtml = his.history.length ? his.history.map((h, i) => `
-        <div class="qa-history-item">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-                <div class="qa-history-q" style="flex:1;min-width:0;">💭 ${_qaEsc(h.question)}</div>
-                ${_qaHistoryActionsHTML(i)}
-            </div>
-            <div class="qa-history-a" data-my-text-idx="${i}" data-prefix="我：">我：${_qaEsc(h.answer)}</div>
-            ${_qaCardsBlock(h, i)}
-        </div>
-    `).join('') : '<div class="qa-empty">还没有记录</div>';
-
-    content.innerHTML = `
-        <div class="qa-subview-head">
-            <button class="qa-back-btn" type="button"><i class="fas fa-arrow-left"></i></button>
-            <span>他的问题</span>
-        </div>
-        <div class="qa-subview-body">
-            ${stateHtml}
-            <div class="qa-history-title" style="display:flex;justify-content:space-between;align-items:center;">
-                <span>历史记录（${his.history.length}）</span>
-                <button class="qa-eval-edit-btn" id="qa-manage-lib" type="button" style="font-size:11px;">
-                    📚 管理问题库 →
-                </button>
-            </div>
-            ${historyHtml}
-        </div>`;
-
-    _qaBindBacks(content);
-    _qaBindHistoryActions(content, his.history, _qaRenderHisView, 'answer');
-
-    const urgeBtn = content.querySelector('#qa-his-urge');
-    if (urgeBtn) urgeBtn.onclick = _qaUrgeHis;
-    const submitBtn = content.querySelector('#qa-his-submit');
-    if (submitBtn) submitBtn.onclick = _qaSubmitHisAnswer;
-    const libBtn = content.querySelector('#qa-manage-lib');
-    if (libBtn) libBtn.onclick = _qaOpenMyQuestionLibrary;
-}
-
-// ─────────── 我的问题 ───────────
-function _qaRenderMineView() {
-    const content = document.getElementById('qa-modal-content');
-    if (!content || !qaData) return;
-    const mine = qaData.myQuestions;
-
-    let stateHtml = '';
-    if (mine.currentPending) {
-        stateHtml = `
-            <div class="qa-state-card qa-state-waiting">
-                <div class="qa-state-label">✨ 等 Ta 回答</div>
-                <div class="qa-question-text" style="margin-top:10px;">${_qaEsc(mine.currentPending.question)}</div>
-                <div class="qa-dot-spinner" style="margin-top:14px;"><span></span><span></span><span></span></div>
-                <div class="qa-wait-hint">Ta 正在思考你的问题…</div>
-            </div>`;
-    } else {
-        stateHtml = `
-            <div class="qa-state-card">
-                <div class="qa-state-label">✨ 问 Ta 一个问题</div>
-                <textarea class="qa-answer-input" id="qa-mine-input" placeholder="写下你想问的..." rows="3" style="margin-top:10px;"></textarea>
-            </div>
-            <button class="modal-btn modal-btn-primary" id="qa-mine-submit" style="width:100%;margin-top:10px;">发出</button>`;
-    }
-
-    const historyHtml = mine.history.length ? mine.history.map((h, i) => `
-        <div class="qa-history-item">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-                <div class="qa-history-q" style="flex:1;min-width:0;" data-my-text-idx="${i}" data-prefix="✨ ">✨ ${_qaEsc(h.question)}</div>
-                ${_qaHistoryActionsHTML(i)}
-            </div>
-            ${_qaCardsBlock(h, i)}
-        </div>
-    `).join('') : '<div class="qa-empty">还没有记录</div>';
-
-    content.innerHTML = `
-        <div class="qa-subview-head">
-            <button class="qa-back-btn" type="button"><i class="fas fa-arrow-left"></i></button>
-            <span>我的问题</span>
-        </div>
-        <div class="qa-subview-body">
-            ${stateHtml}
-            <div class="qa-history-title">已回答（${mine.history.length}）</div>
-            ${historyHtml}
-        </div>`;
-
-    _qaBindBacks(content);
-    _qaBindHistoryActions(content, mine.history, _qaRenderMineView, 'question');
-
-    const submitBtn = content.querySelector('#qa-mine-submit');
-    if (submitBtn) submitBtn.onclick = _qaSubmitMineQuestion;
-}
-
-// ─────────── 问一句 ───────────
-function _qaRenderYnInput() {
-    const content = document.getElementById('qa-modal-content');
-    if (!content || !qaData) return;
-    const yn = qaData.yesNo;
-
-    content.innerHTML = `
-        <div class="qa-subview-head">
-            <button class="qa-back-btn" type="button"><i class="fas fa-arrow-left"></i></button>
-            <span>问一句</span>
-        </div>
-        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;opacity:0.8;">
-            写下 1-10 道是非题，梦角会在 2-5 分钟内回答 ✦
-        </div>
-        <div id="qa-yn-inputs"></div>
-        <button class="modal-btn modal-btn-secondary" id="qa-yn-add" style="width:100%;margin-top:6px;">
-            <i class="fas fa-plus"></i> 添加一道
-        </button>
-        <button class="modal-btn modal-btn-primary" id="qa-yn-submit" style="width:100%;margin-top:10px;">发出</button>
-        <div class="qa-history-title">历史记录（${yn.history.filter(b => b.status === 'replied').length}）</div>
-        <div id="qa-yn-history"></div>
-    `;
-
-    _qaBindBacks(content);
-
-    const inputWrap = content.querySelector('#qa-yn-inputs');
-    let items = [''];
-
-    function renderInputs() {
-        inputWrap.innerHTML = items.map((v, i) => `
-            <div class="qa-yn-input-row">
-                <div class="qa-yn-num">${i + 1}</div>
-                <input type="text" class="qa-answer-input" data-idx="${i}" value="${_qaEsc(v)}" placeholder="例如：是不是很晚睡觉？" style="flex:1;padding:10px 12px;">
-                ${items.length > 1 ? `<button class="qa-yn-remove" type="button" data-remove="${i}"><i class="fas fa-times"></i></button>` : ''}
-            </div>
-        `).join('');
-        inputWrap.querySelectorAll('input').forEach(inp => {
-            inp.oninput = e => { items[parseInt(e.target.dataset.idx)] = e.target.value; };
-        });
-        inputWrap.querySelectorAll('[data-remove]').forEach(btn => {
-            btn.onclick = () => { items.splice(parseInt(btn.dataset.remove), 1); renderInputs(); };
-        });
-    }
-    renderInputs();
-
-    content.querySelector('#qa-yn-add').onclick = () => {
-        if (items.length >= 10) {
-            if (typeof showNotification === 'function') showNotification('最多 10 道', 'warning');
-            return;
-        }
-        items.push('');
-        renderInputs();
-        setTimeout(() => {
-            const last = inputWrap.querySelectorAll('input')[items.length - 1];
-            if (last) last.focus();
-        }, 60);
-    };
-
-    content.querySelector('#qa-yn-submit').onclick = () => {
-        const questions = items.map(s => s.trim()).filter(Boolean);
-        if (!questions.length) {
-            if (typeof showNotification === 'function') showNotification('至少写一道题', 'warning');
-            return;
-        }
-        _qaSubmitYesNo(questions);
-    };
-
-    // 历史（带删除）
-    const historyWrap = content.querySelector('#qa-yn-history');
-    // 保存原始 index 引用
-    const replied = [];
-    yn.history.forEach((b, idx) => {
-        if (b.status === 'replied') replied.push({ batch: b, realIdx: idx });
-    });
-
-    if (!replied.length) {
-        historyWrap.innerHTML = '<div class="qa-empty">还没有记录</div>';
-    } else {
-        historyWrap.innerHTML = replied.map(({ batch, realIdx }) => `
-            <div class="qa-history-item" style="margin-bottom:10px;">
-                <div style="display:flex;justify-content:flex-end;margin-bottom:6px;">
-                    <button class="qa-eval-edit-btn qa-yn-del" type="button" data-idx="${realIdx}" style="font-size:11px;padding:2px 8px;color:#ef4444;">
-                        <i class="fas fa-trash" style="font-size:9px;"></i>
-                    </button>
-                </div>
-                ${batch.questions.map((q, i) => `
-                    <div class="qa-yn-history-row">
-                        <span class="qa-q">${_qaEsc(q)}</span>
-                        <span class="qa-a">${_qaEsc((batch.answers && batch.answers[i]) || '—')}</span>
-                    </div>
-                `).join('')}
-            </div>
-        `).join('');
-
-        historyWrap.querySelectorAll('.qa-yn-del').forEach(btn => {
-            btn.onclick = () => {
-                const i = parseInt(btn.dataset.idx);
-                if (!confirm('删除这条记录？')) return;
-                qaData.yesNo.history.splice(i, 1);
-                saveQaData();
-                if (typeof showNotification === 'function') showNotification('已删除', 'success');
-                _qaRenderYnInput();
-            };
-        });
-    }
-}
-
-window._qaRenderHisView = _qaRenderHisView;
-window._qaRenderMineView = _qaRenderMineView;
-window._qaRenderYnInput = _qaRenderYnInput;
-
-console.log('✅ 历史记录 · 可删除');
-
-// ═══════════════════════════════════════════════════════════════════
-//  Q&A 后台检测器（像信封一样在主界面自动弹窗）
-// ═══════════════════════════════════════════════════════════════════
 
 (function() {
     let _qaBgTimer = null;
@@ -1940,7 +1832,6 @@ console.log('✅ 历史记录 · 可删除');
         if (_qaBgBusy) return;
         _qaBgBusy = true;
         try {
-            // 确保数据已加载
             if (!qaData) {
                 if (typeof loadQaData === 'function') {
                     await loadQaData();
@@ -1949,7 +1840,6 @@ console.log('✅ 历史记录 · 可删除');
             if (qaData && typeof checkAllQaStatus === 'function') {
                 checkAllQaStatus();
             }
-            // 顺便刷新入口红点
             _qaUpdateEntryBadge();
         } catch (e) {
             console.warn('Q&A 后台检查失败:', e);
@@ -1958,7 +1848,6 @@ console.log('✅ 历史记录 · 可删除');
         }
     }
 
-    // 高级功能里 Q&A 入口的红点 / 转圈
     function _qaUpdateEntryBadge() {
         const entry = document.getElementById('qa-function');
         if (!entry || !qaData) return;
@@ -1966,16 +1855,21 @@ console.log('✅ 历史记录 · 可删除');
         const his = qaData.hisQuestions || {};
         const mine = qaData.myQuestions || {};
         const yn = qaData.yesNo || {};
+        const sv = qaData.surveys || {};
 
         const hasDot =
             !!his.currentQuestion ||
-            (yn.history || []).some(b => b.status === 'replied' && !b.viewed);
+            (yn.history || []).some(b => b.status === 'replied' && !b.viewed) ||
+            (sv.slow?.history || []).some(h => !h.viewed) ||
+            (sv.fast?.history || []).some(h => !h.viewed);
 
         const hasSpin =
             !!his.pendingQuestion ||
             !!his.pendingResponse ||
             !!mine.currentPending ||
-            (yn.history || []).some(b => b.status === 'pending');
+            (yn.history || []).some(b => b.status === 'pending') ||
+            !!sv.slow?.currentPending ||
+            !!sv.fast?.currentPending;
 
         let dot = entry.querySelector('.qa-entry-dot');
         let spin = entry.querySelector('.qa-entry-spin');
@@ -2010,16 +1904,11 @@ console.log('✅ 历史记录 · 可删除');
     function _qaStart() {
         if (_qaBgStarted) return;
         _qaBgStarted = true;
-
-        // 启动后 3 秒跑一次
         setTimeout(_qaBackgroundCheck, 3000);
-        // 每 60 秒跑一次
         _qaBgTimer = setInterval(_qaBackgroundCheck, 60000);
-
         console.log('✅ Q&A 后台检测器已启动');
     }
 
-    // 页面从后台切回 → 立即检查
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
             _qaBackgroundCheck();
@@ -2032,7 +1921,8 @@ console.log('✅ 历史记录 · 可删除');
         setTimeout(_qaStart, 3000);
     }
 
-    // 暴露给外部
     window._qaBackgroundCheck = _qaBackgroundCheck;
     window._qaUpdateEntryBadge = _qaUpdateEntryBadge;
 })();
+
+console.log('✅ Q&A 模块已加载（含调查问卷）');

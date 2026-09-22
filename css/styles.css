@@ -11883,3 +11883,20 @@ html, body {
     padding: 12px 18px !important;
     white-space: nowrap;
 }
+
+.qa-survey-opt-bubble {
+    display: inline-block;
+    padding: 6px 18px;
+    border-radius: 20px;
+    border: 1.5px solid var(--border-color);
+    background: var(--primary-bg);
+    color: var(--text-secondary);
+    font-size: 13px;
+    transition: all 0.2s ease;
+}
+.qa-survey-opt-bubble.selected {
+    border: 2px solid var(--text-primary);
+    color: var(--text-primary);
+    font-weight: 700;
+    background: var(--secondary-bg);
+}
