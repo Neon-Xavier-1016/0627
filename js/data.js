@@ -289,9 +289,9 @@
             if (exportAllReal) exportAllReal.addEventListener('click', function () {
                 closeDrawer('dm-drawer-full');
                 if (window.ChatBackup && typeof ChatBackup.exportBackupToFile === 'function') {
-                    ChatBackup.exportBackupToFile();   // 使用新引擎，自动包含所有模块
+                    ChatBackup.exportBackupToFile();   // ← 必须是这个
                 } else if (typeof exportAllData === 'function') {
-                    exportAllData();                   // 降级回旧方法
+                    exportAllData();
                 }
             });
 

@@ -192,8 +192,11 @@
     function shouldSkipKeyGroupChat(key, flags) {
         if (!key) return true;
 
-        // 强制包含：朋友圈、信封接收、月经周期
-        var forceInclude = ['moments', 'incoming', 'outbox', 'envelope', 'period', 'periodRecords', 'period_records'];
+        var forceInclude = [
+            'moments', 'incoming', 'outbox', 'envelope',
+            'period', 'periodRecords', 'period_records',
+            'sticker'          // ← 只需这一个词
+        ];
         if (forceInclude.some(function(p) { return key.indexOf(p) !== -1; })) {
             return false;
         }
