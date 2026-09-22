@@ -1014,8 +1014,11 @@ if (_chatSettingsEl) _chatSettingsEl.addEventListener('click', () => {
                     updateAvatarPreview(shape);
                     renderMessages(true);
                     throttledSaveData();
-                });
-            });
+                            if (window.moments && typeof window.moments.reloadAvatarSettings === 'function') {
+                                window.moments.reloadAvatarSettings();
+                            }
+                        });
+                    });
             const cornerSlider = document.getElementById('avatar-corner-radius-slider-2');
             const cornerVal = document.getElementById('avatar-corner-radius-value-2');
             if (cornerSlider) {
@@ -1025,12 +1028,16 @@ if (_chatSettingsEl) _chatSettingsEl.addEventListener('click', () => {
                     const r = cornerSlider.value;
                     if (cornerVal) cornerVal.textContent = r + 'px';
                     document.documentElement.style.setProperty('--avatar-corner-radius', r + 'px');
+                    settings.avatarCornerRadius = r;   // ← 提前写进 settings，朋友圈能立刻读到
                     updateAvatarPreview(settings.myAvatarShape || 'circle', parseInt(r));
                     renderMessages(true);
                 });
                 cornerSlider.addEventListener('change', () => {
                     settings.avatarCornerRadius = cornerSlider.value;
                     throttledSaveData();
+                    if (window.moments && typeof window.moments.reloadAvatarSettings === 'function') {
+                        window.moments.reloadAvatarSettings();
+                    }
                 });
             }
             updateAvatarShapeBtns();

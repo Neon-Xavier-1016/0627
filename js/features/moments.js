@@ -243,30 +243,28 @@
     };
 
     function loadChatAvatarSettings() {
-        return localforage.keys().then(function(keys) {
-            var chatKey = null;
-            for (var i = 0; i < keys.length; i++) {
-                if (/chatSettings/i.test(keys[i])) { chatKey = keys[i]; break; }
-            }
-            if (!chatKey) return null;
-            return localforage.getItem(chatKey);
-        }).then(function(data) {
-            if (!data) return;
-            chatAvatarSettings.size = parseInt(data.inChatAvatarSize, 10) || 36;
-            chatAvatarSettings.myShape = data.myAvatarShape || 'circle';
-            chatAvatarSettings.partnerShape = data.partnerAvatarShape || data.myAvatarShape || 'circle';
+        var src = (window.settings && typeof window.settings === 'object') ? window.settings : {};
 
-            var r = data.inChatAvatarCornerRadius;
-            if (r === undefined) r = data.myAvatarCornerRadius;
-            if (r === undefined) r = data.avatarCornerRadius;
-            if (r === undefined) r = data.cornerRadius;
-            chatAvatarSettings.cornerRadius = parseInt(r, 10);
-            if (isNaN(chatAvatarSettings.cornerRadius)) chatAvatarSettings.cornerRadius = 8;
+        var size = parseInt(src.inChatAvatarSize, 10);
+        if (!size || isNaN(size)) size = 36;
 
-            console.log('[朋友圈] 已读取聊天头像设置:', chatAvatarSettings);
-        }).catch(function(err) {
-            console.warn('[朋友圈] 读取聊天头像设置失败:', err);
-        });
+        var myShape = src.myAvatarShape || 'circle';
+        var partnerShape = src.partnerAvatarShape || src.myAvatarShape || 'circle';
+
+        var r = src.inChatAvatarCornerRadius;
+        if (r === undefined) r = src.myAvatarCornerRadius;
+        if (r === undefined) r = src.avatarCornerRadius;
+        if (r === undefined) r = src.cornerRadius;
+        r = parseInt(r, 10);
+        if (isNaN(r)) r = 8;
+
+        chatAvatarSettings.size = size;
+        chatAvatarSettings.myShape = myShape;
+        chatAvatarSettings.partnerShape = partnerShape;
+        chatAvatarSettings.cornerRadius = r;
+
+        console.log('[朋友圈] 头像设置(来自 settings):', chatAvatarSettings);
+        return Promise.resolve(chatAvatarSettings);
     }
 
     function getMomentAvatarStyle(publisher) {
@@ -402,32 +400,32 @@
                 '<button class="comment-send-btn" style="padding:8px 16px;background:var(--accent-color);color:#fff;border:none;border-radius:18px;font-size:13px;cursor:pointer;font-weight:600;flex-shrink:0;box-sizing:border-box;">发送</button>' +
             '</div>';
 
-        var footerHtml =
-            '<div class="moment-footer" style="display:flex;justify-content:space-between;align-items:center;padding:4px 0 0 0;margin-top:4px;border-top:1px solid var(--border-color);">' +
-                '<div class="moment-footer-left" style="flex:1;min-width:0;">' + (likesHtml || '') + '</div>' +
-                '<div class="moment-footer-right" style="flex-shrink:0;display:flex;align-items:center;">' + actionMenuHtml + '</div>' +
-            '</div>';
+                var footerHtml =
+                    '<div class="moment-footer" style="display:flex;justify-content:space-between;align-items:center;padding:4px 0 0 0;margin-top:4px;border-top:1px solid var(--border-color);">' +
+                        '<div class="moment-footer-left" style="flex:1;min-width:0;">' + (likesHtml || '') + '</div>' +
+                        '<div class="moment-footer-right" style="flex-shrink:0;display:flex;align-items:center;">' + actionMenuHtml + '</div>' +
+                    '</div>';
 
-        return '<div class="moment-card" data-moment-id="' + moment.id + '" style="padding:12px 16px 8px;border-bottom:1px solid var(--border-color);">' +
-            '<div class="moment-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
-                '<div class="moment-user" style="display:flex;align-items:center;gap:6px;margin:0;padding:0;flex:1;min-width:0;">' +
-                    '<img class="moment-avatar" src="' + avatarUrl + '" style="width:' + avStyle.width + ';height:' + avStyle.height + ';border-radius:' + avStyle.borderRadius + ';object-fit:cover;background:#eee;margin:0;padding:0;flex-shrink:0;display:block;">' +
-                    '<span class="moment-name" style="font-weight:700;font-size:15px;color:#576b95;margin:0;padding:0;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + name +
-                        (moment.isFavorited ? ' <i class="fas fa-star" style="color:#f7b500;font-size:11px;margin-left:2px;" title="已收藏"></i>' : '') +
-                    '</span>' +
-                '</div>' +
-                '<div style="display:flex;align-items:center;gap:6px;">' +
-                    '<span class="moment-time" style="font-size:12px;color:#999;">' + timeStr + '</span>' +
-                    '<span class="moment-more" data-moment-id="' + moment.id + '" style="cursor:pointer;color:#999;font-size:14px;padding:0 2px;"><i class="fas fa-ellipsis-v"></i></span>' +
-                '</div>' +
-            '</div>' +
-            (moment.content ? '<div class="moment-content" style="font-size:14px;line-height:1.7;color:var(--text-primary);margin-bottom:4px;word-break:break-word;">' + moment.content + '</div>' : '') +
-            imagesHtml +
-            footerHtml +
-            commentsHtml +
-            commentInputHtml +
-            '</div>';
-    }
+                return '<div class="moment-card" data-moment-id="' + moment.id + '" style="padding:12px 16px 8px;border-bottom:1px solid var(--border-color);">' +
+                    '<div class="moment-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
+                        '<div class="moment-user" style="display:flex;align-items:center;gap:6px;margin:0;padding:0;flex:1;min-width:0;">' +
+                            '<img class="moment-avatar" src="' + avatarUrl + '" style="width:' + avStyle.width + ';height:' + avStyle.height + ';border-radius:' + avStyle.borderRadius + ';object-fit:cover;background:#eee;margin:0;padding:0;flex-shrink:0;display:block;">' +
+                            '<span class="moment-name" style="font-weight:700;font-size:15px;color:#576b95;margin:0;padding:0;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + name +
+                                (moment.isFavorited ? ' <i class="fas fa-star" style="color:#f7b500;font-size:11px;margin-left:2px;" title="已收藏"></i>' : '') +
+                            '</span>' +
+                        '</div>' +
+                        '<div style="display:flex;align-items:center;gap:6px;">' +
+                            '<span class="moment-time" style="font-size:12px;color:#999;">' + timeStr + '</span>' +
+                            '<span class="moment-more" data-moment-id="' + moment.id + '" style="cursor:pointer;color:#999;font-size:14px;padding:0 2px;"><i class="fas fa-ellipsis-v"></i></span>' +
+                        '</div>' +
+                    '</div>' +
+                    (moment.content ? '<div class="moment-content" style="font-size:14px;line-height:1.7;color:var(--text-primary);margin-bottom:4px;word-break:break-word;">' + moment.content + '</div>' : '') +
+                    imagesHtml +
+                    footerHtml +
+                    commentsHtml +
+                    commentInputHtml +
+                    '</div>';
+            }
 
     // ==================== 图片预览 ====================
     function showImagePreview(src) {

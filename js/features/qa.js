@@ -1926,3 +1926,113 @@ window._qaRenderMineView = _qaRenderMineView;
 window._qaRenderYnInput = _qaRenderYnInput;
 
 console.log('✅ 历史记录 · 可删除');
+
+// ═══════════════════════════════════════════════════════════════════
+//  Q&A 后台检测器（像信封一样在主界面自动弹窗）
+// ═══════════════════════════════════════════════════════════════════
+
+(function() {
+    let _qaBgTimer = null;
+    let _qaBgBusy = false;
+    let _qaBgStarted = false;
+
+    async function _qaBackgroundCheck() {
+        if (_qaBgBusy) return;
+        _qaBgBusy = true;
+        try {
+            // 确保数据已加载
+            if (!qaData) {
+                if (typeof loadQaData === 'function') {
+                    await loadQaData();
+                }
+            }
+            if (qaData && typeof checkAllQaStatus === 'function') {
+                checkAllQaStatus();
+            }
+            // 顺便刷新入口红点
+            _qaUpdateEntryBadge();
+        } catch (e) {
+            console.warn('Q&A 后台检查失败:', e);
+        } finally {
+            _qaBgBusy = false;
+        }
+    }
+
+    // 高级功能里 Q&A 入口的红点 / 转圈
+    function _qaUpdateEntryBadge() {
+        const entry = document.getElementById('qa-function');
+        if (!entry || !qaData) return;
+
+        const his = qaData.hisQuestions || {};
+        const mine = qaData.myQuestions || {};
+        const yn = qaData.yesNo || {};
+
+        const hasDot =
+            !!his.currentQuestion ||
+            (yn.history || []).some(b => b.status === 'replied' && !b.viewed);
+
+        const hasSpin =
+            !!his.pendingQuestion ||
+            !!his.pendingResponse ||
+            !!mine.currentPending ||
+            (yn.history || []).some(b => b.status === 'pending');
+
+        let dot = entry.querySelector('.qa-entry-dot');
+        let spin = entry.querySelector('.qa-entry-spin');
+
+        if (hasDot) {
+            if (!dot) {
+                dot = document.createElement('span');
+                dot.className = 'qa-entry-dot';
+                dot.style.cssText = 'position:absolute;top:8px;right:12px;width:8px;height:8px;border-radius:50%;background:#ff4757;box-shadow:0 0 0 2px var(--secondary-bg);';
+                entry.style.position = 'relative';
+                entry.appendChild(dot);
+            }
+            dot.style.display = 'block';
+        } else if (dot) {
+            dot.style.display = 'none';
+        }
+
+        if (hasSpin && !hasDot) {
+            if (!spin) {
+                spin = document.createElement('span');
+                spin.className = 'qa-entry-spin';
+                spin.style.cssText = 'position:absolute;top:8px;right:12px;width:12px;height:12px;border-radius:50%;border:2px solid rgba(var(--accent-color-rgb),0.25);border-top-color:var(--accent-color);animation:qaSpin 0.8s linear infinite;';
+                entry.style.position = 'relative';
+                entry.appendChild(spin);
+            }
+            spin.style.display = 'block';
+        } else if (spin) {
+            spin.style.display = 'none';
+        }
+    }
+
+    function _qaStart() {
+        if (_qaBgStarted) return;
+        _qaBgStarted = true;
+
+        // 启动后 3 秒跑一次
+        setTimeout(_qaBackgroundCheck, 3000);
+        // 每 60 秒跑一次
+        _qaBgTimer = setInterval(_qaBackgroundCheck, 60000);
+
+        console.log('✅ Q&A 后台检测器已启动');
+    }
+
+    // 页面从后台切回 → 立即检查
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            _qaBackgroundCheck();
+        }
+    });
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', _qaStart);
+    } else {
+        setTimeout(_qaStart, 3000);
+    }
+
+    // 暴露给外部
+    window._qaBackgroundCheck = _qaBackgroundCheck;
+    window._qaUpdateEntryBadge = _qaUpdateEntryBadge;
+})();

@@ -288,6 +288,7 @@ autoSendInterval: 5,
 const loadData = async () => {
     try {
         settings = getDefaultSettings();
+        window.settings = settings;   // ← 加这行
 
         
         const results = await Promise.allSettled([
@@ -458,6 +459,7 @@ const loadData = async () => {
     } catch (e) {
         console.error("LoadData 内部致命错误:", e);
         settings = getDefaultSettings();
+        window.settings = settings;
         messages = [];
         updateUI();
     }
@@ -921,16 +923,17 @@ function manageAutoSendTimer() {
             renderMessages();
 
             // 同步朋友圈名字（如果朋友圈已打开，立即刷新）
-            if (window.moments && typeof window.moments.render === 'function') {
-                // ✅ 先把名字写入 localStorage，确保 moments.render() 能读到最新值
+            if (window.moments) {
                 localStorage.setItem('myName', settings.myName || '我');
                 localStorage.setItem('partnerName', settings.partnerName || '梦角');
-
                 var topName = document.querySelector('#moments-user-name');
-                if (topName && settings) {
-                    topName.textContent = settings.myName || '我';
+                if (topName && settings) topName.textContent = settings.myName || '我';
+
+                if (typeof window.moments.reloadAvatarSettings === 'function') {
+                    window.moments.reloadAvatarSettings();   // 先重读设置再渲染
+                } else if (typeof window.moments.render === 'function') {
+                    window.moments.render();
                 }
-                window.moments.render();
             }
 
 

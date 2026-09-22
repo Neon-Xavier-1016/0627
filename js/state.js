@@ -9,6 +9,7 @@
         let sessionList = [];
         let messages = [];
         let settings = {};
+        window.settings = settings;
         let partnerPersonas = []; 
         let showPartnerNameInChat = false; 
         let readNoReplyTimer = null; 
