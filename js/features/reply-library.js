@@ -1448,6 +1448,7 @@ function _showExportUI() {
         { id: '_re_groups',   icon: ICONS.folderBig, label: '字卡分组',      count: (customReplyGroups||[]).length,            key: 'customReplyGroups',  extra: true },
         { id: '_re_pokg',     icon: ICONS.folderBig, label: '拍一拍分组',    count: (window.customPokeGroups||[]).length,     key: 'customPokeGroups',   extra: true },
         { id: '_re_statg',    icon: ICONS.folderBig, label: '对方状态分组',  count: (window.customStatusGroups||[]).length,   key: 'customStatusGroups', extra: true },
+        { id: '_re_qa', icon: ICONS.comment, label: 'Q&A 问题库', count: (typeof qaData !== 'undefined' && qaData?.questionLibrary || []).length, key: 'qaQuestionLibrary' },
     ];
 
     // 检测当前 tab 决定哪个分组有「按分组导出」选项
@@ -1555,6 +1556,10 @@ function _showExportUI() {
 }
 
 function _doExport(selectedModules) {
+    if (selectedModules.some(m => m.key === 'qaQuestionLibrary') && (typeof qaData === 'undefined' || !qaData)) {
+        if (typeof showNotification === 'function') showNotification('Q&A 数据尚未加载，请稍后再试', 'warning');
+        return;
+    }
     const libraryData = { exportDate: new Date().toISOString(), modules: [] };
     selectedModules.forEach(m => {
         if (m.key === 'customReplies')         { libraryData.customReplies      = customReplies;                  libraryData.modules.push('replies'); }
@@ -1572,6 +1577,12 @@ function _doExport(selectedModules) {
             try { _asp = JSON.parse(localStorage.getItem('dg_status_pool') || '[]'); } catch(e) {}
             libraryData.announcementConfig = { customData: _acd, statusPool: _asp };
             libraryData.modules.push('announcementConfig');
+        }
+        else if (m.key === 'qaQuestionLibrary') {
+            if (typeof qaData !== 'undefined' && qaData && Array.isArray(qaData.questionLibrary)) {
+                libraryData.qaQuestionLibrary = qaData.questionLibrary;
+                libraryData.modules.push('qaQuestionLibrary');
+            }
         }
     });
     const fileName = `reply-library-${libraryData.modules.join('+')}-${new Date().toISOString().slice(0,10)}.json`;
@@ -1753,7 +1764,7 @@ function _normalizeImportData(data) {
     if (!data || typeof data !== 'object') return data;
     const knownKeys = ['customReplies','customPokes','customStatuses','customMottos','customIntros','customEmojis',
                        'customReplyGroups','customPokeGroups','customStatusGroups','disabledDefaultReplies',
-                       'announcementConfig','announcementText','announcementStatusPool'];
+                       'announcementConfig','announcementText','announcementStatusPool','qaQuestionLibrary'];
     const hasNewFormat = knownKeys.some(k => data[k] !== undefined && data[k] !== null);
     if (hasNewFormat) return data;
     if (Array.isArray(data)) {
@@ -1765,7 +1776,7 @@ function _normalizeImportData(data) {
 function _showImportUI(data) {
     const knownFields = ['customReplies','customPokes','customStatuses','customMottos','customIntros','customEmojis',
                          'customReplyGroups','customPokeGroups','customStatusGroups',
-                         'announcementConfig','announcementText','announcementStatusPool'];
+                         'announcementConfig','announcementText','announcementStatusPool','qaQuestionLibrary'];
     const hasValid = knownFields.some(f => data[f] !== undefined && data[f] !== null);
     if (!hasValid) { showNotification('无效的字卡备份文件', 'error'); return; }
 
@@ -1792,6 +1803,7 @@ function _showImportUI(data) {
         { id: '_ri_groups',   icon: ICONS.folderBig, label: '字卡分组',      data: data.customReplyGroups,   key: 'customReplyGroups',  extra: true },
         { id: '_ri_pokg',     icon: ICONS.folderBig, label: '拍一拍分组',    data: data.customPokeGroups,    key: 'customPokeGroups',   extra: true },
         { id: '_ri_statg',    icon: ICONS.folderBig, label: '对方状态分组',  data: data.customStatusGroups,  key: 'customStatusGroups', extra: true },
+        { id: '_ri_qa', icon: ICONS.comment, label: 'Q&A 问题库', data: data.qaQuestionLibrary, key: 'qaQuestionLibrary' },
     ].filter(m => m.data !== undefined && m.data !== null && (Array.isArray(m.data) ? m.data.length > 0 && m.data[0] !== undefined : true));
 
     _showIOSheet(`导入字卡`, `文件中包含 ${modules.length} 个模块`, modules, ICONS.import, (selected, mode) => {
@@ -1821,6 +1833,13 @@ function _showImportUI(data) {
                     }
                     else if (m.key === 'announcementStatusPool') {
                         localStorage.setItem('dg_status_pool', JSON.stringify(_annPool));
+                    }
+                    else if (m.key === 'qaQuestionLibrary') {
+                        if (typeof qaData !== 'undefined' && qaData) {
+                            qaData.questionLibrary = data.qaQuestionLibrary || [];
+                            if (typeof saveQaData === 'function') saveQaData();
+                            totalAdded += qaData.questionLibrary.length;
+                        }
                     }
                 });
             } else {
@@ -1886,6 +1905,19 @@ function _showImportUI(data) {
                         const existStatuses = new Set(pool.map(p => p.status));
                         _annPool.forEach(p => { if (!existStatuses.has(p.status)) pool.push(p); });
                         localStorage.setItem('dg_status_pool', JSON.stringify(pool));
+                    } else if (m.key === 'qaQuestionLibrary') {
+                        if (typeof qaData !== 'undefined' && qaData) {
+                            if (!Array.isArray(qaData.questionLibrary)) qaData.questionLibrary = [];
+                            const before = qaData.questionLibrary.length;
+                            (data.qaQuestionLibrary || []).forEach(q => {
+                                const norm = String(q).replace(/\s+/g, '');
+                                if (!qaData.questionLibrary.some(x => String(x).replace(/\s+/g, '') === norm)) {
+                                    qaData.questionLibrary.push(q);
+                                }
+                            });
+                            totalAdded += qaData.questionLibrary.length - before;
+                            if (typeof saveQaData === 'function') saveQaData();
+                        }
                     }
                 });
             }

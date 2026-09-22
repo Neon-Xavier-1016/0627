@@ -48,7 +48,8 @@ function _qaDefaultData() {
         },
         hisQuestions: {
             history: [], weekStart: null, weekQuota: 3, askedThisWeek: 0, lastAnsweredAt: null,
-            usedQuestionIds: [], currentQuestion: null, pendingQuestion: null, pendingResponse: null
+            usedQuestionIds: [], currentQuestion: null, pendingQuestion: null, pendingResponse: null,
+            autoWeekStart: null, autoWeekQuota: 5, autoAskedThisWeek: 0, lastAutoAskTime: 0
         },
         myQuestions: { history: [], currentPending: null },
         yesNo: { history: [] },
@@ -226,6 +227,31 @@ function checkAllQaStatus() {
     const now = Date.now();
     let changed = false;
     const pops = [];
+
+    // ===== 自动提问（每周 5~6 次） =====
+    const hisAuto = qaData.hisQuestions;
+    if (!hisAuto.currentQuestion && !hisAuto.pendingQuestion && !hisAuto.pendingResponse) {
+        // 重置每周配额
+        if (!hisAuto.autoWeekStart || now - hisAuto.autoWeekStart > QA_WEEK_MS) {
+            hisAuto.autoWeekStart = now;
+            hisAuto.autoAskedThisWeek = 0;
+            hisAuto.autoWeekQuota = 5 + Math.floor(Math.random() * 2); // 5 或 6
+            saveQaData();
+        }
+        // 未达上限 & 距离上次自动提问超过 2 小时
+        if (hisAuto.autoAskedThisWeek < hisAuto.autoWeekQuota &&
+            now - (hisAuto.lastAutoAskTime || 0) > 2 * 60 * 60 * 1000) {
+            const q = drawQuestion();
+            if (q) {
+                const replyTime = now + (30 + Math.random() * 150) * 60 * 1000; // 30min ~ 3h
+                hisAuto.pendingQuestion = { question: q, replyTime };
+                hisAuto.autoAskedThisWeek++;
+                hisAuto.lastAutoAskTime = now;
+                saveQaData();
+            }
+        }
+    }
+    // ===== 自动提问结束 =====
 
     const pq = qaData.hisQuestions.pendingQuestion;
     if (pq && pq.replyTime <= now) {
@@ -517,7 +543,7 @@ function _qaRenderHisView() {
         stateHtml = `
             <div class="qa-state-card">
                 <div class="qa-state-label">💭 让 Ta 问你</div>
-                <div class="qa-wait-hint" style="margin-top:6px;">让梦角来问你一个问题<br><span style="opacity:0.6;font-size:11px;">Ta 会在 2-8 小时内来问你</span></div>
+                <div class="qa-wait-hint" style="margin-top:6px;">让梦角来问你一个问题<br><span style="opacity:0.6;font-size:11px;">Ta 会在 15分钟~2小时后来问你</span></div>
             </div>
             <button class="modal-btn modal-btn-primary" id="qa-his-urge" style="width:100%;margin-top:10px;" ${canUrge ? '' : 'disabled'}>
                 ${canUrge ? '催一题' : '本周已问完'}
@@ -564,15 +590,10 @@ function _qaRenderHisView() {
 
 function _qaCanUrgeHis() {
     const his = qaData.hisQuestions;
+    // 只要有进行中的提问/等待，就不能催
     if (his.currentQuestion || his.pendingQuestion || his.pendingResponse) return false;
-    const now = Date.now();
-    if (!his.weekStart || now - his.weekStart > QA_WEEK_MS) {
-        his.weekStart = now;
-        his.askedThisWeek = 0;
-        his.weekQuota = 3 + (Math.random() < 0.5 ? 1 : 0);
-        saveQaData();
-    }
-    return his.askedThisWeek < his.weekQuota;
+    // 手动催一题不再受周配额限制
+    return true;
 }
 
 function _qaUrgeHis() {
@@ -581,10 +602,10 @@ function _qaUrgeHis() {
         if (typeof showNotification === 'function') showNotification('问题库空了，去管理问题库添加吧', 'warning');
         return;
     }
-    const replyTime = Date.now() + (2 + Math.random() * 6) * 60 * 60 * 1000;
+    const replyTime = Date.now() + (15 + Math.random() * 105) * 60 * 1000; // 15min ~ 2h
     qaData.hisQuestions.pendingQuestion = { question: q, replyTime };
     saveQaData();
-    if (typeof showNotification === 'function') showNotification('已催，Ta 会在 2-8 小时内来问你', 'success');
+    if (typeof showNotification === 'function') showNotification('已催，Ta 会在 15分钟~2小时内来问你', 'success');
     _qaRenderHisView();
 }
 
@@ -599,9 +620,9 @@ function _qaSubmitHisAnswer() {
     const cq = qaData.hisQuestions.currentQuestion;
     if (!cq) return;
 
-    const replyTime = Date.now() + (15 + Math.random() * 45) * 60 * 1000;
-    qaData.hisQuestions.pendingResponse = { question: cq.question, answer, replyTime };
-    qaData.hisQuestions.currentQuestion = null;
+    const replyTime = Date.now() + (15 + Math.random() * 105) * 60 * 1000; // 15min ~ 2h
+        qaData.hisQuestions.pendingResponse = { question: cq.question, answer, replyTime };
+        qaData.hisQuestions.currentQuestion = null;
     if (!qaData.hisQuestions.usedQuestionIds.includes(cq.question)) {
         qaData.hisQuestions.usedQuestionIds.push(cq.question);
     }
@@ -1167,6 +1188,29 @@ function _qaBindHistoryActions(content, list, afterSave, myField) {
     tryPatch();
 })();
 
+function _qaDeduplicateQuestionLibrary() {
+    if (!qaData) return;
+    const originalCount = qaData.questionLibrary.length;
+    const seen = new Set();
+    const deduped = [];
+    qaData.questionLibrary.forEach(q => {
+        const norm = q.replace(/\s+/g, '').toLowerCase();
+        if (!seen.has(norm)) {
+            seen.add(norm);
+            deduped.push(q);
+        }
+    });
+    const removed = originalCount - deduped.length;
+    qaData.questionLibrary = deduped;
+    saveQaData();
+    _qaRenderQaLibTab();
+    if (removed > 0) {
+        showNotification(`🧹 已去重，删除了 ${removed} 条重复问题`, 'success');
+    } else {
+        showNotification('✨ 没有重复问题', 'info');
+    }
+}
+
 function _qaRenderQaLibTab() {
     if (!qaData) {
         const _l = document.getElementById('custom-replies-list');
@@ -1210,18 +1254,20 @@ function _qaRenderQaLibTab() {
                 梦角会随机挑一道来问你。问题越具体，越像 Ta 在了解你 ✦
             </div>
             <div id="qa-lib-list"></div>
-            <div style="display:flex;gap:8px;margin-top:14px;">
-                <button class="modal-btn modal-btn-primary" id="qa-lib-add" style="flex:1;">
+            <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
+                <button class="modal-btn modal-btn-primary" id="qa-lib-add" style="flex:1;min-width:70px;">
                     <i class="fas fa-plus"></i> 添加
                 </button>
-                <button class="modal-btn modal-btn-secondary" id="qa-lib-batch" style="flex:1;">
+                <button class="modal-btn modal-btn-secondary" id="qa-lib-batch" style="flex:1;min-width:70px;">
                     <i class="fas fa-layer-group"></i> 批量
                 </button>
-                <button class="modal-btn modal-btn-secondary" id="qa-lib-clear" style="flex:1;color:#ef4444;border-color:rgba(239,68,68,0.3);">
+                <button class="modal-btn modal-btn-secondary" id="qa-lib-dedup" style="flex:1;min-width:70px;">
+                    <i class="fas fa-clone"></i> 去重
+                </button>
+                <button class="modal-btn modal-btn-secondary" id="qa-lib-clear" style="flex:1;min-width:70px;color:#ef4444;border-color:rgba(239,68,68,0.3);">
                     <i class="fas fa-trash"></i> 清空
                 </button>
             </div>
-        </div>
     `;
 
     const inner = list.querySelector('#qa-lib-list');
@@ -1285,6 +1331,7 @@ function _qaRenderQaLibTab() {
         }
     };
     list.querySelector('#qa-lib-batch').onclick = window._qaBatchAddQuestions;
+    list.querySelector('#qa-lib-dedup').onclick = _qaDeduplicateQuestionLibrary;
     list.querySelector('#qa-lib-clear').onclick = window._qaClearAllQuestions;
 }
 
