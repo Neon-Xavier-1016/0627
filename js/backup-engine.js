@@ -191,6 +191,13 @@
 
     function shouldSkipKeyGroupChat(key, flags) {
         if (!key) return true;
+
+        // 强制包含：朋友圈、信封接收、月经周期
+        var forceInclude = ['moments', 'incoming', 'outbox', 'envelope', 'period', 'periodRecords', 'period_records'];
+        if (forceInclude.some(function(p) { return key.indexOf(p) !== -1; })) {
+            return false;
+        }
+
         if (key.startsWith('annHeaderBg_')) return true;
         if (key.indexOf('dg_header_bg') !== -1 || key.indexOf('dg_overlay_bg') !== -1) return true;
         var patterns = buildModuleSkipPatterns(flags || {});

@@ -288,16 +288,34 @@
             var exportAllReal = fullDrawer.querySelector('#export-all-settings-real');
             if (exportAllReal) exportAllReal.addEventListener('click', function () {
                 closeDrawer('dm-drawer-full');
-                if (typeof exportAllData === 'function') exportAllData();
+                if (window.ChatBackup && typeof ChatBackup.exportBackupToFile === 'function') {
+                    ChatBackup.exportBackupToFile();   // 使用新引擎，自动包含所有模块
+                } else if (typeof exportAllData === 'function') {
+                    exportAllData();                   // 降级回旧方法
+                }
             });
+
             var importAllReal = fullDrawer.querySelector('#import-all-settings-real');
             if (importAllReal) importAllReal.addEventListener('click', function () {
                 closeDrawer('dm-drawer-full');
                 var inp = document.createElement('input');
                 inp.type = 'file'; inp.accept = '.json,.zip,application/json,application/zip';
-                inp.onchange = function (e) {
+                inp.onchange = async function (e) {
                     var f = e.target.files && e.target.files[0];
-                    if (f && typeof importAllData === 'function') importAllData(f);
+                    if (!f) return;
+                    if (window.ChatBackup && typeof ChatBackup.loadBackupFromFile === 'function') {
+                        try {
+                            var data = await ChatBackup.loadBackupFromFile(f);
+                            await ChatBackup.applyBackupToStorage(data);
+                            if (typeof showNotification === 'function') showNotification('导入成功，即将刷新页面', 'success');
+                            setTimeout(function() { location.reload(); }, 1200);
+                        } catch (err) {
+                            console.error(err);
+                            if (typeof showNotification === 'function') showNotification('导入失败：' + err.message, 'error');
+                        }
+                    } else if (typeof importAllData === 'function') {
+                        importAllData(f);
+                    }
                 };
                 inp.click();
             });
