@@ -11443,9 +11443,16 @@ html[data-theme="dark"] .period-stat-value { color: var(--accent-color-dark); }
 .moment-card .moment-single-image,
 .moment-card .moment-images,
 .moment-card .moment-actions,
-.moment-card .moment-comments,
-.moment-card .moment-comment-input {
+.moment-card .moment-comments {
     margin-left: 52px; /* 这个值决定了向右偏移的距离，可自行调整 */
+}
+
+/* 单独重置评论输入框，让它跟灰框平齐 */
+.moment-comment-input {
+    margin-left: 0 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    padding: 0 !important;
 }
 
 /* 为了保证操作栏（点赞评论）的图标与文字对齐，微调一下内边距 */

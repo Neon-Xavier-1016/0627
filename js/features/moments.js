@@ -444,13 +444,14 @@
                  '</div>';
              }
 
-             // --- 6. 输入框 HTML ---
-             var commentInputHtml =
-                 '<div class="moment-comment-input" data-moment-id="' + moment.id + '" style="display:none;margin-top:8px;gap:8px;align-items:center;padding:0;margin-left:-8px;margin-right:-8px;width:calc(100% + 16px);box-sizing:border-box;">' +
-                     '<input type="text" placeholder="写评论..." class="comment-input-field" style="flex:1;padding:8px 12px;border:1px solid ' + (isDark ? 'rgba(255,255,255,0.1)' : 'var(--border-color)') + ';border-radius:18px;font-size:13px;background:' + (isDark ? 'rgba(0,0,0,0.2)' : 'var(--primary-bg)') + ';color:' + textColor + ';outline:none;font-family:var(--font-family);box-sizing:border-box;">' +
-                     '<button class="comment-send-btn" style="padding:8px 16px;background:var(--accent-color);color:#fff;border:none;border-radius:18px;font-size:13px;cursor:pointer;font-weight:600;flex-shrink:0;box-sizing:border-box;">发送</button>' +
-                 '</div>';
-
+             // --- 6. 输入框 HTML（多行 textarea，默认 3 行，超出可滚动） ---
+              var commentInputHtml =
+                  '<div class="moment-comment-input" data-moment-id="' + moment.id + '" style="display:none;margin-top:8px;width:100%;box-sizing:border-box;">' +
+                      '<div style="display:flex;align-items:flex-end;gap:8px;background:' + interactionBg + ';border-radius:8px;padding:6px 10px;width:100%;box-sizing:border-box;">' +
+                          '<textarea placeholder="写评论..." class="comment-input-field" rows="3" style="flex:1;min-width:0;padding:8px 12px;border:1px solid ' + (isDark ? 'rgba(255,255,255,0.1)' : 'var(--border-color)') + ';border-radius:10px;font-size:12px;background:' + (isDark ? 'rgba(0,0,0,0.2)' : 'var(--primary-bg)') + ';color:' + textColor + ';outline:none;font-family:var(--font-family);box-sizing:border-box;resize:none;line-height:1.5;max-height:120px;overflow-y:auto;"></textarea>' +
+                          '<button class="comment-send-btn" style="padding:8px 14px;background:var(--accent-color);color:#fff;border:none;border-radius:10px;font-size:12px;cursor:pointer;font-weight:600;flex-shrink:0;box-sizing:border-box;margin-bottom:1px;">发送</button>' +
+                      '</div>' +
+                  '</div>';
              // --- 7. 整体返回 ---
              return '<div class="moment-card" data-moment-id="' + moment.id + '" style="padding:12px 16px 8px;border-bottom:1px solid ' + (isDark ? 'rgba(255,255,255,0.06)' : 'var(--border-color)') + ';">' +
                  '<div class="moment-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
@@ -1357,37 +1358,133 @@
     }
 
     // ==================== 菜单 ====================
-    function showMomentMenu(momentId) {
-        var moment = moments.find(function(m) { return m.id === momentId; });
-        if (!moment) return;
-        var items = [
-            { label: '编辑', action: function() { openEditor(momentId); } },
-            { label: moment.isFavorited ? '取消收藏' : '收藏', action: function() { toggleFavorite(momentId); } },
-            { label: '删除', action: function() {
-                if (confirm('确定删除这条动态吗？该动态下的待回复任务也会一起删除。')) {
-                    deleteMoment(momentId);
+                function showCommentMenu(momentId, commentId) {
+                    var items = [
+                        { label: '编辑', action: function() {
+                            inlineCommentAction(momentId, commentId, 'edit');
+                        }},
+                        { label: '删除', action: function() {
+                            if (confirm('确定删除这条评论吗？')) deleteComment(momentId, commentId);
+                        }},
+                        { label: '回复', action: function() {
+                            inlineCommentAction(momentId, commentId, 'reply');
+                        }}
+                    ];
+                    showContextMenu(items);
                 }
-            }}
-        ];
-        showContextMenu(items);
-    }
 
-    function showCommentMenu(momentId, commentId) {
-        var items = [
-            { label: '编辑', action: function() {
-                var t = prompt('编辑评论:');
-                if (t !== null && t.trim()) editComment(momentId, commentId, t.trim());
-            }},
-            { label: '删除', action: function() {
-                if (confirm('确定删除这条评论吗？')) deleteComment(momentId, commentId);
-            }},
-            { label: '回复', action: function() {
-                var t = prompt('回复评论:');
-                if (t !== null && t.trim()) replyToComment(momentId, commentId, t.trim());
-            }}
-        ];
-        showContextMenu(items);
-    }
+                    /**
+                     * 原位编辑 / 回复评论
+                     * @param {string} momentId
+                     * @param {string} commentId
+                     * @param {string} mode 'edit' | 'reply'
+                     */
+                    function inlineCommentAction(momentId, commentId, mode) {
+                        var moment = moments.find(function(m) { return m.id === momentId; });
+                        if (!moment) return;
+                        var comment = moment.comments.find(function(c) { return c.id === commentId; });
+                        if (!comment) return;
+
+                        var commentEl = document.querySelector('.moment-comment[data-comment-id="' + commentId + '"]');
+                        if (!commentEl) return;
+
+                        var originalHTML = commentEl.innerHTML;
+                        var originalText = (mode === 'edit') ? (comment.text || '') : '';
+                        var isDark = false;
+                        try {
+                            var bg = window.getComputedStyle(document.body).backgroundColor;
+                            var rgb = bg.match(/\d+/g);
+                            if (rgb && rgb.length >= 3) {
+                                isDark = (parseInt(rgb[0]) + parseInt(rgb[1]) + parseInt(rgb[2]) < 384);
+                            }
+                        } catch (e) {}
+
+                        var placeholder = (mode === 'edit') ? '编辑评论...' : '回复评论...';
+
+                        commentEl.innerHTML =
+                            '<div style="display:flex;align-items:flex-end;gap:8px;width:100%;box-sizing:border-box;">' +
+                                '<textarea class="inline-comment-field" rows="3" placeholder="' + placeholder + '" style="flex:1;min-width:0;padding:8px 12px;border:1px solid ' + (isDark ? 'rgba(255,255,255,0.1)' : 'var(--border-color)') + ';border-radius:10px;font-size:12px;background:' + (isDark ? 'rgba(0,0,0,0.2)' : 'var(--primary-bg)') + ';color:' + (isDark ? '#d1d1d1' : 'var(--text-primary)') + ';outline:none;font-family:var(--font-family);resize:none;line-height:1.5;max-height:120px;overflow-y:auto;box-sizing:border-box;">' + originalText.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</textarea>' +
+                                '<button class="inline-comment-send" style="padding:8px 14px;background:var(--accent-color);color:#fff;border:none;border-radius:10px;font-size:12px;cursor:pointer;font-weight:600;flex-shrink:0;box-sizing:border-box;margin-bottom:1px;">发送</button>' +
+                            '</div>';
+
+                        var textarea = commentEl.querySelector('.inline-comment-field');
+                        var sendBtn = commentEl.querySelector('.inline-comment-send');
+
+                        var autoResize = function() {
+                            textarea.style.height = 'auto';
+                            textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+                        };
+                        textarea.addEventListener('input', autoResize);
+                        setTimeout(function() {
+                            autoResize();
+                            textarea.focus();
+                            if (mode === 'edit' && textarea.setSelectionRange) {
+                                textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+                            }
+                        }, 30);
+
+                        var closed = false;
+                        var restore = function() {
+                            if (closed) return;
+                            closed = true;
+                            document.removeEventListener('click', onOutsideClick, true);
+                            document.removeEventListener('touchstart', onOutsideTouch, true);
+                            commentEl.innerHTML = originalHTML;
+                            bindCardEvents();
+                        };
+
+                        var save = function() {
+                            if (closed) return;
+                            var newText = textarea.value.trim();
+                            if (!newText) { restore(); return; }
+                            closed = true;
+                            document.removeEventListener('click', onOutsideClick, true);
+                            document.removeEventListener('touchstart', onOutsideTouch, true);
+                            if (mode === 'edit') {
+                                if (newText !== originalText) editComment(momentId, commentId, newText);
+                                else restore();
+                            } else {
+                                replyToComment(momentId, commentId, newText);
+                            }
+                        };
+
+                        // 点击/触摸输入框外 → 直接取消（并恢复原评论）
+                        var onOutsideClick = function(e) {
+                            if (!commentEl.contains(e.target)) {
+                                restore();
+                            }
+                        };
+                        var onOutsideTouch = function(e) {
+                            if (!commentEl.contains(e.target)) {
+                                restore();
+                            }
+                        };
+
+                        // 用捕获阶段绑定，确保在其它点击事件前先执行
+                        setTimeout(function() {
+                            document.addEventListener('click', onOutsideClick, true);
+                            document.addEventListener('touchstart', onOutsideTouch, true);
+                        }, 50);
+
+                        sendBtn.onclick = function(e) {
+                            e.stopPropagation();
+                            save();
+                        };
+
+                        textarea.onkeydown = function(e) {
+                            if (e.key === 'Escape') {
+                                e.stopPropagation();
+                                restore();
+                            }
+                            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                                e.preventDefault();
+                                save();
+                            }
+                        };
+
+                        // 阻止点击输入框内部触发外部取消
+                        commentEl.addEventListener('click', function(e) { e.stopPropagation(); });
+                    }
 
     function showContextMenu(items) {
         var modal = document.createElement('div');

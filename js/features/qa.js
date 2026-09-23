@@ -49,7 +49,10 @@ function _qaDefaultData() {
         hisQuestions: {
             history: [], weekStart: null, weekQuota: 3, askedThisWeek: 0, lastAnsweredAt: null,
             usedQuestionIds: [], currentQuestion: null, pendingQuestion: null, pendingResponse: null,
-            autoWeekStart: null, autoWeekQuota: 5, autoAskedThisWeek: 0, lastAutoAskTime: 0
+            autoWeekStart: null, autoWeekQuota: 5, autoAskedThisWeek: 0, lastAutoAskTime: 0,
+
+            // ★★★ 新增 ★★★
+            manualWeekStart: null, manualWeekQuota: 5, manualAskedThisWeek: 0,
         },
         myQuestions: { history: [], currentPending: null },
         yesNo: { history: [] },
@@ -252,6 +255,7 @@ function checkAllQaStatus() {
         }
     }
     // ===== 自动提问结束 =====
+    // ===== 自动提问结束 =====
 
     const pq = qaData.hisQuestions.pendingQuestion;
     if (pq && pq.replyTime <= now) {
@@ -272,6 +276,10 @@ function checkAllQaStatus() {
         if (qaData.hisQuestions.history.length > 25) qaData.hisQuestions.history.length = 25;
         qaData.hisQuestions.lastAnsweredAt = Date.now();
         qaData.hisQuestions.askedThisWeek++;
+
+        // ★★★ 关键改动：把“上次自动提问时间”也刷新一下 ★★★
+        qaData.hisQuestions.lastAutoAskTime = Date.now();
+
         pops.push({ type: 'his-reply', emoji: '💬', title: '梦角回应了你', sub: 'Ta 看了你的回答，快去看看吧~' });
         changed = true;
     }
@@ -590,20 +598,46 @@ function _qaRenderHisView() {
 
 function _qaCanUrgeHis() {
     const his = qaData.hisQuestions;
-    // 只要有进行中的提问/等待，就不能催
+
+    // 有进行中的状态就不能催
     if (his.currentQuestion || his.pendingQuestion || his.pendingResponse) return false;
-    // 手动催一题不再受周配额限制
-    return true;
+
+    // ★★★ 新增：手动催题也走周配额 ★★★
+    // 先确保周配额已初始化
+    const now = Date.now();
+    if (!his.weekStart || now - his.weekStart > QA_WEEK_MS) {
+        his.weekStart = now;
+        his.askedThisWeek = 0;
+        his.weekQuota = 5 + Math.floor(Math.random() * 2); // 5 或 6
+        saveQaData();
+    }
+
+    return his.askedThisWeek < his.weekQuota;
 }
 
 function _qaUrgeHis() {
+    const his = qaData.hisQuestions;
+
+    // ★★★ 新增：催之前再检查一次配额 ★★★
+    if (!_qaCanUrgeHis()) {
+        if (typeof showNotification === 'function') showNotification('本周提问次数已用完，下周再来吧~', 'warning');
+        return;
+    }
+
     const q = drawQuestion();
     if (!q) {
         if (typeof showNotification === 'function') showNotification('问题库空了，去管理问题库添加吧', 'warning');
         return;
     }
     const replyTime = Date.now() + (15 + Math.random() * 105) * 60 * 1000; // 15min ~ 2h
-    qaData.hisQuestions.pendingQuestion = { question: q, replyTime };
+    his.pendingQuestion = { question: q, replyTime };
+
+    // ★★★ 新增：手动催题也占用一次周配额 ★★★
+    his.askedThisWeek++;
+
+    // ★★★ 新增：刷新自动提问计时，避免刚催完又自动补位 ★★★
+    his.lastAutoAskTime = Date.now();
+
     saveQaData();
     if (typeof showNotification === 'function') showNotification('已催，Ta 会在 15分钟~2小时内来问你', 'success');
     _qaRenderHisView();
@@ -623,6 +657,8 @@ function _qaSubmitHisAnswer() {
     const replyTime = Date.now() + (15 + Math.random() * 105) * 60 * 1000; // 15min ~ 2h
         qaData.hisQuestions.pendingResponse = { question: cq.question, answer, replyTime };
         qaData.hisQuestions.currentQuestion = null;
+         // ★★★ 新增：回答后也刷新自动提问计时，避免 pendingResponse 结束后立刻补位 ★★★
+        qaData.hisQuestions.lastAutoAskTime = Date.now();
     if (!qaData.hisQuestions.usedQuestionIds.includes(cq.question)) {
         qaData.hisQuestions.usedQuestionIds.push(cq.question);
     }
