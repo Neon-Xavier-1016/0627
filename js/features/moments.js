@@ -299,133 +299,178 @@
     }
 
     // ==================== 渲染卡片 ====================
-    function renderMomentCard(moment) {
-        var avStyle = getMomentAvatarStyle(moment.publisher);
-        var isMe = moment.publisher === 'me';
-        var name = isMe
-            ? ((window.settings && window.settings.myName) || '我')
-            : ((window.settings && window.settings.partnerName) || '梦角');
-        var avatarUrl = getAvatar(moment.publisher);
-        var timeStr = formatTime(moment.timestamp);
+         function renderMomentCard(moment) {
+             var avStyle = getMomentAvatarStyle(moment.publisher);
+             var isMe = moment.publisher === 'me';
+             var name = isMe
+                 ? ((window.settings && window.settings.myName) || '我')
+                 : ((window.settings && window.settings.partnerName) || '梦角');
+             var avatarUrl = getAvatar(moment.publisher);
+             var timeStr = formatTime(moment.timestamp);
 
-        var likes = moment.likes || [];
-        var isLiked = likes.indexOf('me') > -1;
-        var comments = moment.comments || [];
+             var likes = moment.likes || [];
+             var isLiked = likes.indexOf('me') > -1;
+             var comments = moment.comments || [];
 
-        var likesHtml = '';
-        if (likes.length > 0) {
-            var names = [];
-            var seen = {};
-            likes.forEach(function(id) {
-                var n = id === 'me' ? ((window.settings && window.settings.myName) || '我')
-                      : id === 'partner' ? ((window.settings && window.settings.partnerName) || '梦角')
-                      : id;
-                if (!seen[n]) { seen[n] = 1; names.push(n); }
-            });
-            likesHtml = '<div class="moment-likes-row" style="display:flex;align-items:center;padding:2px 0 4px 0;font-size:13px;line-height:1.6;">' +
-                '<i class="far fa-heart" style="color:#576b95;margin-right:4px;font-size:13px;"></i>' +
-                '<span style="color:#576b95;font-weight:700;">' + names.join('、') + '</span>' +
-                '</div>';
-        }
+             // ================== 核心修改：智能识别夜间模式，完美适配微信风格 ==================
+             var isDark = false;
+             try {
+                 var bg = window.getComputedStyle(document.body).backgroundColor;
+                 var rgb = bg.match(/\d+/g);
+                 if (rgb && rgb.length >= 3) {
+                     isDark = (parseInt(rgb[0]) + parseInt(rgb[1]) + parseInt(rgb[2]) < 384);
+                 }
+             } catch (e) {}
 
-        var actionMenuHtml =
-            '<div class="moment-action-menu" style="position:relative;display:inline-block;margin-left:8px;flex-shrink:0;">' +
-                '<div class="moment-menu-trigger" style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#888;border-radius:50%;font-size:16px;">' +
-                    '<span style="font-size:16px;letter-spacing:2px;font-weight:bold;">··</span>' +
-                '</div>' +
-                '<div class="moment-menu-popup" style="display:none;position:absolute;right:0;bottom:100%;margin-bottom:6px;background:#4a4a4a;border-radius:8px;overflow:hidden;white-space:nowrap;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,0.25);min-width:100px;">' +
-                    '<button class="menu-action-like" data-moment-id="' + moment.id + '" style="background:none;border:none;color:white;padding:10px 18px;font-size:13px;display:flex;align-items:center;gap:8px;cursor:pointer;width:100%;text-align:left;">' +
-                        '<i class="' + (isLiked ? 'fas' : 'far') + ' fa-heart" style="font-size:14px;width:16px;text-align:center;"></i> ' + (isLiked ? '取消赞' : '赞') +
-                    '</button>' +
-                    '<button class="menu-action-comment" data-moment-id="' + moment.id + '" style="background:none;border:none;color:white;padding:10px 18px;font-size:13px;display:flex;align-items:center;gap:8px;cursor:pointer;width:100%;text-align:left;border-top:1px solid rgba(255,255,255,0.1);">' +
-                        '<i class="fas fa-comment" style="font-size:14px;width:16px;text-align:center;"></i> 评论' +
-                    '</button>' +
-                '</div>' +
-            '</div>';
+             // 夜间模式：深灰色半透明背景；浅色模式：浅灰色背景
+             var interactionBg = isDark ? 'rgba(255, 255, 255, 0.08)' : '#f7f7f7';
+             // 夜间模式：柔和的灰蓝色；浅色模式：微信经典亮蓝色
+             var nameColor = isDark ? '#7d90b8' : '#576b95';
+             // 夜间模式：浅灰色文字；浅色模式：跟随主题
+             var textColor = isDark ? '#d1d1d1' : 'var(--text-primary)';
+             // ==================================================================================
 
-        var imagesHtml = '';
-        if (moment.images && moment.images.length) {
-            var count = moment.images.length;
-            if (count === 1) {
-                var src = moment.images[0];
-                imagesHtml = '<div class="moment-single-image" style="margin-top:8px;border-radius:6px;overflow:hidden;display:inline-block;">' +
-                    '<img src="' + src + '" style="max-width:180px;max-height:240px;width:auto;height:auto;display:block;cursor:pointer;" data-src="' + src + '" loading="lazy">' +
-                    '</div>';
-            } else {
-                var gridClass = 'moment-grid-' + ((count === 2 || count === 4) ? '2' : '3');
-                imagesHtml = '<div class="moment-images ' + gridClass + '" style="max-width:200px;margin-top:8px;">';
-                moment.images.forEach(function(img) {
-                    imagesHtml += '<div class="moment-image" data-src="' + img + '"><img src="' + img + '" loading="lazy" style="cursor:pointer;"></div>';
-                });
-                imagesHtml += '</div>';
-            }
-        }
+             // --- 1. 点赞 HTML ---
+             var likesHtml = '';
+             if (likes.length > 0) {
+                 var names = [];
+                 var seen = {};
+                 likes.forEach(function(id) {
+                     var n = id === 'me' ? ((window.settings && window.settings.myName) || '我')
+                           : id === 'partner' ? ((window.settings && window.settings.partnerName) || '梦角')
+                           : id;
+                     if (!seen[n]) { seen[n] = 1; names.push(n); }
+                 });
+                 likesHtml = '<div class="moment-likes-row" style="display:flex;align-items:center;padding:0;font-size:13px;line-height:1.6;">' +
+                     '<i class="far fa-heart" style="color:' + nameColor + ';margin-right:4px;font-size:13px;"></i>' +
+                     '<span style="color:' + nameColor + ';font-weight:700;">' + names.join('、') + '</span>' +
+                     '</div>';
+             }
 
-        var commentsHtml = '';
-        if (comments.length > 0) {
-            var myName = localStorage.getItem('myName') || (window.settings && window.settings.myName) || '我';
-            var partnerName = localStorage.getItem('partnerName') || (window.settings && window.settings.partnerName) || '梦角';
-            commentsHtml = '<div class="moment-comments" style="margin-top:6px;">';
-            comments.forEach(function(comment) {
-                var sRaw = comment.sender || '';
-                var cName = sRaw === 'me' ? myName :
-                            sRaw === 'partner' ? partnerName :
-                            sRaw === myName ? myName :
-                            sRaw === partnerName ? partnerName : partnerName;
-                var replyText = '';
-                if (comment.replyToCommentId) {
-                    var parent = comments.find(function(c) { return c.id === comment.replyToCommentId; });
-                    if (parent) {
-                        var pRaw = parent.sender || '';
-                        var pName = pRaw === 'me' ? myName : (pRaw === 'partner' ? partnerName : pRaw);
-                        replyText = ' 回复 ' + pName;
-                    }
-                }
-                var text = (comment.text != null) ? comment.text : '';
-                commentsHtml += '<div class="moment-comment" data-comment-id="' + comment.id + '" style="display:flex;align-items:baseline;padding:3px 0;font-size:13px;line-height:1.5;">' +
-                    '<span class="comment-sender" style="color:#576b95;font-weight:700;flex-shrink:0;">' + cName + '</span>' +
-                    (replyText ? '<span class="comment-reply-to" style="color:#576b95;font-weight:700;flex-shrink:0;">' + replyText + '</span>' : '') +
-                    '<span class="comment-text" style="color:var(--text-primary);word-break:break-all;flex-shrink:1;min-width:0;">：' + text + '</span>' +
-                    '<span class="comment-actions" data-comment-id="' + comment.id + '" style="margin-left:auto;color:#999;font-size:12px;cursor:pointer;padding:0 4px;flex-shrink:0;"><i class="fas fa-ellipsis-v"></i></span>' +
-                    '</div>';
-            });
-            commentsHtml += '</div>';
-        }
+             // --- 2. 操作菜单 ---
+             var actionMenuHtml =
+                 '<div class="moment-action-menu" style="position:relative;display:inline-block;flex-shrink:0;">' +
+                     '<div class="moment-menu-trigger" style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:' + (isDark ? '#aaa' : '#888') + ';border-radius:50%;font-size:16px;">' +
+                         '<span style="font-size:16px;letter-spacing:2px;font-weight:bold;">··</span>' +
+                     '</div>' +
+                     '<div class="moment-menu-popup" style="display:none;position:absolute;right:0;bottom:100%;margin-bottom:6px;background:#4a4a4a;border-radius:8px;overflow:hidden;white-space:nowrap;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,0.25);min-width:100px;">' +
+                         '<button class="menu-action-like" data-moment-id="' + moment.id + '" style="background:none;border:none;color:white;padding:10px 18px;font-size:13px;display:flex;align-items:center;gap:8px;cursor:pointer;width:100%;text-align:left;">' +
+                             '<i class="' + (isLiked ? 'fas' : 'far') + ' fa-heart" style="font-size:14px;width:16px;text-align:center;"></i> ' + (isLiked ? '取消赞' : '赞') +
+                         '</button>' +
+                         '<button class="menu-action-comment" data-moment-id="' + moment.id + '" style="background:none;border:none;color:white;padding:10px 18px;font-size:13px;display:flex;align-items:center;gap:8px;cursor:pointer;width:100%;text-align:left;border-top:1px solid rgba(255,255,255,0.1);">' +
+                             '<i class="fas fa-comment" style="font-size:14px;width:16px;text-align:center;"></i> 评论' +
+                         '</button>' +
+                     '</div>' +
+                 '</div>';
 
-        var commentInputHtml =
-            // 关键点：加负的 margin-left 和 margin-right，强行突破父容器的内边距，让输入框整体往左移！
-            '<div class="moment-comment-input" data-moment-id="' + moment.id + '" style="display:none;margin-top:8px;gap:8px;align-items:center;padding:0;margin-left:-8px;margin-right:-8px;width:calc(100% + 16px);box-sizing:border-box;">' +
-                // 纯白/纯背景色底，去掉灰底和边框，padding稍微调大一点看起来舒服
-                '<input type="text" placeholder="写评论..." class="comment-input-field" style="flex:1;padding:8px 12px;border:1px solid var(--border-color);border-radius:18px;font-size:13px;background:var(--primary-bg);color:var(--text-primary);outline:none;font-family:var(--font-family);box-sizing:border-box;">' +
-                '<button class="comment-send-btn" style="padding:8px 16px;background:var(--accent-color);color:#fff;border:none;border-radius:18px;font-size:13px;cursor:pointer;font-weight:600;flex-shrink:0;box-sizing:border-box;">发送</button>' +
-            '</div>';
+             // --- 3. 图片 HTML ---
+             var imagesHtml = '';
+             if (moment.images && moment.images.length) {
+                 var count = moment.images.length;
+                 if (count === 1) {
+                     var src = moment.images[0];
+                     imagesHtml = '<div class="moment-single-image" style="margin-top:8px;border-radius:6px;overflow:hidden;display:inline-block;">' +
+                         '<img src="' + src + '" style="max-width:180px;max-height:240px;width:auto;height:auto;display:block;cursor:pointer;" data-src="' + src + '" loading="lazy">' +
+                         '</div>';
+                 } else {
+                     var gridClass = 'moment-grid-' + ((count === 2 || count === 4) ? '2' : '3');
+                     imagesHtml = '<div class="moment-images ' + gridClass + '" style="max-width:200px;margin-top:8px;">';
+                     moment.images.forEach(function(img) {
+                         imagesHtml += '<div class="moment-image" data-src="' + img + '"><img src="' + img + '" loading="lazy" style="cursor:pointer;"></div>';
+                     });
+                     imagesHtml += '</div>';
+                 }
+             }
 
-                var footerHtml =
-                    '<div class="moment-footer" style="display:flex;justify-content:space-between;align-items:center;padding:4px 0 0 0;margin-top:4px;border-top:1px solid var(--border-color);">' +
-                        '<div class="moment-footer-left" style="flex:1;min-width:0;">' + (likesHtml || '') + '</div>' +
-                        '<div class="moment-footer-right" style="flex-shrink:0;display:flex;align-items:center;">' + actionMenuHtml + '</div>' +
-                    '</div>';
+             // --- 4. 评论 HTML（彻底移除横线，使用微信排版）---
+             var commentsHtml = '';
+             if (comments.length > 0) {
+                 var myName = localStorage.getItem('myName') || (window.settings && window.settings.myName) || '我';
+                 var partnerName = localStorage.getItem('partnerName') || (window.settings && window.settings.partnerName) || '梦角';
+                 commentsHtml = '<div class="moment-comments" style="margin-top:0;">';
+                 comments.forEach(function(comment) {
+                     var sRaw = comment.sender || '';
+                     var cName = sRaw === 'me' ? myName :
+                                 sRaw === 'partner' ? partnerName :
+                                 sRaw === myName ? myName :
+                                 sRaw === partnerName ? partnerName : partnerName;
+                     var replyText = '';
+                     if (comment.replyToCommentId) {
+                         var parent = comments.find(function(c) { return c.id === comment.replyToCommentId; });
+                         if (parent) {
+                             var pRaw = parent.sender || '';
+                             var pName = pRaw === 'me' ? myName : (pRaw === 'partner' ? partnerName : pRaw);
+                             replyText = '回复 ' + pName + '：';
+                         }
+                     }
+                     var text = (comment.text != null) ? comment.text : '';
 
-                return '<div class="moment-card" data-moment-id="' + moment.id + '" style="padding:12px 16px 8px;border-bottom:1px solid var(--border-color);">' +
-                    '<div class="moment-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
-                        '<div class="moment-user" style="display:flex;align-items:center;gap:6px;margin:0;padding:0;flex:1;min-width:0;">' +
-                            '<img class="moment-avatar" src="' + avatarUrl + '" style="width:' + avStyle.width + ';height:' + avStyle.height + ';border-radius:' + avStyle.borderRadius + ';object-fit:cover;background:#eee;margin:0;padding:0;flex-shrink:0;display:block;">' +
-                            '<span class="moment-name" style="font-weight:700;font-size:15px;color:#576b95;margin:0;padding:0;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + name +
-                                (moment.isFavorited ? ' <i class="fas fa-star" style="color:#f7b500;font-size:11px;margin-left:2px;" title="已收藏"></i>' : '') +
-                            '</span>' +
-                        '</div>' +
-                        '<div style="display:flex;align-items:center;gap:6px;">' +
-                            '<span class="moment-time" style="font-size:12px;color:#999;">' + timeStr + '</span>' +
-                            '<span class="moment-more" data-moment-id="' + moment.id + '" style="cursor:pointer;color:#999;font-size:14px;padding:0 2px;"><i class="fas fa-ellipsis-v"></i></span>' +
-                        '</div>' +
-                    '</div>' +
-                    (moment.content ? '<div class="moment-content" style="font-size:14px;line-height:1.7;color:var(--text-primary);margin-bottom:4px;word-break:break-word;">' + moment.content + '</div>' : '') +
-                    imagesHtml +
-                    footerHtml +
-                    commentsHtml +
-                    commentInputHtml +
-                    '</div>';
-            }
+                     // 名字在上，回复内容在下，绝无横线
+                     commentsHtml += '<div class="moment-comment" data-comment-id="' + comment.id + '" style="display:flex;align-items:flex-start;padding:6px 0 2px 0;font-size:13px;line-height:1.5;">' +
+                         '<div style="flex:1;min-width:0;">' +
+                             '<div style="color:' + nameColor + ';font-weight:700;margin-bottom:2px;">' + cName + '</div>' +
+                             '<div style="color:' + textColor + ';word-break:break-all;">' +
+                                 (replyText ? '<span style="color:' + nameColor + ';font-weight:700;">' + replyText + '</span>' : '') +
+                                 text +
+                             '</div>' +
+                         '</div>' +
+                         '<span class="comment-actions" data-comment-id="' + comment.id + '" style="margin-left:auto;color:' + (isDark ? '#888' : '#999') + ';font-size:12px;cursor:pointer;padding:0 4px;flex-shrink:0;"><i class="fas fa-ellipsis-v"></i></span>' +
+                         '</div>';
+                 });
+                 commentsHtml += '</div>';
+             }
+
+             // --- 5. 互动容器（点赞和评论合并，去除任何横线分割）---
+             var interactionHtml = '';
+             if (likes.length > 0 || comments.length > 0) {
+                 interactionHtml = '<div class="moment-interaction-box" style="position:relative; background:' + interactionBg + '; border-radius:6px; padding:10px 12px 12px 12px; margin-top:8px; margin-bottom:8px;">';
+
+                 // 悬浮菜单
+                 interactionHtml += '<div style="position:absolute; top:4px; right:4px; z-index:10;">' + actionMenuHtml + '</div>';
+
+                 // 强制去掉横线，只用 margin 做间隔
+                 if (likes.length > 0) {
+                     interactionHtml += likesHtml;
+                 }
+                 if (comments.length > 0) {
+                     // 如果同有点赞和评论，增加上边距
+                     interactionHtml += '<div style="' + (likes.length > 0 ? 'margin-top:6px;' : '') + '">' + commentsHtml + '</div>';
+                 }
+                 interactionHtml += '</div>';
+             } else {
+                 // 无互动时，底部显示菜单
+                 interactionHtml = '<div class="moment-footer" style="display:flex;justify-content:flex-end;align-items:center;padding:4px 0 0 0;margin-top:4px;">' +
+                     '<div class="moment-footer-right" style="flex-shrink:0;display:flex;align-items:center;">' + actionMenuHtml + '</div>' +
+                 '</div>';
+             }
+
+             // --- 6. 输入框 HTML ---
+             var commentInputHtml =
+                 '<div class="moment-comment-input" data-moment-id="' + moment.id + '" style="display:none;margin-top:8px;gap:8px;align-items:center;padding:0;margin-left:-8px;margin-right:-8px;width:calc(100% + 16px);box-sizing:border-box;">' +
+                     '<input type="text" placeholder="写评论..." class="comment-input-field" style="flex:1;padding:8px 12px;border:1px solid ' + (isDark ? 'rgba(255,255,255,0.1)' : 'var(--border-color)') + ';border-radius:18px;font-size:13px;background:' + (isDark ? 'rgba(0,0,0,0.2)' : 'var(--primary-bg)') + ';color:' + textColor + ';outline:none;font-family:var(--font-family);box-sizing:border-box;">' +
+                     '<button class="comment-send-btn" style="padding:8px 16px;background:var(--accent-color);color:#fff;border:none;border-radius:18px;font-size:13px;cursor:pointer;font-weight:600;flex-shrink:0;box-sizing:border-box;">发送</button>' +
+                 '</div>';
+
+             // --- 7. 整体返回 ---
+             return '<div class="moment-card" data-moment-id="' + moment.id + '" style="padding:12px 16px 8px;border-bottom:1px solid ' + (isDark ? 'rgba(255,255,255,0.06)' : 'var(--border-color)') + ';">' +
+                 '<div class="moment-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
+                     '<div class="moment-user" style="display:flex;align-items:center;gap:6px;margin:0;padding:0;flex:1;min-width:0;">' +
+                         '<img class="moment-avatar" src="' + avatarUrl + '" style="width:' + avStyle.width + ';height:' + avStyle.height + ';border-radius:' + avStyle.borderRadius + ';object-fit:cover;background:#eee;margin:0;padding:0;flex-shrink:0;display:block;">' +
+                         '<span class="moment-name" style="font-weight:700;font-size:15px;color:' + nameColor + ';margin:0;padding:0;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + name +
+                             (moment.isFavorited ? ' <i class="fas fa-star" style="color:#f7b500;font-size:11px;margin-left:2px;" title="已收藏"></i>' : '') +
+                         '</span>' +
+                     '</div>' +
+                     '<div style="display:flex;align-items:center;gap:6px;">' +
+                         '<span class="moment-time" style="font-size:12px;color:' + (isDark ? '#888' : '#999') + ';">' + timeStr + '</span>' +
+                         '<span class="moment-more" data-moment-id="' + moment.id + '" style="cursor:pointer;color:' + (isDark ? '#888' : '#999') + ';font-size:14px;padding:0 2px;"><i class="fas fa-ellipsis-v"></i></span>' +
+                     '</div>' +
+                 '</div>' +
+                 (moment.content ? '<div class="moment-content" style="font-size:14px;line-height:1.7;color:' + textColor + ';margin-bottom:4px;word-break:break-word;">' + moment.content + '</div>' : '') +
+                 imagesHtml +
+                 interactionHtml +
+                 commentInputHtml +
+                 '</div>';
+         }
 
     // ==================== 图片预览 ====================
     function showImagePreview(src) {

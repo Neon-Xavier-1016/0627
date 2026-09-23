@@ -263,27 +263,17 @@ autoSendInterval: 5,
 }
 
 
-        const applyBackground = (value) => {
-            if (!value) return;
-            const isDark = settings.isDarkMode;
-            // 如果是图片，我们在背景后面加一个黑色半透明覆盖层
-            if (value.startsWith('data:') || value.startsWith('http') || value.startsWith('url(')) {
-                // 图片背景
-                const cssValue = value.startsWith('url(') ? value : `url(${value})`;
-                // 蒙层用伪类实现（但我们可以用多重背景）
-                if (isDark) {
-                    // 叠加黑色半透明渐变在图片上面
-                    const overlay = 'linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6))';
-                    document.documentElement.style.setProperty('--chat-bg-image', `${overlay}, ${cssValue}`);
-                } else {
-                    document.documentElement.style.setProperty('--chat-bg-image', cssValue);
-                }
-            } else {
-                // 颜色或渐变背景，不加蒙层
-                document.documentElement.style.setProperty('--chat-bg-image', value);
-            }
-            document.body.classList.add('with-background');
-        };
+       function applyBackground(value) {
+           if (!value) return;
+           if (value.startsWith('data:') || value.startsWith('http') || value.startsWith('url(')) {
+               const cssValue = value.startsWith('url(') ? value : `url(${value})`;
+               // ✅ 遮罩交给 CSS 的 [data-theme="dark"]，JS 只负责设置图片
+               document.documentElement.style.setProperty('--chat-bg-image', cssValue);
+           } else {
+               document.documentElement.style.setProperty('--chat-bg-image', value);
+           }
+           document.body.classList.add('with-background');
+       }
 
 const loadData = async () => {
     try {
@@ -867,6 +857,16 @@ function manageAutoSendTimer() {
             }
 
             DOMElements.html.setAttribute('data-theme', settings.isDarkMode ? 'dark': 'light');
+
+            // ✅ 修复：主题切换后重新应用背景，更新夜间遮罩
+            try {
+                const _currentBg = safeGetItem(getStorageKey('chatBackground'));
+                if (_currentBg) {
+                    applyBackground(_currentBg);
+                }
+            } catch(e) {
+                console.warn('切换主题时重新应用背景失败:', e);
+            }
             DOMElements.themeToggle.innerHTML = settings.isDarkMode ? '<i class="fas fa-sun"></i>': '<i class="fas fa-moon"></i>';
             DOMElements.partner.name.textContent = settings.partnerName;
             DOMElements.me.name.textContent = settings.myName;

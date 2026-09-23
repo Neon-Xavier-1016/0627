@@ -1,6 +1,6 @@
 /**
- * features/period.js - 月经记录系统（完整版）
- * 功能：记录经期、预测下次日期、关怀提醒、历史管理
+ * features/period.js - 月经记录系统（完整版 + 方框弹窗交互）
+ * 功能：记录经期、预测下次日期、关怀提醒、历史管理、每日弹窗
  * 依赖：localforage, showNotification, showModal, hideModal, periodCareMessages, settings
  */
 
@@ -20,7 +20,9 @@
     const STORAGE_KEYS = {
         records: 'periodRecords',
         settings: 'periodSettings',
-        lastReminderCheck: 'lastPeriodReminderCheck'
+        lastReminderCheck: 'lastPeriodReminderCheck',
+        suppressDate: 'periodRemindSuppressDate',
+        waitingManual: 'periodWaitingForManualRecord'
     };
 
     // ==================== 工具函数 ====================
@@ -28,9 +30,6 @@
         return STORAGE_KEYS[key];
     }
 
-    /**
-     * 标准化日期为本地日期 00:00:00
-     */
     function normalizeDate(dateInput) {
         let d = dateInput instanceof Date ? dateInput : new Date(dateInput);
         if (isNaN(d.getTime())) {
@@ -40,9 +39,6 @@
         return d;
     }
 
-    /**
-     * 格式化日期为 YYYY-MM-DD
-     */
     function formatDate(date) {
         const d = normalizeDate(date);
         const year = d.getFullYear();
@@ -51,16 +47,10 @@
         return `${year}-${month}-${day}`;
     }
 
-    /**
-     * 计算两次开始日期的周期长度（天）
-     */
     function calculateCycleLength(prevStart, nextStart) {
         return Math.round((nextStart - prevStart) / (1000 * 60 * 60 * 24));
     }
 
-    /**
-     * 计算一次月经持续时间（天）
-     */
     function calculateDuration(record) {
         if (!record.endDate) return 0;
         const start = normalizeDate(record.startDate);
@@ -69,9 +59,6 @@
     }
 
     // ==================== 周期计算与预测 ====================
-    /**
-     * 重新计算平均周期（基于最近5次有效完整记录）
-     */
     function recalcAverageCycle() {
         const completed = records.filter(r => r.endDate);
         if (completed.length < 2) return settings.averageCycleLength;
@@ -97,10 +84,6 @@
         return settings.averageCycleLength;
     }
 
-    /**
-     * 获取下次预测月经开始的具体日期
-     * @returns {Date|null}
-     */
     function getNextPeriodDate() {
         if (records.length === 0) return null;
         const completed = records.filter(r => r.endDate);
@@ -115,9 +98,6 @@
         return nextDate;
     }
 
-    /**
-     * 获取距离下次预测还有多少天（负数表示已推迟）
-     */
     function getDaysUntilNextPeriod() {
         const nextDate = getNextPeriodDate();
         if (!nextDate) return null;
@@ -125,9 +105,6 @@
         return Math.ceil((nextDate - today) / (1000 * 60 * 60 * 24));
     }
 
-    /**
-     * 获取当前周期状态
-     */
     function getCurrentCycleStatus() {
         if (records.length === 0) return { status: 'no_record' };
 
@@ -146,48 +123,14 @@
         const isDelayed = daysUntilNext !== null && daysUntilNext <= 0;
         return {
             status: 'after',
-            daysSinceEnd: daysSinceEnd,
-            daysUntilNext: daysUntilNext,
-            isDelayed: isDelayed,
+            daysSinceEnd,
+            daysUntilNext,
+            isDelayed,
             record: latest
         };
     }
 
-    // ==================== 提醒与关怀消息 ====================
-    function getReminderMessage() {
-        if (records.length === 0) return null;
-        const partner = settings.partnerName || '梦角';
-        const careMsgs = window.periodCareMessages || { during: [], approaching: [], delayed: [] };
-        const status = getCurrentCycleStatus();
-
-        if (status.status === 'during') {
-            const msgs = careMsgs.during;
-            if (msgs && msgs.length) {
-                const idx = Math.floor(Math.random() * msgs.length);
-                return `${partner}：${msgs[idx]}`;
-            }
-            return null;
-        }
-
-        if (status.status === 'after') {
-            const daysUntil = status.daysUntilNext;
-            if (daysUntil !== null && daysUntil <= 3 && daysUntil > 0) {
-                const msgs = careMsgs.approaching;
-                if (msgs && msgs.length) {
-                    const idx = Math.floor(Math.random() * msgs.length);
-                    return `${partner}：${msgs[idx]}`;
-                }
-            } else if (status.isDelayed) {
-                const msgs = careMsgs.delayed;
-                if (msgs && msgs.length) {
-                    const idx = Math.floor(Math.random() * msgs.length);
-                    return `${partner}：${msgs[idx]}`;
-                }
-            }
-        }
-        return null;
-    }
-
+    // ==================== 关怀消息（用于卡片内） ====================
     function getRandomCareMessage() {
         const partner = settings.partnerName || '梦角';
         if (records.length === 0) {
@@ -299,7 +242,6 @@
             const nextDateStr = nextDate ? formatDate(nextDate) : '无法预测';
 
             if (daysUntilNext !== null && daysUntilNext > 0) {
-                // 修改点：显示具体日期而非“X天后”
                 elements['period-current-status'].textContent = `已结束${daysSinceEnd}天，预计下次：${nextDateStr}`;
                 elements['period-current-status'].style.color = 'var(--accent-color)';
             } else if (isDelayed) {
@@ -319,7 +261,6 @@
             elements['period-cycle-length'].textContent = `${avg}天`;
         }
 
-        // 修改点：将“距离下次天数”改为显示具体日期
         if (elements['period-days-until-next']) {
             const nextDate = getNextPeriodDate();
             if (nextDate) {
@@ -391,7 +332,6 @@
         });
         container.innerHTML = html;
 
-        // 绑定删除事件（事件委托）
         container.querySelectorAll('.period-history-delete').forEach(btn => {
             btn.removeEventListener('click', handleDeleteClick);
             btn.addEventListener('click', handleDeleteClick);
@@ -455,6 +395,10 @@
         records.push(newRecord);
         saveData();
         fullRefreshUI();
+
+        // 清除静默等待期，这样刷新页面后会触发“求安慰”弹窗
+        clearWaitingForManual();
+
         if (typeof showNotification === 'function') showNotification('月经开始记录已保存', 'success', 2000);
     }
 
@@ -492,7 +436,6 @@
     }
 
     function openModal() {
-        // 关闭可能打开的其他模态框
         const advModal = document.getElementById('advanced-modal');
         if (advModal && typeof hideModal === 'function') hideModal(advModal);
 
@@ -511,18 +454,361 @@
         }
     }
 
-    function checkDailyReminder() {
-        const todayStr = formatDate(new Date());
-        if (lastReminderCheckDate === todayStr) return;
+    // ==================== 弹窗样式注入 ====================
+    function injectPeriodDialogStyle() {
+        if (document.getElementById('period-dialog-style')) return;
+        const style = document.createElement('style');
+        style.id = 'period-dialog-style';
+        style.textContent = `
+            .pd-overlay {
+                position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+                display: flex; align-items: center; justify-content: center;
+                z-index: 999999; opacity: 0; transition: opacity 0.25s;
+            }
+            .pd-overlay.show { opacity: 1; }
+            .pd-box {
+                background: #fff; width: 88%; max-width: 340px; border-radius: 20px;
+                box-shadow: 0 12px 40px rgba(0,0,0,0.15); overflow: hidden;
+                transform: scale(0.9); transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+                display: flex; flex-direction: column;
+                font-family: var(--font-family, system-ui, sans-serif);
+                color: #1a1a1a;
+            }
+            .pd-overlay.show .pd-box { transform: scale(1); }
+            .pd-header {
+                display: flex; align-items: center; padding: 16px 18px 0 18px;
+                position: relative;
+            }
+            .pd-avatar {
+                width: 38px; height: 38px; border-radius: 50%; background: #f0f0f0;
+                display: flex; align-items: center; justify-content: center;
+                overflow: hidden; flex-shrink: 0;
+            }
+            .pd-avatar img { width: 100%; height: 100%; object-fit: cover; }
+            .pd-name {
+                font-size: 15px; font-weight: 600; margin-left: 10px; color: #1a1a1a;
+            }
+            .pd-close {
+                position: absolute; right: 18px; top: 16px;
+                background: none; border: none; font-size: 18px; color: #999;
+                cursor: pointer; padding: 4px; line-height: 1;
+            }
+            .pd-tag {
+                display: inline-block; background: #e8f5e9; color: #4caf50;
+                font-size: 11px; padding: 3px 10px; border-radius: 6px;
+                margin: 14px 18px 6px 18px; font-weight: 500;
+                align-self: flex-start;
+            }
+            .pd-content {
+                padding: 6px 18px 24px 18px;
+                font-size: 16px; line-height: 1.6; color: #333;
+                font-weight: 500; word-break: break-word;
+                transition: opacity 0.3s ease;
+            }
+            .pd-content.fade-out { opacity: 0; }
+            .pd-content.fade-in { opacity: 1; }
+            .pd-footer {
+                display: flex; border-top: 1px solid #f0f0f0;
+            }
+            .pd-btn {
+                flex: 1; padding: 14px 0; border: none; background: #fff;
+                font-size: 15px; cursor: pointer; font-family: inherit;
+                transition: background 0.15s; font-weight: 500;
+            }
+            .pd-btn:first-child { border-right: 1px solid #f0f0f0; color: #888; }
+            .pd-btn:last-child { color: #d4a373; font-weight: 600; }
+            .pd-btn:hover { background: #fafafa; }
+            .pd-btn:active { background: #f0f0f0; }
+        `;
+        document.head.appendChild(style);
+    }
 
-        lastReminderCheckDate = todayStr;
-        saveData();
+    // ==================== 弹窗核心逻辑 ====================
+    let currentPeriodDialog = null;
 
-        const msg = getReminderMessage();
-        if (msg && typeof showNotification === 'function') {
+    function showPeriodDialog({ title, content, btnLeft, btnRight, onlyKnow, onLeft, onRight, keepOpenOnRight }) {
+        if (currentPeriodDialog) {
+            currentPeriodDialog.remove();
+            currentPeriodDialog = null;
+        }
+
+        const overlay = document.createElement('div');
+        overlay.className = 'pd-overlay';
+
+        const partnerName = settings.partnerName || '梦角';
+        let partnerAvatar = window.settings?.partnerAvatar || '';
+        if (!partnerAvatar) {
+            const avatarImg = document.querySelector('#partner-avatar img');
+            if (avatarImg) partnerAvatar = avatarImg.src;
+        }
+        if (!partnerAvatar) partnerAvatar = 'image/Xavier.png';
+
+        let footerHtml = '';
+        if (onlyKnow) {
+            footerHtml = `<button class="pd-btn pd-right" style="flex:1;">知道啦</button>`;
+        } else {
+            footerHtml = `
+                <button class="pd-btn pd-left">${btnLeft || '不再提醒'}</button>
+                <button class="pd-btn pd-right">${btnRight || '知道啦'}</button>
+            `;
+        }
+
+        overlay.innerHTML = `
+            <div class="pd-box">
+                <div class="pd-header">
+                    <div class="pd-avatar">
+                        <img src="${partnerAvatar}" onerror="this.style.display='none'; this.parentNode.innerHTML='<i class=\\'fas fa-user\\' style=\\'color:#ccc;font-size:18px\\'></i>';" alt="">
+                    </div>
+                    <div class="pd-name">${partnerName}</div>
+                    <button class="pd-close">✕</button>
+                </div>
+                <div class="pd-tag">${title || '月经提醒'}</div>
+                <div class="pd-content">${content}</div>
+                <div class="pd-footer">
+                    ${footerHtml}
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+        requestAnimationFrame(() => overlay.classList.add('show'));
+        currentPeriodDialog = overlay;
+
+        const close = () => {
+            overlay.classList.remove('show');
             setTimeout(() => {
-                showNotification(msg, 'info', 6000);
-            }, 4000);
+                overlay.remove();
+                if (currentPeriodDialog === overlay) currentPeriodDialog = null;
+            }, 250);
+        };
+
+        overlay.querySelector('.pd-close').onclick = close;
+
+        if (onlyKnow) {
+            overlay.querySelector('.pd-right').onclick = () => {
+                if (onRight) onRight();
+                close();
+            };
+        } else {
+            overlay.querySelector('.pd-left').onclick = () => {
+                if (onLeft) onLeft();
+                close();
+            };
+            overlay.querySelector('.pd-right').onclick = () => {
+                if (onRight) onRight();
+                if (!keepOpenOnRight) close();
+            };
+        }
+
+        return {
+            close,
+            updateContent: (newContent, newBtnRightText, newOnRight) => {
+                const contentEl = overlay.querySelector('.pd-content');
+                contentEl.classList.add('fade-out');
+                setTimeout(() => {
+                    contentEl.innerHTML = newContent;
+                    contentEl.classList.remove('fade-out');
+                    contentEl.classList.add('fade-in');
+                    if (newBtnRightText) {
+                        const rightBtn = overlay.querySelector('.pd-right');
+                        if (rightBtn) rightBtn.textContent = newBtnRightText;
+                    }
+                    if (newOnRight) {
+                        const rightBtn = overlay.querySelector('.pd-right');
+                        if (rightBtn) {
+                            const newRightBtn = rightBtn.cloneNode(true);
+                            rightBtn.parentNode.replaceChild(newRightBtn, rightBtn);
+                            newRightBtn.onclick = () => {
+                                newOnRight();
+                            };
+                        }
+                    }
+                }, 300);
+            }
+        };
+    }
+
+    function getRandomMsg(category, fallback) {
+        const msgs = window.periodCareMessages?.[category] || [];
+        if (msgs.length > 0) return msgs[Math.floor(Math.random() * msgs.length)];
+        return fallback;
+    }
+
+    function autoRecordPeriodStart() {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (records.some(r => !r.endDate)) return;
+
+        const newRecord = {
+            id: Date.now(),
+            startDate: today,
+            endDate: null,
+            createdAt: new Date()
+        };
+        records.push(newRecord);
+        saveData();
+        fullRefreshUI();
+
+        if (typeof showNotification === 'function') {
+            showNotification('已为您自动记录：月经开始', 'success', 3000);
+        }
+    }
+
+    async function setSuppressToday() {
+        const todayStr = formatDate(new Date());
+        await localforage.setItem(getStorageKey('suppressDate'), todayStr);
+        if (typeof showNotification === 'function') {
+            showNotification('今天将不再提醒', 'info', 2000);
+        }
+    }
+
+    async function setWaitingForManual() {
+        await localforage.setItem(getStorageKey('waitingManual'), true);
+    }
+
+    async function clearWaitingForManual() {
+        await localforage.removeItem(getStorageKey('waitingManual'));
+    }
+
+    // ==================== 求安慰：原地换字（防重复、防连点） ====================
+    let lastComfortMsg = '';
+
+    function showComfortInDialog() {
+        if (!currentPeriodDialog) return;
+        // 动画进行中，忽略本次点击
+        if (currentPeriodDialog.dataset.comfortAnimating === '1') return;
+
+        const duringMsgs = window.periodCareMessages?.during || [];
+        let comfortMsg;
+
+        if (duringMsgs.length > 1) {
+            // 避免连续抽到同一条
+            let tries = 0;
+            do {
+                comfortMsg = duringMsgs[Math.floor(Math.random() * duringMsgs.length)];
+                tries++;
+            } while (comfortMsg === lastComfortMsg && tries < 10);
+        } else if (duringMsgs.length === 1) {
+            comfortMsg = duringMsgs[0];
+        } else {
+            comfortMsg = '多喝热水，别碰凉的，抱抱你';
+        }
+        lastComfortMsg = comfortMsg;
+
+        currentPeriodDialog.dataset.comfortAnimating = '1';
+        const contentEl = currentPeriodDialog.querySelector('.pd-content');
+        contentEl.classList.add('fade-out');
+
+        setTimeout(() => {
+            contentEl.innerHTML = comfortMsg;
+            contentEl.classList.remove('fade-out');
+            setTimeout(() => {
+                if (currentPeriodDialog) currentPeriodDialog.dataset.comfortAnimating = '0';
+            }, 50);
+        }, 300);
+    }
+
+    // ==================== 每日提醒逻辑 ====================
+    async function checkDailyReminder() {
+        const todayStr = formatDate(new Date());
+
+        // 1. 今天点过“不再提醒”
+        const suppressDate = await localforage.getItem(getStorageKey('suppressDate'));
+        if (suppressDate === todayStr) {
+            console.log('【经期提醒】今天已点击不再提醒，跳过所有弹窗');
+            return;
+        }
+
+        // 2. 静默等待期（用户点了“没有开始”，等待手动记录）
+        const isWaiting = await localforage.getItem(getStorageKey('waitingManual'));
+        if (isWaiting) {
+            console.log('【经期提醒】静默等待期，等待用户手动记录');
+            return;
+        }
+
+        if (records.length === 0) return;
+
+        const status = getCurrentCycleStatus();
+        const partner = settings.partnerName || '梦角';
+
+        // ====== 状态 A：月经前3天 ======
+        if (status.status === 'after' && status.daysUntilNext > 0 && status.daysUntilNext <= 3) {
+            const msg = getRandomMsg('approaching', '月经快来了，注意休息');
+            setTimeout(() => {
+                showPeriodDialog({
+                    title: '月经提醒',
+                    content: msg,
+                    btnLeft: '不再提醒',
+                    btnRight: '知道啦',
+                    onLeft: () => setSuppressToday(),
+                    onRight: () => {}
+                });
+            }, 1500);
+            return;
+        }
+
+        // ====== 状态 B：预测日 / 已推迟 ======
+        if (status.status === 'after' && status.daysUntilNext <= 0) {
+            setTimeout(() => {
+                showPeriodDialog({
+                    title: '月经提醒',
+                    content: `预期日子到了，月经来了吗？`,
+                    btnLeft: '没有开始',
+                    btnRight: '已经开始',
+                    onLeft: async () => {
+                        await setWaitingForManual();
+                        const delayMsg = getRandomMsg('delayed', '最近累到了吗，没关系，月经本来就不是固定时间的');
+                        setTimeout(() => {
+                            showPeriodDialog({
+                                title: '月经提醒',
+                                content: delayMsg,
+                                onlyKnow: true,
+                                onRight: () => {}
+                            });
+                        }, 300);
+                    },
+                    onRight: () => {
+                        autoRecordPeriodStart();
+                        setTimeout(() => {
+                            const duringMsg = getRandomMsg('during', '这几天要好好休息，我会陪着你');
+                            lastComfortMsg = duringMsg;
+                            showPeriodDialog({
+                                title: '月经提醒',
+                                content: duringMsg,
+                                btnLeft: '不再提醒',
+                                btnRight: '求安慰',
+                                keepOpenOnRight: true,
+                                onLeft: () => setSuppressToday(),
+                                onRight: () => {
+                                    showComfortInDialog();
+                                }
+                            });
+                        }, 300);
+                    }
+                });
+            }, 1500);
+            return;
+        }
+
+        // ====== 状态 C：经期中 ======
+        if (status.status === 'during') {
+            const msg = getRandomMsg('during', '这几天要好好休息，我会陪着你');
+            lastComfortMsg = msg;   // ← 新增
+            setTimeout(() => {
+                showPeriodDialog({
+                    title: '月经提醒',
+                    content: msg,
+                    btnLeft: '不再提醒',
+                    btnRight: '求安慰',
+                    keepOpenOnRight: true,
+                    onLeft: () => setSuppressToday(),
+                    onRight: () => {
+                        showComfortInDialog();
+                    }
+                });
+            }, 1500);
+            return;
         }
     }
 
@@ -563,11 +849,12 @@
 
     // ==================== 对外暴露的初始化方法 ====================
     window.initPeriodData = async function() {
+        injectPeriodDialogStyle();
         cacheElements();
         await loadData();
         fullRefreshUI();
         bindEvents();
-        setTimeout(checkDailyReminder, 5000);
+        setTimeout(checkDailyReminder, 6000);
     };
 
     window.initPeriodListeners = function() {
