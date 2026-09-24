@@ -50,6 +50,7 @@
     // ==================== 状态 ====================
     var moments = [];
     var pendingTasks = [];
+    var scheduledMoments = [];   // 🆕 定时发布队列
     var redDot = false;
     var currentFilter = 'all';
     var editingMomentId = null;
@@ -77,6 +78,9 @@
     }
     function generateTaskId() {
         return 'task_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+    }
+    function generateScheduledId() {
+        return 'sch_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
     }
     function randomInt(min, max) {
         return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -107,6 +111,14 @@
             return month + '月' + day + '日 ' + hh + ':' + mm;
         }
         return year + '年' + month + '月' + day + '日 ' + hh + ':' + mm;
+    }
+    function formatDateTime(ts) {
+        var d = new Date(ts);
+        var M = String(d.getMonth() + 1).padStart(2, '0');
+        var D = String(d.getDate()).padStart(2, '0');
+        var h = String(d.getHours()).padStart(2, '0');
+        var m = String(d.getMinutes()).padStart(2, '0');
+        return M + '-' + D + ' ' + h + ':' + m;
     }
 
     // ==================== 字卡库 / 表情库 兼容层 ====================
@@ -141,7 +153,6 @@
         return [];
     }
 
-    // ✅ 只读「对方」表情库，绝不读「我的」
     function findStickerLibraryFromWindow() {
         var candidates = [
             window.partnerStickerLibrary,
@@ -263,7 +274,6 @@
         chatAvatarSettings.partnerShape = partnerShape;
         chatAvatarSettings.cornerRadius = r;
 
-        console.log('[朋友圈] 头像设置(来自 settings):', chatAvatarSettings);
         return Promise.resolve(chatAvatarSettings);
     }
 
@@ -285,6 +295,27 @@
     function saveRedDot() { return localforage.setItem('momentRedDot', redDot); }
     function loadRedDot() { return localforage.getItem('momentRedDot').then(function(data) { redDot = !!data; return redDot; }); }
 
+    // 🆕 定时发布队列持久化
+    function saveScheduledMoments() {
+        var plain = scheduledMoments.map(function(t) {
+            return {
+                id: t.id,
+                momentData: t.momentData,
+                publishAt: t.publishAt,
+            };
+        });
+        return localforage.setItem('scheduledMoments', plain);
+    }
+    function loadScheduledMoments() {
+        return localforage.getItem('scheduledMoments').then(function(data) {
+            scheduledMoments = (data || []).map(function(t) {
+                t._timeoutId = null;
+                return t;
+            });
+            return scheduledMoments;
+        });
+    }
+
     // ==================== 排序 ====================
     function getSortedMoments() {
         var valid = moments.filter(function(m) { return !m.deleted; });
@@ -299,179 +330,166 @@
     }
 
     // ==================== 渲染卡片 ====================
-         function renderMomentCard(moment) {
-             var avStyle = getMomentAvatarStyle(moment.publisher);
-             var isMe = moment.publisher === 'me';
-             var name = isMe
-                 ? ((window.settings && window.settings.myName) || '我')
-                 : ((window.settings && window.settings.partnerName) || '梦角');
-             var avatarUrl = getAvatar(moment.publisher);
-             var timeStr = formatTime(moment.timestamp);
+    function renderMomentCard(moment) {
+        var avStyle = getMomentAvatarStyle(moment.publisher);
+        var isMe = moment.publisher === 'me';
+        var name = isMe
+            ? ((window.settings && window.settings.myName) || '我')
+            : ((window.settings && window.settings.partnerName) || '梦角');
+        var avatarUrl = getAvatar(moment.publisher);
+        var timeStr = formatTime(moment.timestamp);
 
-             var likes = moment.likes || [];
-             var isLiked = likes.indexOf('me') > -1;
-             var comments = moment.comments || [];
+        var likes = moment.likes || [];
+        var isLiked = likes.indexOf('me') > -1;
+        var comments = moment.comments || [];
 
-             // ================== 核心修改：智能识别夜间模式，完美适配微信风格 ==================
-             var isDark = false;
-             try {
-                 var bg = window.getComputedStyle(document.body).backgroundColor;
-                 var rgb = bg.match(/\d+/g);
-                 if (rgb && rgb.length >= 3) {
-                     isDark = (parseInt(rgb[0]) + parseInt(rgb[1]) + parseInt(rgb[2]) < 384);
-                 }
-             } catch (e) {}
+        var isDark = false;
+        try {
+            var bg = window.getComputedStyle(document.body).backgroundColor;
+            var rgb = bg.match(/\d+/g);
+            if (rgb && rgb.length >= 3) {
+                isDark = (parseInt(rgb[0]) + parseInt(rgb[1]) + parseInt(rgb[2]) < 384);
+            }
+        } catch (e) {}
 
-             // 夜间模式：深灰色半透明背景；浅色模式：浅灰色背景
-             var interactionBg = isDark ? 'rgba(255, 255, 255, 0.08)' : '#f7f7f7';
-             // 夜间模式：柔和的灰蓝色；浅色模式：微信经典亮蓝色
-             var nameColor = isDark ? '#7d90b8' : '#576b95';
-             // 夜间模式：浅灰色文字；浅色模式：跟随主题
-             var textColor = isDark ? '#d1d1d1' : 'var(--text-primary)';
-             // ==================================================================================
+        var interactionBg = isDark ? 'rgba(255, 255, 255, 0.08)' : '#f7f7f7';
+        var nameColor = isDark ? '#7d90b8' : '#576b95';
+        var textColor = isDark ? '#d1d1d1' : 'var(--text-primary)';
 
-             // --- 1. 点赞 HTML ---
-             var likesHtml = '';
-             if (likes.length > 0) {
-                 var names = [];
-                 var seen = {};
-                 likes.forEach(function(id) {
-                     var n = id === 'me' ? ((window.settings && window.settings.myName) || '我')
-                           : id === 'partner' ? ((window.settings && window.settings.partnerName) || '梦角')
-                           : id;
-                     if (!seen[n]) { seen[n] = 1; names.push(n); }
-                 });
-                 likesHtml = '<div class="moment-likes-row" style="display:flex;align-items:center;padding:0;font-size:13px;line-height:1.6;">' +
-                     '<i class="far fa-heart" style="color:' + nameColor + ';margin-right:4px;font-size:13px;"></i>' +
-                     '<span style="color:' + nameColor + ';font-weight:700;">' + names.join('、') + '</span>' +
-                     '</div>';
-             }
+        // 1. 点赞
+        var likesHtml = '';
+        if (likes.length > 0) {
+            var names = [];
+            var seen = {};
+            likes.forEach(function(id) {
+                var n = id === 'me' ? ((window.settings && window.settings.myName) || '我')
+                      : id === 'partner' ? ((window.settings && window.settings.partnerName) || '梦角')
+                      : id;
+                if (!seen[n]) { seen[n] = 1; names.push(n); }
+            });
+            likesHtml = '<div class="moment-likes-row" style="display:flex;align-items:center;padding:0;font-size:13px;line-height:1.6;">' +
+                '<i class="far fa-heart" style="color:' + nameColor + ';margin-right:4px;font-size:13px;"></i>' +
+                '<span style="color:' + nameColor + ';font-weight:700;">' + names.join('、') + '</span>' +
+                '</div>';
+        }
 
-             // --- 2. 操作菜单 ---
-             var actionMenuHtml =
-                 '<div class="moment-action-menu" style="position:relative;display:inline-block;flex-shrink:0;">' +
-                     '<div class="moment-menu-trigger" style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:' + (isDark ? '#aaa' : '#888') + ';border-radius:50%;font-size:16px;">' +
-                         '<span style="font-size:16px;letter-spacing:2px;font-weight:bold;">··</span>' +
-                     '</div>' +
-                     '<div class="moment-menu-popup" style="display:none;position:absolute;right:0;bottom:100%;margin-bottom:6px;background:#4a4a4a;border-radius:8px;overflow:hidden;white-space:nowrap;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,0.25);min-width:100px;">' +
-                         '<button class="menu-action-like" data-moment-id="' + moment.id + '" style="background:none;border:none;color:white;padding:10px 18px;font-size:13px;display:flex;align-items:center;gap:8px;cursor:pointer;width:100%;text-align:left;">' +
-                             '<i class="' + (isLiked ? 'fas' : 'far') + ' fa-heart" style="font-size:14px;width:16px;text-align:center;"></i> ' + (isLiked ? '取消赞' : '赞') +
-                         '</button>' +
-                         '<button class="menu-action-comment" data-moment-id="' + moment.id + '" style="background:none;border:none;color:white;padding:10px 18px;font-size:13px;display:flex;align-items:center;gap:8px;cursor:pointer;width:100%;text-align:left;border-top:1px solid rgba(255,255,255,0.1);">' +
-                             '<i class="fas fa-comment" style="font-size:14px;width:16px;text-align:center;"></i> 评论' +
-                         '</button>' +
-                     '</div>' +
-                 '</div>';
+        // 2. 操作菜单
+        var actionMenuHtml =
+            '<div class="moment-action-menu" style="position:relative;display:inline-block;flex-shrink:0;">' +
+                '<div class="moment-menu-trigger" style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:' + (isDark ? '#aaa' : '#888') + ';border-radius:50%;font-size:16px;">' +
+                    '<span style="font-size:16px;letter-spacing:2px;font-weight:bold;">··</span>' +
+                '</div>' +
+                '<div class="moment-menu-popup" style="display:none;position:absolute;right:0;bottom:100%;margin-bottom:6px;background:#4a4a4a;border-radius:8px;overflow:hidden;white-space:nowrap;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,0.25);min-width:100px;">' +
+                    '<button class="menu-action-like" data-moment-id="' + moment.id + '" style="background:none;border:none;color:white;padding:10px 18px;font-size:13px;display:flex;align-items:center;gap:8px;cursor:pointer;width:100%;text-align:left;">' +
+                        '<i class="' + (isLiked ? 'fas' : 'far') + ' fa-heart" style="font-size:14px;width:16px;text-align:center;"></i> ' + (isLiked ? '取消赞' : '赞') +
+                    '</button>' +
+                    '<button class="menu-action-comment" data-moment-id="' + moment.id + '" style="background:none;border:none;color:white;padding:10px 18px;font-size:13px;display:flex;align-items:center;gap:8px;cursor:pointer;width:100%;text-align:left;border-top:1px solid rgba(255,255,255,0.1);">' +
+                        '<i class="fas fa-comment" style="font-size:14px;width:16px;text-align:center;"></i> 评论' +
+                    '</button>' +
+                '</div>' +
+            '</div>';
 
-             // --- 3. 图片 HTML ---
-             var imagesHtml = '';
-             if (moment.images && moment.images.length) {
-                 var count = moment.images.length;
-                 if (count === 1) {
-                     var src = moment.images[0];
-                     imagesHtml = '<div class="moment-single-image" style="margin-top:8px;border-radius:6px;overflow:hidden;display:inline-block;">' +
-                         '<img src="' + src + '" style="max-width:180px;max-height:240px;width:auto;height:auto;display:block;cursor:pointer;" data-src="' + src + '" loading="lazy">' +
-                         '</div>';
-                 } else {
-                     var gridClass = 'moment-grid-' + ((count === 2 || count === 4) ? '2' : '3');
-                     imagesHtml = '<div class="moment-images ' + gridClass + '" style="max-width:200px;margin-top:8px;">';
-                     moment.images.forEach(function(img) {
-                         imagesHtml += '<div class="moment-image" data-src="' + img + '"><img src="' + img + '" loading="lazy" style="cursor:pointer;"></div>';
-                     });
-                     imagesHtml += '</div>';
-                 }
-             }
+        // 3. 图片
+        var imagesHtml = '';
+        if (moment.images && moment.images.length) {
+            var count = moment.images.length;
+            if (count === 1) {
+                var src = moment.images[0];
+                imagesHtml = '<div class="moment-single-image" style="margin-top:8px;border-radius:6px;overflow:hidden;display:inline-block;">' +
+                    '<img src="' + src + '" style="max-width:180px;max-height:240px;width:auto;height:auto;display:block;cursor:pointer;" data-src="' + src + '" loading="lazy">' +
+                    '</div>';
+            } else {
+                var gridClass = 'moment-grid-' + ((count === 2 || count === 4) ? '2' : '3');
+                imagesHtml = '<div class="moment-images ' + gridClass + '" style="max-width:200px;margin-top:8px;">';
+                moment.images.forEach(function(img) {
+                    imagesHtml += '<div class="moment-image" data-src="' + img + '"><img src="' + img + '" loading="lazy" style="cursor:pointer;"></div>';
+                });
+                imagesHtml += '</div>';
+            }
+        }
 
-             // --- 4. 评论 HTML（彻底移除横线，使用微信排版）---
-             var commentsHtml = '';
-             if (comments.length > 0) {
-                 var myName = localStorage.getItem('myName') || (window.settings && window.settings.myName) || '我';
-                 var partnerName = localStorage.getItem('partnerName') || (window.settings && window.settings.partnerName) || '梦角';
-                 commentsHtml = '<div class="moment-comments" style="margin-top:0;">';
-                 comments.forEach(function(comment) {
-                     var sRaw = comment.sender || '';
-                     var cName = sRaw === 'me' ? myName :
-                                 sRaw === 'partner' ? partnerName :
-                                 sRaw === myName ? myName :
-                                 sRaw === partnerName ? partnerName : partnerName;
-                     var replyText = '';
-                     if (comment.replyToCommentId) {
-                         var parent = comments.find(function(c) { return c.id === comment.replyToCommentId; });
-                         if (parent) {
-                             var pRaw = parent.sender || '';
-                             var pName = pRaw === 'me' ? myName : (pRaw === 'partner' ? partnerName : pRaw);
-                             replyText = '回复 ' + pName + '：';
-                         }
-                     }
-                     var text = (comment.text != null) ? comment.text : '';
+        // 4. 评论
+        var commentsHtml = '';
+        if (comments.length > 0) {
+            var myName = localStorage.getItem('myName') || (window.settings && window.settings.myName) || '我';
+            var partnerName = localStorage.getItem('partnerName') || (window.settings && window.settings.partnerName) || '梦角';
+            commentsHtml = '<div class="moment-comments" style="margin-top:0;">';
+            comments.forEach(function(comment) {
+                var sRaw = comment.sender || '';
+                var cName = sRaw === 'me' ? myName :
+                            sRaw === 'partner' ? partnerName :
+                            sRaw === myName ? myName :
+                            sRaw === partnerName ? partnerName : partnerName;
+                var replyText = '';
+                if (comment.replyToCommentId) {
+                    var parent = comments.find(function(c) { return c.id === comment.replyToCommentId; });
+                    if (parent) {
+                        var pRaw = parent.sender || '';
+                        var pName = pRaw === 'me' ? myName : (pRaw === 'partner' ? partnerName : pRaw);
+                        replyText = '回复 ' + pName + '：';
+                    }
+                }
+                var text = (comment.text != null) ? comment.text : '';
 
-                     // 名字在上，回复内容在下，绝无横线
-                     commentsHtml += '<div class="moment-comment" data-comment-id="' + comment.id + '" style="display:flex;align-items:flex-start;padding:6px 0 2px 0;font-size:13px;line-height:1.5;">' +
-                         '<div style="flex:1;min-width:0;">' +
-                             '<div style="color:' + nameColor + ';font-weight:700;margin-bottom:2px;">' + cName + '</div>' +
-                             '<div style="color:' + textColor + ';word-break:break-all;">' +
-                                 (replyText ? '<span style="color:' + nameColor + ';font-weight:700;">' + replyText + '</span>' : '') +
-                                 text +
-                             '</div>' +
-                         '</div>' +
-                         '<span class="comment-actions" data-comment-id="' + comment.id + '" style="margin-left:auto;color:' + (isDark ? '#888' : '#999') + ';font-size:12px;cursor:pointer;padding:0 4px;flex-shrink:0;"><i class="fas fa-ellipsis-v"></i></span>' +
-                         '</div>';
-                 });
-                 commentsHtml += '</div>';
-             }
+                commentsHtml += '<div class="moment-comment" data-comment-id="' + comment.id + '" style="display:flex;align-items:flex-start;padding:6px 0 2px 0;font-size:13px;line-height:1.5;">' +
+                    '<div style="flex:1;min-width:0;">' +
+                        '<div style="color:' + nameColor + ';font-weight:700;margin-bottom:2px;">' + cName + '</div>' +
+                        '<div style="color:' + textColor + ';word-break:break-all;">' +
+                            (replyText ? '<span style="color:' + nameColor + ';font-weight:700;">' + replyText + '</span>' : '') +
+                            text +
+                        '</div>' +
+                    '</div>' +
+                    '<span class="comment-actions" data-comment-id="' + comment.id + '" style="margin-left:auto;color:' + (isDark ? '#888' : '#999') + ';font-size:12px;cursor:pointer;padding:0 4px;flex-shrink:0;"><i class="fas fa-ellipsis-v"></i></span>' +
+                    '</div>';
+            });
+            commentsHtml += '</div>';
+        }
 
-             // --- 5. 互动容器（点赞和评论合并，去除任何横线分割）---
-             var interactionHtml = '';
-             if (likes.length > 0 || comments.length > 0) {
-                 interactionHtml = '<div class="moment-interaction-box" style="position:relative; background:' + interactionBg + '; border-radius:6px; padding:10px 12px 12px 12px; margin-top:8px; margin-bottom:8px;">';
+        // 5. 互动容器
+        var interactionHtml = '';
+        if (likes.length > 0 || comments.length > 0) {
+            interactionHtml = '<div class="moment-interaction-box" style="position:relative; background:' + interactionBg + '; border-radius:6px; padding:10px 12px 12px 12px; margin-top:8px; margin-bottom:8px;">';
+            interactionHtml += '<div style="position:absolute; top:4px; right:4px; z-index:10;">' + actionMenuHtml + '</div>';
+            if (likes.length > 0) interactionHtml += likesHtml;
+            if (comments.length > 0) {
+                interactionHtml += '<div style="' + (likes.length > 0 ? 'margin-top:6px;' : '') + '">' + commentsHtml + '</div>';
+            }
+            interactionHtml += '</div>';
+        } else {
+            interactionHtml = '<div class="moment-footer" style="display:flex;justify-content:flex-end;align-items:center;padding:4px 0 0 0;margin-top:4px;">' +
+                '<div class="moment-footer-right" style="flex-shrink:0;display:flex;align-items:center;">' + actionMenuHtml + '</div>' +
+            '</div>';
+        }
 
-                 // 悬浮菜单
-                 interactionHtml += '<div style="position:absolute; top:4px; right:4px; z-index:10;">' + actionMenuHtml + '</div>';
+        // 6. 评论输入框
+        var commentInputHtml =
+            '<div class="moment-comment-input" data-moment-id="' + moment.id + '" style="display:none;margin-top:8px;width:100%;box-sizing:border-box;">' +
+                '<div style="display:flex;align-items:flex-end;gap:8px;background:' + interactionBg + ';border-radius:8px;padding:6px 10px;width:100%;box-sizing:border-box;">' +
+                    '<textarea placeholder="写评论..." class="comment-input-field" rows="3" style="flex:1;min-width:0;padding:8px 12px;border:1px solid ' + (isDark ? 'rgba(255,255,255,0.1)' : 'var(--border-color)') + ';border-radius:10px;font-size:12px;background:' + (isDark ? 'rgba(0,0,0,0.2)' : 'var(--primary-bg)') + ';color:' + textColor + ';outline:none;font-family:var(--font-family);box-sizing:border-box;resize:none;line-height:1.5;max-height:120px;overflow-y:auto;"></textarea>' +
+                    '<button class="comment-send-btn" style="padding:8px 14px;background:var(--accent-color);color:#fff;border:none;border-radius:10px;font-size:12px;cursor:pointer;font-weight:600;flex-shrink:0;box-sizing:border-box;margin-bottom:1px;">发送</button>' +
+                '</div>' +
+            '</div>';
 
-                 // 强制去掉横线，只用 margin 做间隔
-                 if (likes.length > 0) {
-                     interactionHtml += likesHtml;
-                 }
-                 if (comments.length > 0) {
-                     // 如果同有点赞和评论，增加上边距
-                     interactionHtml += '<div style="' + (likes.length > 0 ? 'margin-top:6px;' : '') + '">' + commentsHtml + '</div>';
-                 }
-                 interactionHtml += '</div>';
-             } else {
-                 // 无互动时，底部显示菜单
-                 interactionHtml = '<div class="moment-footer" style="display:flex;justify-content:flex-end;align-items:center;padding:4px 0 0 0;margin-top:4px;">' +
-                     '<div class="moment-footer-right" style="flex-shrink:0;display:flex;align-items:center;">' + actionMenuHtml + '</div>' +
-                 '</div>';
-             }
-
-             // --- 6. 输入框 HTML（多行 textarea，默认 3 行，超出可滚动） ---
-              var commentInputHtml =
-                  '<div class="moment-comment-input" data-moment-id="' + moment.id + '" style="display:none;margin-top:8px;width:100%;box-sizing:border-box;">' +
-                      '<div style="display:flex;align-items:flex-end;gap:8px;background:' + interactionBg + ';border-radius:8px;padding:6px 10px;width:100%;box-sizing:border-box;">' +
-                          '<textarea placeholder="写评论..." class="comment-input-field" rows="3" style="flex:1;min-width:0;padding:8px 12px;border:1px solid ' + (isDark ? 'rgba(255,255,255,0.1)' : 'var(--border-color)') + ';border-radius:10px;font-size:12px;background:' + (isDark ? 'rgba(0,0,0,0.2)' : 'var(--primary-bg)') + ';color:' + textColor + ';outline:none;font-family:var(--font-family);box-sizing:border-box;resize:none;line-height:1.5;max-height:120px;overflow-y:auto;"></textarea>' +
-                          '<button class="comment-send-btn" style="padding:8px 14px;background:var(--accent-color);color:#fff;border:none;border-radius:10px;font-size:12px;cursor:pointer;font-weight:600;flex-shrink:0;box-sizing:border-box;margin-bottom:1px;">发送</button>' +
-                      '</div>' +
-                  '</div>';
-             // --- 7. 整体返回 ---
-             return '<div class="moment-card" data-moment-id="' + moment.id + '" style="padding:12px 16px 8px;border-bottom:1px solid ' + (isDark ? 'rgba(255,255,255,0.06)' : 'var(--border-color)') + ';">' +
-                 '<div class="moment-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
-                     '<div class="moment-user" style="display:flex;align-items:center;gap:6px;margin:0;padding:0;flex:1;min-width:0;">' +
-                         '<img class="moment-avatar" src="' + avatarUrl + '" style="width:' + avStyle.width + ';height:' + avStyle.height + ';border-radius:' + avStyle.borderRadius + ';object-fit:cover;background:#eee;margin:0;padding:0;flex-shrink:0;display:block;">' +
-                         '<span class="moment-name" style="font-weight:700;font-size:15px;color:' + nameColor + ';margin:0;padding:0;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + name +
-                             (moment.isFavorited ? ' <i class="fas fa-star" style="color:#f7b500;font-size:11px;margin-left:2px;" title="已收藏"></i>' : '') +
-                         '</span>' +
-                     '</div>' +
-                     '<div style="display:flex;align-items:center;gap:6px;">' +
-                         '<span class="moment-time" style="font-size:12px;color:' + (isDark ? '#888' : '#999') + ';">' + timeStr + '</span>' +
-                         '<span class="moment-more" data-moment-id="' + moment.id + '" style="cursor:pointer;color:' + (isDark ? '#888' : '#999') + ';font-size:14px;padding:0 2px;"><i class="fas fa-ellipsis-v"></i></span>' +
-                     '</div>' +
-                 '</div>' +
-                 (moment.content ? '<div class="moment-content" style="font-size:14px;line-height:1.7;color:' + textColor + ';margin-bottom:4px;word-break:break-word;">' + moment.content + '</div>' : '') +
-                 imagesHtml +
-                 interactionHtml +
-                 commentInputHtml +
-                 '</div>';
-         }
+        // 7. 整体
+        return '<div class="moment-card" data-moment-id="' + moment.id + '" style="padding:12px 16px 8px;border-bottom:1px solid ' + (isDark ? 'rgba(255,255,255,0.06)' : 'var(--border-color)') + ';">' +
+            '<div class="moment-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
+                '<div class="moment-user" style="display:flex;align-items:center;gap:6px;margin:0;padding:0;flex:1;min-width:0;">' +
+                    '<img class="moment-avatar" src="' + avatarUrl + '" style="width:' + avStyle.width + ';height:' + avStyle.height + ';border-radius:' + avStyle.borderRadius + ';object-fit:cover;background:#eee;margin:0;padding:0;flex-shrink:0;display:block;">' +
+                    '<span class="moment-name" style="font-weight:700;font-size:15px;color:' + nameColor + ';margin:0;padding:0;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + name +
+                        (moment.isFavorited ? ' <i class="fas fa-star" style="color:#f7b500;font-size:11px;margin-left:2px;" title="已收藏"></i>' : '') +
+                    '</span>' +
+                '</div>' +
+                '<div style="display:flex;align-items:center;gap:6px;">' +
+                    '<span class="moment-time" style="font-size:12px;color:' + (isDark ? '#888' : '#999') + ';">' + timeStr + '</span>' +
+                    '<span class="moment-more" data-moment-id="' + moment.id + '" style="cursor:pointer;color:' + (isDark ? '#888' : '#999') + ';font-size:14px;padding:0 2px;"><i class="fas fa-ellipsis-v"></i></span>' +
+                '</div>' +
+            '</div>' +
+            (moment.content ? '<div class="moment-content" style="font-size:14px;line-height:1.7;color:' + textColor + ';margin-bottom:4px;word-break:break-word;">' + moment.content + '</div>' : '') +
+            imagesHtml +
+            interactionHtml +
+            commentInputHtml +
+            '</div>';
+    }
 
     // ==================== 图片预览 ====================
     function showImagePreview(src) {
@@ -677,14 +695,18 @@
     }
 
     // ==================== 核心操作 ====================
+
+    /**
+     * 发布朋友圈
+     * - 过去/现在：立即发布
+     * - 未来：进入定时队列，到点发布
+     */
     function publishMoment(data) {
         return new Promise(function(resolve, reject) {
             var timestamp = data.timestamp || Date.now();
-            if (timestamp > Date.now()) {
-                showToast('不能发布未来的朋友圈');
-                reject('Future time not allowed');
-                return;
-            }
+            var now = Date.now();
+            var isFuture = timestamp > now;
+
             var publisher = data.publisher || 'me';
             var publisherName = publisher === 'me'
                 ? ((window.settings && window.settings.myName) || '我')
@@ -697,7 +719,7 @@
                 content: data.content || '',
                 images: data.images || [],
                 timestamp: timestamp,
-                createdAt: Date.now(),
+                createdAt: now,
                 likes: [],
                 comments: [],
                 isGenerated: false,
@@ -706,21 +728,106 @@
                 deleted: false,
                 autoReplyCount: 0,
                 pendingAutoReply: 0,
+                isScheduled: isFuture,   // 🆕 标记
             };
-            moments.push(newMoment);
-            saveMoments().then(function() {
-                // 🆕 用户发圈 → 不立即点赞，改为排期 5min~3h 后对方点赞+评论
-                if (newMoment.publisher === 'me') {
-                    schedulePartnerReplyToMoment(newMoment.id);
+
+            if (isFuture) {
+                // ===== 定时发布 =====
+                var delay = timestamp - now;
+                var task = {
+                    id: generateScheduledId(),
+                    momentData: newMoment,
+                    publishAt: timestamp,
+                    _timeoutId: null,
+                };
+                scheduledMoments.push(task);
+
+                saveScheduledMoments().then(function() {
+                    if (delay > 0) {
+                        var tid = setTimeout(function() {
+                            executeScheduledMoment(task);
+                        }, delay);
+                        task._timeoutId = tid;
+                    }
+                    showToast('已定时，将在 ' + formatDateTime(timestamp) + ' 发布 ✦');
+                    resolve(newMoment);
+                }).catch(function(err) {
+                    console.error('定时保存失败:', err);
+                    reject(err);
+                });
+            } else {
+                // ===== 立即发布 =====
+                moments.push(newMoment);
+                saveMoments().then(function() {
+                    if (newMoment.publisher === 'me') {
+                        schedulePartnerReplyToMoment(newMoment.id);
+                    }
+                    enforceLimits();
+                    renderMoments();
+                    showToast('发布成功 ✦');
+                    resolve(newMoment);
+                }).catch(function(err) {
+                    console.error('发布失败:', err);
+                    reject(err);
+                });
+            }
+        });
+    }
+
+    // 🆕 执行定时发布
+    function executeScheduledMoment(task) {
+        var momentData = task.momentData;
+
+        // 防止重复
+        if (moments.some(function(m) { return m.id === momentData.id; })) {
+            removeScheduledTask(task.id);
+            return;
+        }
+
+        momentData.timestamp = task.publishAt;
+        momentData.createdAt = Date.now();
+        momentData.isScheduled = false;
+
+        moments.push(momentData);
+
+        if (momentData.publisher === 'me') {
+            schedulePartnerReplyToMoment(momentData.id);
+        }
+
+        saveMoments().then(function() {
+            removeScheduledTask(task.id);
+            enforceLimits();
+            renderMoments();
+            setRedDot(true);
+            showToast('定时朋友圈已发布 ✦');
+        });
+    }
+
+    // 🆕 移除定时任务
+    function removeScheduledTask(taskId) {
+        scheduledMoments = scheduledMoments.filter(function(t) {
+            if (t.id === taskId) {
+                if (t._timeoutId) clearTimeout(t._timeoutId);
+                return false;
+            }
+            return true;
+        });
+        saveScheduledMoments();
+    }
+
+    // 🆕 启动时处理定时任务：已到点的补发，未到点的重新挂 timer
+    function processScheduledMomentsNow() {
+        var now = Date.now();
+        var due = scheduledMoments.filter(function(t) { return t.publishAt <= now; });
+        due.forEach(function(t) { executeScheduledMoment(t); });
+
+        scheduledMoments.forEach(function(t) {
+            if (t.publishAt > now) {
+                var delay = t.publishAt - now;
+                if (!t._timeoutId) {
+                    t._timeoutId = setTimeout(function() { executeScheduledMoment(t); }, delay);
                 }
-                enforceLimits();
-                renderMoments();
-                showToast('发布成功 ✦');
-                resolve(newMoment);
-            }).catch(function(err) {
-                console.error('发布失败:', err);
-                reject(err);
-            });
+            }
         });
     }
 
@@ -749,7 +856,6 @@
         moment.comments.push(comment);
         saveMoments().then(function() {
             renderMoments();
-            // 🆕 用户评论 → 排期 5min~3h 后对方回复（受 2 轮限制）
             schedulePartnerReplyToComment(momentId, comment.id);
         });
     }
@@ -768,10 +874,6 @@
     function editMoment(momentId, newData) {
         var moment = moments.find(function(m) { return m.id === momentId; });
         if (!moment) return;
-        if (newData.timestamp && newData.timestamp > Date.now()) {
-            showToast('不能设置为未来时间');
-            return;
-        }
         if (newData.content !== undefined) moment.content = newData.content;
         if (newData.images !== undefined) moment.images = newData.images;
         if (newData.timestamp) moment.timestamp = newData.timestamp;
@@ -831,11 +933,6 @@
 
     // ==================== 延迟回复 / 延迟点赞 ====================
 
-    /**
-     * 用户发朋友圈 → 排期对方「点赞 + 顶级评论」
-     * 5min ~ 3h 随机
-     * 离线也能补算（评论/点赞时间 = scheduledAt）
-     */
     function schedulePartnerReplyToMoment(momentId) {
         var moment = moments.find(function(m) { return m.id === momentId; });
         if (!moment) return;
@@ -856,7 +953,7 @@
             momentId: momentId,
             replyToCommentId: null,
             scheduledAt: scheduledAt,
-            shouldLike: true, // 用户发朋友圈 → 对方 100% 点赞
+            shouldLike: true,
         };
         pendingTasks.push(task);
         moment.pendingAutoReply = pendingAutoReply + 1;
@@ -870,11 +967,6 @@
         });
     }
 
-    /**
-     * 用户评论 → 排期对方「回复该评论」
-     * 5min ~ 3h 随机
-     * 受 2 轮对话限制
-     */
     function schedulePartnerReplyToComment(momentId, commentId) {
         var moment = moments.find(function(m) { return m.id === momentId; });
         if (!moment) return;
@@ -896,7 +988,7 @@
             momentId: momentId,
             replyToCommentId: commentId,
             scheduledAt: scheduledAt,
-            shouldLike: false, // 评论场景不再重复点赞
+            shouldLike: false,
         };
         pendingTasks.push(task);
         moment.pendingAutoReply = pendingAutoReply + 1;
@@ -910,20 +1002,14 @@
         });
     }
 
-    /**
-     * 执行对方动作（点赞 + / 或 评论）
-     * 🆕 评论/点赞时间用 task.scheduledAt，离线补算时显示历史时间
-     */
     function executePartnerActionTask(task) {
         var moment = moments.find(function(m) { return m.id === task.momentId; });
         if (!moment) { removeTask(task.id); return; }
 
-        // 点赞（用户发圈场景）
         if (task.shouldLike && moment.likes.indexOf('partner') === -1) {
             moment.likes.push('partner');
         }
 
-        // 评论：抽 1-5 张字卡
         var cardCount = randomInt(1, 5);
         var cards = getRandomReplyCards(cardCount);
         if (cards.length > 0) {
@@ -933,14 +1019,13 @@
                 sender: 'partner',
                 senderName: (window.settings && window.settings.partnerName) || '梦角',
                 text: replyText,
-                timestamp: task.scheduledAt || Date.now(), // 🆕 用排期时间
+                timestamp: task.scheduledAt || Date.now(),
                 replyToCommentId: task.replyToCommentId || null,
                 isAutoReply: true,
             };
             moment.comments.push(replyComment);
         }
 
-        // 轮次计数
         moment.autoReplyCount = (moment.autoReplyCount || 0) + 1;
         moment.pendingAutoReply = Math.max(0, (moment.pendingAutoReply || 0) - 1);
 
@@ -1096,7 +1181,6 @@
 
         var now = Date.now();
 
-        // 0️⃣ 离线追赶
         if (getAutoPublishCount() > 0) {
             if (catchUpOfflinePublish()) {
                 enforceLimits();
@@ -1107,7 +1191,6 @@
             }
         }
 
-        // 1️⃣ 完全没有自动动态 → 补发
         if (getAutoPublishCount() === 0) {
             if (bootstrapPartnerMoments()) {
                 enforceLimits();
@@ -1122,13 +1205,11 @@
             return;
         }
 
-        // 2️⃣ 30 天窗口内已达上限
         if (getAutoPublishCountInWindow() >= CONFIG.MONTHLY_AUTO_LIMIT) {
             scheduleNextAutoPublishForNextWindow();
             return;
         }
 
-        // 3️⃣ 每周保底
         var lastAuto = getLastAutoPublishTime();
         if (lastAuto > 0 && (now - lastAuto) >= CONFIG.WEEKLY_MIN_GAP) {
             if (doAutoPublish()) {
@@ -1143,7 +1224,6 @@
             return;
         }
 
-        // 4️⃣ 正常排期
         var nextAt = getNextAutoPublishAt();
         if (nextAt === 0) { scheduleNextAutoPublish(); return; }
         if (now >= nextAt) {
@@ -1183,7 +1263,6 @@
             if (sticker) images.push(sticker);
         }
 
-        // 🆕 对方发圈 → 70% 概率发圈瞬间自赞
         var initialLikes = Math.random() < CONFIG.PARTNER_SELF_LIKE_RATIO ? ['partner'] : [];
 
         var newMoment = {
@@ -1258,10 +1337,8 @@
 
     // ==================== 封面双击 ====================
     function bindCoverDblClick() {
-        // 只绑定到封面图片本身，而不是整个容器
         var coverImg = document.getElementById('moments-cover-img');
         var coverInput = document.getElementById('moments-cover-input');
-        // 如果图片不存在，退回绑定到容器（防止报错）
         var targetEl = coverImg || document.getElementById('momentsCover');
 
         if (!targetEl || !coverInput) return;
@@ -1271,7 +1348,6 @@
         }
         var lastClickTime = 0;
         targetEl._clickHandler = function(e) {
-            // 排除点击到右下角头像和名字区域的情况
             if (e.target.closest('.moments-profile')) return;
 
             var now = Date.now();
@@ -1301,7 +1377,6 @@
 
         setRedDot(false);
 
-        // 先进来先用旧设置渲染，再异步读设置重渲染
         renderMoments();
         loadChatAvatarSettings().then(function() {
             renderMoments();
@@ -1358,133 +1433,114 @@
     }
 
     // ==================== 菜单 ====================
-                function showCommentMenu(momentId, commentId) {
-                    var items = [
-                        { label: '编辑', action: function() {
-                            inlineCommentAction(momentId, commentId, 'edit');
-                        }},
-                        { label: '删除', action: function() {
-                            if (confirm('确定删除这条评论吗？')) deleteComment(momentId, commentId);
-                        }},
-                        { label: '回复', action: function() {
-                            inlineCommentAction(momentId, commentId, 'reply');
-                        }}
-                    ];
-                    showContextMenu(items);
-                }
+    function showCommentMenu(momentId, commentId) {
+        var items = [
+            { label: '编辑', action: function() { inlineCommentAction(momentId, commentId, 'edit'); }},
+            { label: '删除', action: function() { if (confirm('确定删除这条评论吗？')) deleteComment(momentId, commentId); }},
+            { label: '回复', action: function() { inlineCommentAction(momentId, commentId, 'reply'); }}
+        ];
+        showContextMenu(items);
+    }
 
-                    /**
-                     * 原位编辑 / 回复评论
-                     * @param {string} momentId
-                     * @param {string} commentId
-                     * @param {string} mode 'edit' | 'reply'
-                     */
-                    function inlineCommentAction(momentId, commentId, mode) {
-                        var moment = moments.find(function(m) { return m.id === momentId; });
-                        if (!moment) return;
-                        var comment = moment.comments.find(function(c) { return c.id === commentId; });
-                        if (!comment) return;
+    function inlineCommentAction(momentId, commentId, mode) {
+        var moment = moments.find(function(m) { return m.id === momentId; });
+        if (!moment) return;
+        var comment = moment.comments.find(function(c) { return c.id === commentId; });
+        if (!comment) return;
 
-                        var commentEl = document.querySelector('.moment-comment[data-comment-id="' + commentId + '"]');
-                        if (!commentEl) return;
+        var commentEl = document.querySelector('.moment-comment[data-comment-id="' + commentId + '"]');
+        if (!commentEl) return;
 
-                        var originalHTML = commentEl.innerHTML;
-                        var originalText = (mode === 'edit') ? (comment.text || '') : '';
-                        var isDark = false;
-                        try {
-                            var bg = window.getComputedStyle(document.body).backgroundColor;
-                            var rgb = bg.match(/\d+/g);
-                            if (rgb && rgb.length >= 3) {
-                                isDark = (parseInt(rgb[0]) + parseInt(rgb[1]) + parseInt(rgb[2]) < 384);
-                            }
-                        } catch (e) {}
+        var originalHTML = commentEl.innerHTML;
+        var originalText = (mode === 'edit') ? (comment.text || '') : '';
+        var isDark = false;
+        try {
+            var bg = window.getComputedStyle(document.body).backgroundColor;
+            var rgb = bg.match(/\d+/g);
+            if (rgb && rgb.length >= 3) {
+                isDark = (parseInt(rgb[0]) + parseInt(rgb[1]) + parseInt(rgb[2]) < 384);
+            }
+        } catch (e) {}
 
-                        var placeholder = (mode === 'edit') ? '编辑评论...' : '回复评论...';
+        var placeholder = (mode === 'edit') ? '编辑评论...' : '回复评论...';
 
-                        commentEl.innerHTML =
-                            '<div style="display:flex;align-items:flex-end;gap:8px;width:100%;box-sizing:border-box;">' +
-                                '<textarea class="inline-comment-field" rows="3" placeholder="' + placeholder + '" style="flex:1;min-width:0;padding:8px 12px;border:1px solid ' + (isDark ? 'rgba(255,255,255,0.1)' : 'var(--border-color)') + ';border-radius:10px;font-size:12px;background:' + (isDark ? 'rgba(0,0,0,0.2)' : 'var(--primary-bg)') + ';color:' + (isDark ? '#d1d1d1' : 'var(--text-primary)') + ';outline:none;font-family:var(--font-family);resize:none;line-height:1.5;max-height:120px;overflow-y:auto;box-sizing:border-box;">' + originalText.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</textarea>' +
-                                '<button class="inline-comment-send" style="padding:8px 14px;background:var(--accent-color);color:#fff;border:none;border-radius:10px;font-size:12px;cursor:pointer;font-weight:600;flex-shrink:0;box-sizing:border-box;margin-bottom:1px;">发送</button>' +
-                            '</div>';
+        commentEl.innerHTML =
+            '<div style="display:flex;align-items:flex-end;gap:8px;width:100%;box-sizing:border-box;">' +
+                '<textarea class="inline-comment-field" rows="3" placeholder="' + placeholder + '" style="flex:1;min-width:0;padding:8px 12px;border:1px solid ' + (isDark ? 'rgba(255,255,255,0.1)' : 'var(--border-color)') + ';border-radius:10px;font-size:12px;background:' + (isDark ? 'rgba(0,0,0,0.2)' : 'var(--primary-bg)') + ';color:' + (isDark ? '#d1d1d1' : 'var(--text-primary)') + ';outline:none;font-family:var(--font-family);resize:none;line-height:1.5;max-height:120px;overflow-y:auto;box-sizing:border-box;">' + originalText.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</textarea>' +
+                '<button class="inline-comment-send" style="padding:8px 14px;background:var(--accent-color);color:#fff;border:none;border-radius:10px;font-size:12px;cursor:pointer;font-weight:600;flex-shrink:0;box-sizing:border-box;margin-bottom:1px;">发送</button>' +
+            '</div>';
 
-                        var textarea = commentEl.querySelector('.inline-comment-field');
-                        var sendBtn = commentEl.querySelector('.inline-comment-send');
+        var textarea = commentEl.querySelector('.inline-comment-field');
+        var sendBtn = commentEl.querySelector('.inline-comment-send');
 
-                        var autoResize = function() {
-                            textarea.style.height = 'auto';
-                            textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
-                        };
-                        textarea.addEventListener('input', autoResize);
-                        setTimeout(function() {
-                            autoResize();
-                            textarea.focus();
-                            if (mode === 'edit' && textarea.setSelectionRange) {
-                                textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-                            }
-                        }, 30);
+        var autoResize = function() {
+            textarea.style.height = 'auto';
+            textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+        };
+        textarea.addEventListener('input', autoResize);
+        setTimeout(function() {
+            autoResize();
+            textarea.focus();
+            if (mode === 'edit' && textarea.setSelectionRange) {
+                textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+            }
+        }, 30);
 
-                        var closed = false;
-                        var restore = function() {
-                            if (closed) return;
-                            closed = true;
-                            document.removeEventListener('click', onOutsideClick, true);
-                            document.removeEventListener('touchstart', onOutsideTouch, true);
-                            commentEl.innerHTML = originalHTML;
-                            bindCardEvents();
-                        };
+        var closed = false;
+        var restore = function() {
+            if (closed) return;
+            closed = true;
+            document.removeEventListener('click', onOutsideClick, true);
+            document.removeEventListener('touchstart', onOutsideTouch, true);
+            commentEl.innerHTML = originalHTML;
+            bindCardEvents();
+        };
 
-                        var save = function() {
-                            if (closed) return;
-                            var newText = textarea.value.trim();
-                            if (!newText) { restore(); return; }
-                            closed = true;
-                            document.removeEventListener('click', onOutsideClick, true);
-                            document.removeEventListener('touchstart', onOutsideTouch, true);
-                            if (mode === 'edit') {
-                                if (newText !== originalText) editComment(momentId, commentId, newText);
-                                else restore();
-                            } else {
-                                replyToComment(momentId, commentId, newText);
-                            }
-                        };
+        var save = function() {
+            if (closed) return;
+            var newText = textarea.value.trim();
+            if (!newText) { restore(); return; }
+            closed = true;
+            document.removeEventListener('click', onOutsideClick, true);
+            document.removeEventListener('touchstart', onOutsideTouch, true);
+            if (mode === 'edit') {
+                if (newText !== originalText) editComment(momentId, commentId, newText);
+                else restore();
+            } else {
+                replyToComment(momentId, commentId, newText);
+            }
+        };
 
-                        // 点击/触摸输入框外 → 直接取消（并恢复原评论）
-                        var onOutsideClick = function(e) {
-                            if (!commentEl.contains(e.target)) {
-                                restore();
-                            }
-                        };
-                        var onOutsideTouch = function(e) {
-                            if (!commentEl.contains(e.target)) {
-                                restore();
-                            }
-                        };
+        var onOutsideClick = function(e) {
+            if (!commentEl.contains(e.target)) restore();
+        };
+        var onOutsideTouch = function(e) {
+            if (!commentEl.contains(e.target)) restore();
+        };
 
-                        // 用捕获阶段绑定，确保在其它点击事件前先执行
-                        setTimeout(function() {
-                            document.addEventListener('click', onOutsideClick, true);
-                            document.addEventListener('touchstart', onOutsideTouch, true);
-                        }, 50);
+        setTimeout(function() {
+            document.addEventListener('click', onOutsideClick, true);
+            document.addEventListener('touchstart', onOutsideTouch, true);
+        }, 50);
 
-                        sendBtn.onclick = function(e) {
-                            e.stopPropagation();
-                            save();
-                        };
+        sendBtn.onclick = function(e) {
+            e.stopPropagation();
+            save();
+        };
 
-                        textarea.onkeydown = function(e) {
-                            if (e.key === 'Escape') {
-                                e.stopPropagation();
-                                restore();
-                            }
-                            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-                                e.preventDefault();
-                                save();
-                            }
-                        };
+        textarea.onkeydown = function(e) {
+            if (e.key === 'Escape') {
+                e.stopPropagation();
+                restore();
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                save();
+            }
+        };
 
-                        // 阻止点击输入框内部触发外部取消
-                        commentEl.addEventListener('click', function(e) { e.stopPropagation(); });
-                    }
+        commentEl.addEventListener('click', function(e) { e.stopPropagation(); });
+    }
 
     function showContextMenu(items) {
         var modal = document.createElement('div');
@@ -1547,8 +1603,24 @@
         var date = new Date(ts);
         var local = new Date(ts - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
         var timestampEl = modal.querySelector('#editor-timestamp');
-        if (timestampEl) timestampEl.value = local;
+        if (timestampEl) {
+            timestampEl.value = local;
+            updateScheduleHint(modal, ts);
+        }
         modal.style.display = 'block';
+    }
+
+    // 🆕 定时提示
+    function updateScheduleHint(modal, ts) {
+        var hint = modal.querySelector('#editor-schedule-hint');
+        if (!hint) return;
+        if (ts > Date.now()) {
+            hint.style.display = 'block';
+            hint.textContent = '⏰ 将定时到 ' + formatDateTime(ts) + ' 发布，不会立刻出现在朋友圈';
+        } else {
+            hint.style.display = 'none';
+            hint.textContent = '';
+        }
     }
 
     function closeEditor() {
@@ -1560,6 +1632,8 @@
         if (contentEl) contentEl.value = '';
         var timestampEl = dom.editorModal ? dom.editorModal.querySelector('#editor-timestamp') : null;
         if (timestampEl) timestampEl.value = '';
+        var hint = dom.editorModal ? dom.editorModal.querySelector('#editor-schedule-hint') : null;
+        if (hint) hint.style.display = 'none';
     }
 
     window.switchEditorIdentity = function(identity) {
@@ -1590,55 +1664,62 @@
             showToast('请填写内容或添加图片');
             return;
         }
+
+        // 编辑模式：直接改，不允许改成未来时间（避免复杂）
         if (editingMomentId) {
+            if (timestamp > Date.now()) {
+                showToast('编辑动态不支持改成未来时间');
+                return;
+            }
             editMoment(editingMomentId, { content: content, images: images, timestamp: timestamp });
-        } else {
-            publishMoment({ publisher: identity, content: content, images: images, timestamp: timestamp });
+            closeEditor();
+            return;
         }
+
+        // 新建模式
+        publishMoment({ publisher: identity, content: content, images: images, timestamp: timestamp });
         closeEditor();
     }
 
-        function addImagePreview(src) {
-            var modal = dom.editorModal;
-            if (!modal) return;
-            var container = modal.querySelector('#editor-image-preview');
-            if (!container) return;
+    function addImagePreview(src) {
+        var modal = dom.editorModal;
+        if (!modal) return;
+        var container = modal.querySelector('#editor-image-preview');
+        if (!container) return;
 
-            // 确保容器启用了拖拽排序
-            enableImageDragSort(container);
+        enableImageDragSort(container);
 
-            var wrapper = document.createElement('div');
-            wrapper.className = 'editor-image-wrapper';
-            // 关键：draggable + touch-action: none 让触摸拖拽不被滚动打断
-            wrapper.setAttribute('draggable', 'true');
-            wrapper.style.cssText =
-                'position:relative;display:inline-block;margin:4px;cursor:grab;' +
-                'touch-action:none;-webkit-user-select:none;user-select:none;' +
-                'transition:opacity 0.15s ease;';
+        var wrapper = document.createElement('div');
+        wrapper.className = 'editor-image-wrapper';
+        wrapper.setAttribute('draggable', 'true');
+        wrapper.style.cssText =
+            'position:relative;display:inline-block;margin:4px;cursor:grab;' +
+            'touch-action:none;-webkit-user-select:none;user-select:none;' +
+            'transition:opacity 0.15s ease;';
 
-            var img = document.createElement('img');
-            img.src = src;
-            img.style.cssText =
-                'width:80px;height:80px;object-fit:cover;border-radius:6px;' +
-                'border:1px solid var(--border-color);pointer-events:none;display:block;';
-            img.draggable = false; // 关键：阻止 img 自身拖拽（会出幽灵图）
+        var img = document.createElement('img');
+        img.src = src;
+        img.style.cssText =
+            'width:80px;height:80px;object-fit:cover;border-radius:6px;' +
+            'border:1px solid var(--border-color);pointer-events:none;display:block;';
+        img.draggable = false;
 
-            var del = document.createElement('button');
-            del.textContent = '×';
-            del.style.cssText =
-                'position:absolute;top:-6px;right:-6px;width:20px;height:20px;' +
-                'border-radius:50%;background:var(--accent-color);color:#fff;' +
-                'border:none;font-size:14px;line-height:20px;text-align:center;' +
-                'cursor:pointer;padding:0;';
-            del.onclick = function(e) {
-                e.stopPropagation();
-                wrapper.remove();
-            };
+        var del = document.createElement('button');
+        del.textContent = '×';
+        del.style.cssText =
+            'position:absolute;top:-6px;right:-6px;width:20px;height:20px;' +
+            'border-radius:50%;background:var(--accent-color);color:#fff;' +
+            'border:none;font-size:14px;line-height:20px;text-align:center;' +
+            'cursor:pointer;padding:0;';
+        del.onclick = function(e) {
+            e.stopPropagation();
+            wrapper.remove();
+        };
 
-            wrapper.appendChild(img);
-            wrapper.appendChild(del);
-            container.appendChild(wrapper);
-        }
+        wrapper.appendChild(img);
+        wrapper.appendChild(del);
+        container.appendChild(wrapper);
+    }
 
     window.handleImageUpload = function(files) {
         var modal = dom.editorModal;
@@ -1661,87 +1742,84 @@
         });
     };
 
-        // ==================== 图片拖拽排序（微信风格） ====================
-        function enableImageDragSort(container) {
-            if (!container || container._dragSortEnabled) return;
-            container._dragSortEnabled = true;
+    function enableImageDragSort(container) {
+        if (!container || container._dragSortEnabled) return;
+        container._dragSortEnabled = true;
 
-            var dragEl = null;
+        var dragEl = null;
 
-            // ---- 桌面端原生拖拽 ----
-            container.addEventListener('dragstart', function(e) {
-                var wrapper = e.target.closest('.editor-image-wrapper');
-                if (!wrapper) return;
-                dragEl = wrapper;
-                wrapper.style.opacity = '0.4';
-                wrapper.style.cursor = 'grabbing';
-                try {
-                    e.dataTransfer.effectAllowed = 'move';
-                    e.dataTransfer.setData('text/plain', '');
-                } catch (err) {}
-            });
+        container.addEventListener('dragstart', function(e) {
+            var wrapper = e.target.closest('.editor-image-wrapper');
+            if (!wrapper) return;
+            dragEl = wrapper;
+            wrapper.style.opacity = '0.4';
+            wrapper.style.cursor = 'grabbing';
+            try {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', '');
+            } catch (err) {}
+        });
 
-            container.addEventListener('dragover', function(e) {
-                e.preventDefault();
-                if (!dragEl) return;
-                var target = e.target.closest('.editor-image-wrapper');
-                if (!target || target === dragEl) return;
-                var rect = target.getBoundingClientRect();
-                var after = (e.clientX - rect.left) > rect.width / 2;
-                if (after) container.insertBefore(dragEl, target.nextSibling);
-                else container.insertBefore(dragEl, target);
-            });
+        container.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            if (!dragEl) return;
+            var target = e.target.closest('.editor-image-wrapper');
+            if (!target || target === dragEl) return;
+            var rect = target.getBoundingClientRect();
+            var after = (e.clientX - rect.left) > rect.width / 2;
+            if (after) container.insertBefore(dragEl, target.nextSibling);
+            else container.insertBefore(dragEl, target);
+        });
 
-            container.addEventListener('drop', function(e) { e.preventDefault(); });
+        container.addEventListener('drop', function(e) { e.preventDefault(); });
 
-            container.addEventListener('dragend', function() {
-                if (dragEl) {
-                    dragEl.style.opacity = '1';
-                    dragEl.style.cursor = 'grab';
-                    dragEl = null;
-                }
-            });
-
-            // ---- 触摸端：用 pointer events 模拟拖拽 ----
-            container.addEventListener('pointerdown', function(e) {
-                if (e.pointerType === 'mouse') return; // 鼠标走原生 drag
-                var wrapper = e.target.closest('.editor-image-wrapper');
-                if (!wrapper) return;
-                dragEl = wrapper;
-                wrapper.style.opacity = '0.5';
-                wrapper.style.transform = 'scale(1.08)';
-                wrapper.style.zIndex = '1000';
-                wrapper.style.transition = 'transform 0.15s ease';
-                try { wrapper.setPointerCapture(e.pointerId); } catch (err) {}
-            });
-
-            container.addEventListener('pointermove', function(e) {
-                if (!dragEl || e.pointerType === 'mouse') return;
-                e.preventDefault();
-                var el = document.elementFromPoint(e.clientX, e.clientY);
-                var target = el && el.closest ? el.closest('.editor-image-wrapper') : null;
-                if (target && target !== dragEl && target.parentNode === container) {
-                    var rect = target.getBoundingClientRect();
-                    var centerX = rect.left + rect.width / 2;
-                    if (e.clientX < centerX) {
-                        container.insertBefore(dragEl, target);
-                    } else {
-                        container.insertBefore(dragEl, target.nextSibling);
-                    }
-                }
-            }, { passive: false });
-
-            function endTouchDrag() {
-                if (!dragEl) return;
+        container.addEventListener('dragend', function() {
+            if (dragEl) {
                 dragEl.style.opacity = '1';
-                dragEl.style.transform = '';
-                dragEl.style.zIndex = '';
+                dragEl.style.cursor = 'grab';
                 dragEl = null;
             }
-            container.addEventListener('pointerup', endTouchDrag);
-            container.addEventListener('pointercancel', endTouchDrag);
-            container.addEventListener('pointerleave', endTouchDrag);
+        });
+
+        container.addEventListener('pointerdown', function(e) {
+            if (e.pointerType === 'mouse') return;
+            var wrapper = e.target.closest('.editor-image-wrapper');
+            if (!wrapper) return;
+            dragEl = wrapper;
+            wrapper.style.opacity = '0.5';
+            wrapper.style.transform = 'scale(1.08)';
+            wrapper.style.zIndex = '1000';
+            wrapper.style.transition = 'transform 0.15s ease';
+            try { wrapper.setPointerCapture(e.pointerId); } catch (err) {}
+        });
+
+        container.addEventListener('pointermove', function(e) {
+            if (!dragEl || e.pointerType === 'mouse') return;
+            e.preventDefault();
+            var el = document.elementFromPoint(e.clientX, e.clientY);
+            var target = el && el.closest ? el.closest('.editor-image-wrapper') : null;
+            if (target && target !== dragEl && target.parentNode === container) {
+                var rect = target.getBoundingClientRect();
+                var centerX = rect.left + rect.width / 2;
+                if (e.clientX < centerX) {
+                    container.insertBefore(dragEl, target);
+                } else {
+                    container.insertBefore(dragEl, target.nextSibling);
+                }
+            }
+        }, { passive: false });
+
+        function endTouchDrag() {
+            if (!dragEl) return;
+            dragEl.style.opacity = '1';
+            dragEl.style.transform = '';
+            dragEl.style.zIndex = '';
+            dragEl = null;
         }
+        container.addEventListener('pointerup', endTouchDrag);
+        container.addEventListener('pointercancel', endTouchDrag);
+        container.addEventListener('pointerleave', endTouchDrag);
+    }
 
     function compressImage(file, maxWidth, quality) {
         return new Promise(function(resolve, reject) {
@@ -1805,7 +1883,8 @@
             return Promise.all([
                 loadMoments(),
                 loadPendingTasks(),
-                loadRedDot()
+                loadRedDot(),
+                loadScheduledMoments()   // 🆕
             ]);
         }).then(function() {
             getReplyLibrary();
@@ -1821,6 +1900,7 @@
             console.log('[朋友圈] 对方表情库加载完成，共', getStickerLibrary().length, '条');
 
             processPendingTasksNow();
+            processScheduledMomentsNow();   // 🆕
             enforceLimits();
             updateRedDotUI();
             updateCover();
@@ -1858,6 +1938,16 @@
                     window.switchEditorIdentity(this.dataset.identity);
                 };
             });
+
+            // 🆕 时间变化 → 更新定时提示
+            var timestampEl = dom.editorModal.querySelector('#editor-timestamp');
+            if (timestampEl && !timestampEl._boundHint) {
+                timestampEl._boundHint = true;
+                timestampEl.addEventListener('input', function() {
+                    var ts = this.value ? new Date(this.value).getTime() : 0;
+                    updateScheduleHint(dom.editorModal, ts);
+                });
+            }
         }
         var coverInput = document.getElementById('moments-cover-input');
         if (coverInput) {
@@ -1944,13 +2034,13 @@
         setFilter: function(filter) { currentFilter = filter; renderMoments(); },
         getMoments: function() { return moments; },
         getPendingTasks: function() { return pendingTasks; },
+        getScheduledMoments: function() { return scheduledMoments; },   // 🆕
         showEditor: openEditor,
         closeEditor: closeEditor,
         forceRender: forceRender,
         refresh: function() { this.forceRender(); },
         previewImage: showImagePreview,
 
-        // 手动重载头像设置（设置面板关闭后可以调用）
         reloadAvatarSettings: function() {
             return loadChatAvatarSettings().then(function() {
                 renderMoments();
@@ -1973,10 +2063,6 @@
             });
         },
 
-        /**
-         * 手动触发对方对指定朋友圈/评论的回复（调试用）
-         * 立即执行，跳过 5min~3h 延迟
-         */
         triggerPartnerReplyNow: function(momentId, commentId) {
             var moment = moments.find(function(m) { return m.id === momentId; });
             if (!moment) { console.warn('[朋友圈] 未找到该动态'); return; }
@@ -2033,8 +2119,9 @@
             console.log('距现在:', nextAt ? Math.round((nextAt - Date.now()) / 1000) + '秒' : '-');
             console.log('调度器状态:', autoCheckTimer ? '运行中' : '未启动');
             console.log('待执行回复任务:', pendingTasks.length);
-            pendingTasks.forEach(function(t) {
-                console.log('  →', t.triggerType, '排期:', new Date(t.scheduledAt).toLocaleString());
+            console.log('定时发布队列:', scheduledMoments.length);
+            scheduledMoments.forEach(function(t) {
+                console.log('  ⏰', formatDateTime(t.publishAt), '→', (t.momentData.content || '').slice(0, 20));
             });
             console.log('当前头像设置:', chatAvatarSettings);
             return {
@@ -2044,6 +2131,7 @@
                 replyLib: getReplyLibrary().length,
                 partnerStickerLib: lib.length,
                 pendingTasks: pendingTasks.length,
+                scheduledMoments: scheduledMoments.length,
                 avatarSettings: chatAvatarSettings
             };
         },
