@@ -524,7 +524,10 @@ window.scrollToMessage = function(msgId) {
         const msg    = findMessage(idStr);
         const text   = msg && msg.text ? msg.text : '';
 
-        // 「重新编辑」条件：自己发的 且 ≤ 1 分钟 且 有文本 且 不是图片消息
+        // 【新增】最终保险：超过 2 分钟不撤回
+        if (Date.now() - sentAt > CFG.RECALL_WINDOW_MS) return;
+
+        // ...下面原来的代码不动
         const canReedit = isMine
             && (Date.now() - sentAt <= CFG.REEDIT_WINDOW_MS)
             && !!text
@@ -605,6 +608,10 @@ window.scrollToMessage = function(msgId) {
         const msg = findMessage(idStr);
         if (msg && msg.type === 'system') return;   // 系统消息不参与撤回
 
+        // 【新增】超过 2 分钟的消息，不再参与自动撤回
+        const sentAt = getSentAt(idStr);
+        if (Date.now() - sentAt > CFG.RECALL_WINDOW_MS) return;
+
         if (Math.random() >= CFG.PARTNER_CHANCE) return;
 
         const delay = CFG.PARTNER_DELAY_MIN +
@@ -613,6 +620,10 @@ window.scrollToMessage = function(msgId) {
         setTimeout(function () {
             if (!wrapper.isConnected) return;
             if (!findMessage(idStr)) return;   // 已被撤回或已删除
+
+            // 【新增】延迟执行时再检查一次，防止刚好卡在 2 分钟边界
+            if (Date.now() - getSentAt(idStr) > CFG.RECALL_WINDOW_MS) return;
+
             doRecall(wrapper, idStr, false);
         }, delay);
     }
