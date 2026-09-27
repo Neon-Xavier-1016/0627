@@ -9,25 +9,19 @@
         MAX_MOMENTS: 30,
         MAX_FAVORITED: 10,
 
-        // 自动发帖间隔：5~7 天
-        AUTO_PUBLISH_MIN_GAP: 5 * 24 * 60 * 60 * 1000,
-        AUTO_PUBLISH_MAX_GAP: 7 * 24 * 60 * 60 * 1000,
-        AUTO_CHECK_INTERVAL: 30 * 1000,
+        // 每周发帖计划：每周随机选 2~4 天，每天 1 条
+        WEEKLY_MIN_DAYS: 2,
+        WEEKLY_MAX_DAYS: 4,
 
-        // 保底 / 上限
-        WEEKLY_MIN_GAP: 7 * 24 * 60 * 60 * 1000,
-        MONTHLY_AUTO_LIMIT: 6,
-        MONTHLY_WINDOW: 30 * 24 * 60 * 60 * 1000,
+        // 每天允许发帖的时间窗口（小时，24 小时制）
+        DAILY_WINDOW_START: 9,   // 9:00
+        DAILY_WINDOW_END: 22,    // 22:00
+
+        // 调度器检查间隔
+        AUTO_CHECK_INTERVAL: 30 * 1000,
 
         // 图片概率
         STICKER_RATIO: 0.4,
-
-        // 初始化补发
-        BOOTSTRAP_MIN: 1,
-        BOOTSTRAP_MAX: 2,
-
-        // 离线追赶
-        CATCHUP_MAX: 3,
 
         // 评论 / 点赞回复延时：5min ~ 3h
         REPLY_DELAY_MIN: 5 * 60 * 1000,
@@ -50,13 +44,16 @@
     // ==================== 状态 ====================
     var moments = [];
     var pendingTasks = [];
-    var scheduledMoments = [];   // 🆕 定时发布队列
+    var scheduledMoments = [];   // 手动定时发布队列
     var redDot = false;
     var currentFilter = 'all';
     var editingMomentId = null;
     var autoCheckTimer = null;
     var replyLibCache = [];
     var stickerCache = [];
+
+    // 每周计划：{ weekKey: '2025-W35', days: [{ date: '2025-08-26', time: 1756... }, ...] }
+    var weeklyPlan = null;
 
     var dom = {
         modal: null,
@@ -119,6 +116,95 @@
         var h = String(d.getHours()).padStart(2, '0');
         var m = String(d.getMinutes()).padStart(2, '0');
         return M + '-' + D + ' ' + h + ':' + m;
+    }
+
+    // ==================== 每周计划 ====================
+    function getWeekKey(date) {
+        var d = date ? new Date(date) : new Date();
+        d.setHours(0, 0, 0, 0);
+        // 以周一为一周开始
+        var day = d.getDay();
+        var diff = (day === 0 ? -6 : 1 - day);
+        d.setDate(d.getDate() + diff);
+        var year = d.getFullYear();
+        var startOfYear = new Date(year, 0, 1);
+        var week = Math.ceil(((d - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+        return year + '-W' + String(week).padStart(2, '0');
+    }
+
+    function getWeekStartDate(date) {
+        var d = date ? new Date(date) : new Date();
+        d.setHours(0, 0, 0, 0);
+        var day = d.getDay();
+        var diff = (day === 0 ? -6 : 1 - day);
+        d.setDate(d.getDate() + diff);
+        return d;
+    }
+
+    /**
+     * 生成本周计划：随机选 N 天，每天一个随机时间点
+     */
+    function buildWeeklyPlan(weekKey) {
+        var weekStart = getWeekStartDate();
+        var today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        var dayCount = randomInt(CONFIG.WEEKLY_MIN_DAYS, CONFIG.WEEKLY_MAX_DAYS);
+
+        // 候选天：本周一到周日
+        var candidates = [];
+        for (var i = 0; i < 7; i++) {
+            var d = new Date(weekStart);
+            d.setDate(weekStart.getDate() + i);
+            candidates.push(d);
+        }
+
+        // 随机选 dayCount 天
+        var shuffled = candidates.slice().sort(function() { return Math.random() - 0.5; });
+        var chosenDays = shuffled.slice(0, dayCount);
+
+        // 为每天生成一个时间点
+        var days = chosenDays.map(function(d) {
+            var hour = randomInt(CONFIG.DAILY_WINDOW_START, CONFIG.DAILY_WINDOW_END - 1);
+            var minute = randomInt(0, 59);
+            var t = new Date(d);
+            t.setHours(hour, minute, 0, 0);
+            return {
+                date: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'),
+                time: t.getTime(),
+                published: false,
+            };
+        });
+
+        // 按时间排序
+        days.sort(function(a, b) { return a.time - b.time; });
+
+        return { weekKey: weekKey, days: days };
+    }
+
+    function loadWeeklyPlan() {
+        return localforage.getItem('momentWeeklyPlan').then(function(data) {
+            weeklyPlan = data || null;
+            return weeklyPlan;
+        });
+    }
+    function saveWeeklyPlan() {
+        return localforage.setItem('momentWeeklyPlan', weeklyPlan);
+    }
+
+    /**
+     * 确保当前周有计划；如果跨周，重新生成
+     */
+    function ensureWeeklyPlan() {
+        var currentKey = getWeekKey();
+        if (!weeklyPlan || weeklyPlan.weekKey !== currentKey) {
+            weeklyPlan = buildWeeklyPlan(currentKey);
+            saveWeeklyPlan();
+            console.log('[朋友圈] 已生成本周发帖计划:', weeklyPlan.days.map(function(d) {
+                return d.date + ' ' + formatDateTime(d.time);
+            }));
+        }
+        return weeklyPlan;
     }
 
     // ==================== 字卡库 / 表情库 兼容层 ====================
@@ -295,7 +381,6 @@
     function saveRedDot() { return localforage.setItem('momentRedDot', redDot); }
     function loadRedDot() { return localforage.getItem('momentRedDot').then(function(data) { redDot = !!data; return redDot; }); }
 
-    // 🆕 定时发布队列持久化
     function saveScheduledMoments() {
         var plain = scheduledMoments.map(function(t) {
             return {
@@ -728,7 +813,7 @@
                 deleted: false,
                 autoReplyCount: 0,
                 pendingAutoReply: 0,
-                isScheduled: isFuture,   // 🆕 标记
+                isScheduled: isFuture,
             };
 
             if (isFuture) {
@@ -774,11 +859,9 @@
         });
     }
 
-    // 🆕 执行定时发布
     function executeScheduledMoment(task) {
         var momentData = task.momentData;
 
-        // 防止重复
         if (moments.some(function(m) { return m.id === momentData.id; })) {
             removeScheduledTask(task.id);
             return;
@@ -803,7 +886,6 @@
         });
     }
 
-    // 🆕 移除定时任务
     function removeScheduledTask(taskId) {
         scheduledMoments = scheduledMoments.filter(function(t) {
             if (t.id === taskId) {
@@ -815,7 +897,6 @@
         saveScheduledMoments();
     }
 
-    // 🆕 启动时处理定时任务：已到点的补发，未到点的重新挂 timer
     function processScheduledMomentsNow() {
         var now = Date.now();
         var due = scheduledMoments.filter(function(t) { return t.publishAt <= now; });
@@ -1066,195 +1147,20 @@
         savePendingTasks();
     }
 
-    // ==================== 自动发帖 ====================
-    function getNextAutoPublishAt() {
-        return parseInt(localStorage.getItem('momentNextAutoPublishAt') || '0', 10);
-    }
-    function setNextAutoPublishAt(ts) {
-        localStorage.setItem('momentNextAutoPublishAt', String(ts));
-    }
-    function scheduleNextAutoPublish() {
-        var gap = randomInt(CONFIG.AUTO_PUBLISH_MIN_GAP, CONFIG.AUTO_PUBLISH_MAX_GAP);
-        setNextAutoPublishAt(Date.now() + gap);
-        console.log('[朋友圈] 下次对方发圈将在', Math.round(gap / 3600000), '小时后');
-    }
-    function scheduleNextAutoPublishForNextWindow() {
-        var ts = Date.now() + CONFIG.MONTHLY_WINDOW;
-        setNextAutoPublishAt(ts);
-        console.log('[朋友圈] 30 天内已达上限，排期到', new Date(ts).toLocaleDateString());
-    }
+    // ==================== 自动发帖（周计划版） ====================
 
-    function getAutoPublishCount() {
-        return moments.filter(function(m) {
-            return m.publisher === 'partner' && m.isGenerated && !m.deleted;
-        }).length;
-    }
+    /**
+     * 生成一条对方动态
+     * @param {number} ts 发布时刻，默认当前时间（绝不回填过去）
+     */
+    function generatePartnerMoment(ts) {
+        ts = ts || Date.now();
 
-    function getAutoPublishCountInWindow() {
-        var cutoff = Date.now() - CONFIG.MONTHLY_WINDOW;
-        return moments.filter(function(m) {
-            return m.publisher === 'partner'
-                && m.isGenerated
-                && !m.deleted
-                && (m.createdAt || m.timestamp) >= cutoff;
-        }).length;
-    }
-
-    function getLastAutoPublishTime() {
-        var latest = 0;
-        moments.forEach(function(m) {
-            if (m.publisher === 'partner' && m.isGenerated && !m.deleted) {
-                var t = m.createdAt || m.timestamp || 0;
-                if (t > latest) latest = t;
-            }
-        });
-        return latest;
-    }
-
-    // ==================== 离线追赶 ====================
-    function catchUpOfflinePublish() {
-        var now = Date.now();
-        var lastAuto = getLastAutoPublishTime();
-        if (!lastAuto) return false;
-
-        var elapsed = now - lastAuto;
-        var avgGap = (CONFIG.AUTO_PUBLISH_MIN_GAP + CONFIG.AUTO_PUBLISH_MAX_GAP) / 2;
-        var expected = Math.floor(elapsed / avgGap);
-        if (expected <= 0) return false;
-
-        var windowCount = getAutoPublishCountInWindow();
-        var remainingInWindow = CONFIG.MONTHLY_AUTO_LIMIT - windowCount;
-        if (remainingInWindow <= 0) return false;
-
-        var toAdd = Math.min(expected, remainingInWindow, CONFIG.CATCHUP_MAX);
-        var span = now - lastAuto;
-        var segment = span / (toAdd + 1);
-
-        var added = 0;
-        for (var i = 1; i <= toAdd; i++) {
-            var baseTs = lastAuto + segment * i;
-            var jitter = randomInt(-segment * 0.2, segment * 0.2);
-            var ts = Math.floor(baseTs + jitter);
-            if (ts >= now) ts = now - randomInt(60 * 1000, 30 * 60 * 1000);
-            if (ts <= lastAuto) ts = lastAuto + randomInt(60 * 1000, 60 * 60 * 1000);
-
-            generatePartnerMoment(ts, ts);
-            added++;
-        }
-
-        if (added > 0) {
-            console.log('[朋友圈] 离线追赶：补齐了', added, '条动态（上次发布 ' +
-                Math.floor(elapsed / 86400000) + ' 天前）');
-            return true;
-        }
-        return false;
-    }
-
-    // ==================== 初始化补发 ====================
-    function bootstrapPartnerMoments() {
-        if (getAutoPublishCount() > 0) return false;
-        if (getReplyLibrary().length === 0) {
-            console.log('[朋友圈] 字卡库为空，跳过初始化发帖');
-            return false;
-        }
-        var initCount = randomInt(CONFIG.BOOTSTRAP_MIN, CONFIG.BOOTSTRAP_MAX);
-        var now = Date.now();
-        var dayMs = 24 * 60 * 60 * 1000;
-        for (var i = 0; i < initCount; i++) {
-            var offset = randomInt(2 * 60 * 60 * 1000, 3 * dayMs);
-            var ts = now - offset;
-            generatePartnerMoment(ts, ts);
-        }
-        console.log('[朋友圈] 初始化补发', initCount, '条对方动态');
-        return true;
-    }
-
-    function doAutoPublish() {
-        if (getReplyLibrary().length === 0) return false;
-        generatePartnerMoment(Date.now(), Date.now());
-        return true;
-    }
-
-    function checkAndAutoPublish() {
-        getReplyLibrary();
-        if (getReplyLibrary().length === 0) return;
-
-        var now = Date.now();
-
-        if (getAutoPublishCount() > 0) {
-            if (catchUpOfflinePublish()) {
-                enforceLimits();
-                saveMoments().then(function() {
-                    renderMoments();
-                    setRedDot(true);
-                });
-            }
-        }
-
-        if (getAutoPublishCount() === 0) {
-            if (bootstrapPartnerMoments()) {
-                enforceLimits();
-                saveMoments().then(function() {
-                    renderMoments();
-                    setRedDot(true);
-                    scheduleNextAutoPublish();
-                });
-            } else {
-                scheduleNextAutoPublish();
-            }
-            return;
-        }
-
-        if (getAutoPublishCountInWindow() >= CONFIG.MONTHLY_AUTO_LIMIT) {
-            scheduleNextAutoPublishForNextWindow();
-            return;
-        }
-
-        var lastAuto = getLastAutoPublishTime();
-        if (lastAuto > 0 && (now - lastAuto) >= CONFIG.WEEKLY_MIN_GAP) {
-            if (doAutoPublish()) {
-                enforceLimits();
-                saveMoments().then(function() {
-                    renderMoments();
-                    setRedDot(true);
-                    console.log('[朋友圈] 每周保底：对方自动发布了一条 ✦');
-                });
-            }
-            scheduleNextAutoPublish();
-            return;
-        }
-
-        var nextAt = getNextAutoPublishAt();
-        if (nextAt === 0) { scheduleNextAutoPublish(); return; }
-        if (now >= nextAt) {
-            if (doAutoPublish()) {
-                enforceLimits();
-                saveMoments().then(function() {
-                    renderMoments();
-                    setRedDot(true);
-                    console.log('[朋友圈] 对方自动发布了一条动态 ✦');
-                });
-            }
-            scheduleNextAutoPublish();
-        }
-    }
-
-    function startAutoPublishScheduler() {
-        if (autoCheckTimer) clearInterval(autoCheckTimer);
-        setTimeout(checkAndAutoPublish, 2000);
-        autoCheckTimer = setInterval(checkAndAutoPublish, CONFIG.AUTO_CHECK_INTERVAL);
-        console.log('[朋友圈] 自动发帖调度器已启动');
-    }
-
-    function generatePartnerMoment(createdAtTs, displayTs) {
-        createdAtTs = createdAtTs || Date.now();
-        displayTs = displayTs || createdAtTs;
-
-        if (getReplyLibrary().length === 0) return;
+        if (getReplyLibrary().length === 0) return null;
 
         var cardCount = randomInt(1, 5);
         var cards = getRandomReplyCards(cardCount);
-        if (cards.length === 0) return;
+        if (cards.length === 0) return null;
         var content = cards.join(' ');
 
         var images = [];
@@ -1271,8 +1177,8 @@
             publisherName: (window.settings && window.settings.partnerName) || '梦角',
             content: content,
             images: images,
-            timestamp: displayTs,
-            createdAt: createdAtTs,
+            timestamp: ts,
+            createdAt: Date.now(),
             likes: initialLikes,
             comments: [],
             isGenerated: true,
@@ -1283,6 +1189,53 @@
             pendingAutoReply: 0,
         };
         moments.push(newMoment);
+        return newMoment;
+    }
+
+    /**
+     * 检查本周计划，到点就发
+     */
+    function checkWeeklyPlan() {
+        if (getReplyLibrary().length === 0) return false;
+
+        ensureWeeklyPlan();
+        if (!weeklyPlan || !weeklyPlan.days || weeklyPlan.days.length === 0) return false;
+
+        var now = Date.now();
+        var published = false;
+
+        weeklyPlan.days.forEach(function(day) {
+            if (!day.published && now >= day.time) {
+                // 到点了，发一条
+                generatePartnerMoment(now);   // 用当前时间发布，不回填
+                day.published = true;
+                published = true;
+                console.log('[朋友圈] 按周计划发布了一条，计划时间:',
+                    formatDateTime(day.time),
+                    '实际发布:', formatDateTime(now));
+            }
+        });
+
+        if (published) {
+            saveWeeklyPlan();
+            enforceLimits();
+            saveMoments().then(function() {
+                renderMoments();
+                setRedDot(true);
+            });
+        }
+        return published;
+    }
+
+    function startAutoPublishScheduler() {
+        if (autoCheckTimer) clearInterval(autoCheckTimer);
+        setTimeout(function() {
+            checkWeeklyPlan();
+        }, 2000);
+        autoCheckTimer = setInterval(function() {
+            checkWeeklyPlan();
+        }, CONFIG.AUTO_CHECK_INTERVAL);
+        console.log('[朋友圈] 周计划发帖调度器已启动');
     }
 
     // ==================== 清理限制 ====================
@@ -1376,6 +1329,9 @@
         if (partnerAvatar && window.settings) window.settings.partnerAvatar = partnerAvatar;
 
         setRedDot(false);
+
+        // 进入时先检查一次周计划（可能刚好到点）
+        checkWeeklyPlan();
 
         renderMoments();
         loadChatAvatarSettings().then(function() {
@@ -1568,6 +1524,43 @@
         modal.onclick = function(e) { if (e.target === modal) document.body.removeChild(modal); };
     }
 
+    function showMomentMenu(momentId) {
+        var moment = moments.find(function(m) { return m.id === momentId; });
+        if (!moment) return;
+
+        var items = [];
+
+        // 收藏 / 取消收藏
+        items.push({
+            label: moment.isFavorited ? '取消收藏' : '收藏',
+            action: function() { toggleFavorite(momentId); }
+        });
+
+        // 只有自己发的才能编辑 / 删除
+        if (moment.publisher === 'me') {
+            items.push({
+                label: '编辑',
+                action: function() { openEditor(momentId); }
+            });
+            items.push({
+                label: '删除',
+                action: function() {
+                    if (confirm('确定删除这条动态吗？')) deleteMoment(momentId);
+                }
+            });
+        } else {
+            // 对方发的也能删（清理用）
+            items.push({
+                label: '删除',
+                action: function() {
+                    if (confirm('确定删除这条动态吗？')) deleteMoment(momentId);
+                }
+            });
+        }
+
+        showContextMenu(items);
+    }
+
     // ==================== 编辑器 ====================
     function openEditor(momentId) {
         momentId = momentId || null;
@@ -1610,7 +1603,6 @@
         modal.style.display = 'block';
     }
 
-    // 🆕 定时提示
     function updateScheduleHint(modal, ts) {
         var hint = modal.querySelector('#editor-schedule-hint');
         if (!hint) return;
@@ -1665,7 +1657,6 @@
             return;
         }
 
-        // 编辑模式：直接改，不允许改成未来时间（避免复杂）
         if (editingMomentId) {
             if (timestamp > Date.now()) {
                 showToast('编辑动态不支持改成未来时间');
@@ -1676,7 +1667,6 @@
             return;
         }
 
-        // 新建模式
         publishMoment({ publisher: identity, content: content, images: images, timestamp: timestamp });
         closeEditor();
     }
@@ -1884,7 +1874,8 @@
                 loadMoments(),
                 loadPendingTasks(),
                 loadRedDot(),
-                loadScheduledMoments()   // 🆕
+                loadScheduledMoments(),
+                loadWeeklyPlan()
             ]);
         }).then(function() {
             getReplyLibrary();
@@ -1899,8 +1890,9 @@
             console.log('[朋友圈] 字卡库加载完成，共', getReplyLibrary().length, '条');
             console.log('[朋友圈] 对方表情库加载完成，共', getStickerLibrary().length, '条');
 
+            ensureWeeklyPlan();
             processPendingTasksNow();
-            processScheduledMomentsNow();   // 🆕
+            processScheduledMomentsNow();
             enforceLimits();
             updateRedDotUI();
             updateCover();
@@ -1939,7 +1931,6 @@
                 };
             });
 
-            // 🆕 时间变化 → 更新定时提示
             var timestampEl = dom.editorModal.querySelector('#editor-timestamp');
             if (timestampEl && !timestampEl._boundHint) {
                 timestampEl._boundHint = true;
@@ -2034,7 +2025,7 @@
         setFilter: function(filter) { currentFilter = filter; renderMoments(); },
         getMoments: function() { return moments; },
         getPendingTasks: function() { return pendingTasks; },
-        getScheduledMoments: function() { return scheduledMoments; },   // 🆕
+        getScheduledMoments: function() { return scheduledMoments; },
         showEditor: openEditor,
         closeEditor: closeEditor,
         forceRender: forceRender,
@@ -2048,12 +2039,13 @@
             });
         },
 
+        // 🆕 手动触发一条对方动态（用当前时间）
         triggerAutoPublishNow: function() {
             if (getReplyLibrary().length === 0) {
                 console.warn('[朋友圈] 字卡库为空，无法发布');
                 return Promise.resolve(false);
             }
-            generatePartnerMoment(Date.now(), Date.now());
+            generatePartnerMoment(Date.now());
             enforceLimits();
             return saveMoments().then(function() {
                 renderMoments();
@@ -2079,60 +2071,43 @@
             console.log('✅ 已手动触发对方动作');
         },
 
-        checkNextPublish: function() {
-            var nextAt = parseInt(localStorage.getItem('momentNextAutoPublishAt') || '0', 10);
-            if (!nextAt) {
-                console.log('❌ 还没排期');
-                return null;
-            }
-            var diff = nextAt - Date.now();
-            if (diff <= 0) {
-                console.log('⏰ 排期已到，等下次轮询（最多 30 秒）就会发');
-                return { nextAt: nextAt, diff: 0 };
-            }
-            var hours = Math.floor(diff / 3600000);
-            var days = Math.floor(hours / 24);
-            var remainHours = hours % 24;
-            var readable = days > 0
-                ? days + '天' + remainHours + '小时后'
-                : hours + '小时后';
-            console.log('📅 下次发朋友圈：' + new Date(nextAt).toLocaleString());
-            console.log('⏳ 距现在：' + readable);
-            return { nextAt: nextAt, diff: diff, readable: readable };
+        // 🆕 查看本周计划
+        getWeeklyPlan: function() {
+            ensureWeeklyPlan();
+            return weeklyPlan;
+        },
+
+        // 🆕 手动重新生成本周计划
+        regenerateWeeklyPlan: function() {
+            weeklyPlan = buildWeeklyPlan(getWeekKey());
+            saveWeeklyPlan();
+            console.log('[朋友圈] 已重新生成本周计划:', weeklyPlan.days);
+            return weeklyPlan;
         },
 
         debugAutoPublish: function() {
-            var autoCount = getAutoPublishCount();
-            var windowCount = getAutoPublishCountInWindow();
-            var lastAuto = getLastAutoPublishTime();
-            var lastAutoAgo = lastAuto ? Math.floor((Date.now() - lastAuto) / 86400000) + '天前' : '(从未)';
-            var nextAt = parseInt(localStorage.getItem('momentNextAutoPublishAt') || '0', 10);
+            ensureWeeklyPlan();
             var lib = getStickerLibrary();
-
-            console.log('====== 朋友圈自动发帖状态 ======');
+            console.log('====== 朋友圈周计划状态 ======');
             console.log('字卡库数量:', getReplyLibrary().length);
             console.log('对方表情库数量:', lib.length);
-            console.log('自动生成动态总数:', autoCount);
-            console.log('30天内已自动发:', windowCount, '/', CONFIG.MONTHLY_AUTO_LIMIT);
-            console.log('距上次自动发:', lastAutoAgo);
-            console.log('下次排期:', nextAt ? new Date(nextAt).toLocaleString() : '(未设置)');
-            console.log('距现在:', nextAt ? Math.round((nextAt - Date.now()) / 1000) + '秒' : '-');
+            console.log('本周Key:', weeklyPlan.weekKey);
+            console.log('本周计划:');
+            weeklyPlan.days.forEach(function(d) {
+                console.log('  ' + (d.published ? '✅' : '⏰') + ' ' +
+                    d.date + ' ' + formatDateTime(d.time) +
+                    (d.published ? ' (已发)' : ''));
+            });
             console.log('调度器状态:', autoCheckTimer ? '运行中' : '未启动');
             console.log('待执行回复任务:', pendingTasks.length);
             console.log('定时发布队列:', scheduledMoments.length);
-            scheduledMoments.forEach(function(t) {
-                console.log('  ⏰', formatDateTime(t.publishAt), '→', (t.momentData.content || '').slice(0, 20));
-            });
-            console.log('当前头像设置:', chatAvatarSettings);
             return {
-                autoCount: autoCount,
-                windowCount: windowCount,
-                nextAt: nextAt,
+                weekKey: weeklyPlan.weekKey,
+                days: weeklyPlan.days,
                 replyLib: getReplyLibrary().length,
                 partnerStickerLib: lib.length,
                 pendingTasks: pendingTasks.length,
                 scheduledMoments: scheduledMoments.length,
-                avatarSettings: chatAvatarSettings
             };
         },
 
