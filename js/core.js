@@ -302,7 +302,9 @@ const loadData = async () => {
             localforage.getItem(getStorageKey('myStickerLibrary')),
             localforage.getItem(getStorageKey('customReplyGroups')),
             localforage.getItem(getStorageKey('customPokeGroups')),
-            localforage.getItem(getStorageKey('customStatusGroups'))
+            localforage.getItem(getStorageKey('customStatusGroups')),
+            localforage.getItem(getStorageKey('dreamFreeReplies')),
+            localforage.getItem(getStorageKey('dreamFreeGroups'))
         ]);
         const getVal = (index) => results[index].status === 'fulfilled' ? results[index].value : null;
 
@@ -327,6 +329,8 @@ const loadData = async () => {
         const savedReplyGroups = getVal(18);
         const savedPokeGroups = getVal(19);
         const savedStatusGroups = getVal(20);
+        const savedDreamFreeReplies = getVal(21);
+        const savedDreamFreeGroups = getVal(22);
 
         if (savedPartnerPersonas) partnerPersonas = savedPartnerPersonas;
 
@@ -413,6 +417,8 @@ const loadData = async () => {
         if (savedCustomThemes) customThemes = savedCustomThemes;
         if (savedThemeSchemes) themeSchemes = savedThemeSchemes;
         try { const ce = await localforage.getItem(getStorageKey('customEmojis')); if (ce && Array.isArray(ce)) customEmojis = ce; } catch(e) {}
+        window.dreamFreeReplies = Array.isArray(savedDreamFreeReplies) ? savedDreamFreeReplies : []; //新增
+        window.dreamFreeGroups = [];
         window._customReplies = customReplies;
         window._CONSTANTS = CONSTANTS;
 
@@ -460,6 +466,7 @@ const LIBRARY_CONFIG = {
         title: "回复库管理",
         tabs: [
             { id: 'custom', name: '主字卡', mode: 'list' },
+            { id: 'dreamfree', name: '组词库', mode: 'list' },   // ← 新增
             { id: 'emojis', name: 'Emoji', mode: 'grid' },
             { id: 'stickers', name: '表情库', mode: 'grid' },
             { id: 'period', name: '月经关怀', mode: 'list' }   // ✅ 新增
@@ -594,6 +601,8 @@ const saveData = async () => {
         { key: 'customThemes',           val: () => localforage.setItem(`${APP_PREFIX}customThemes`, customThemes) },
         { key: 'themeSchemes',           val: () => localforage.setItem(`${APP_PREFIX}themeSchemes`, themeSchemes) },
         { key: 'chatMessages',           val: () => localforage.setItem(getStorageKey('chatMessages'), messages) },
+        { key: 'dreamFreeReplies',       val: () => localforage.setItem(getStorageKey('dreamFreeReplies'), window.dreamFreeReplies || []) },   // ← 加这一行
+        { key: 'dreamFreeGroups',  val: () => localforage.setItem(getStorageKey('dreamFreeGroups'),  window.dreamFreeGroups  || []) },
     ];
 
     const partnerAvatarSrc = (() => {
@@ -1790,6 +1799,18 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                             break;
                         }
                     }
+
+                    // ===== 梦角自由造句：随机替换为造句结果 =====
+                    try {
+                        if (window.DreamFree) {
+                            const made = window.DreamFree.build();
+                            if (made) {
+                                replyText = made;
+                                window.DreamFree.save(made); // 存回主字卡
+                            }
+                        }
+                    } catch (e) { /* 造句失败不影响正常回复 */ }
+
                     if (!replyText && i === replyCount - 1) {
                         (function(){try{if(window._typingIndicatorAutoHideTimer){clearTimeout(window._typingIndicatorAutoHideTimer);window._typingIndicatorAutoHideTimer=null;}}catch(e){}var _tiW=document.getElementById('typing-indicator-wrapper');if(_tiW){var _tiInner=_tiW.querySelector('.typing-indicator');if(_tiInner){_tiInner.classList.add('hiding');setTimeout(function(){_tiW.style.display='none';if(_tiInner)_tiInner.classList.remove('hiding');},240);}else{_tiW.style.display='none';}}})();
                         return;

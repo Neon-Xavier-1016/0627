@@ -1110,7 +1110,35 @@
                             </label>
                         </div>
                     </div>
+                    <p class="cs-group-label" style="margin-top:4px;">梦角自由造句</p>
+                    <div class="cs-card">
+                        <div class="setting-pill-row" id="dreamfree-toggle">
+                            <span class="setting-pill-icon"><i class="fas fa-magic"></i></span>
+                            <span class="setting-pill-label">开启自由造句 <span style="font-size:11px;color:var(--text-secondary);font-weight:400;">从你的字卡里截字重组成新句子</span></span>
+                            <div class="setting-pill-switch"><div class="setting-pill-knob"></div></div>
+                        </div>
+                        <div id="dreamfree-detail" style="display:none;">
+                            <div class="cs-slider-row">
+                                <span class="cs-slider-label">触发概率</span>
+                                <input type="range" min="0" max="100" step="5" value="25" class="font-size-slider" id="dreamfree-prob">
+                                <span class="cs-slider-val" id="dreamfree-prob-val">25%</span>
+                            </div>
+                            <div class="cs-rr-style-row" style="padding:8px 14px;">
+                                <span class="cs-rr-style-label">手法</span>
+                                <button class="modal-btn modal-btn-primary" id="df-style-mix" style="padding:5px 12px;font-size:12px;">混合</button>
+                                <button class="modal-btn modal-btn-secondary" id="df-style-0" style="padding:5px 12px;font-size:12px;">语气词</button>
+                                <button class="modal-btn modal-btn-secondary" id="df-style-1" style="padding:5px 12px;font-size:12px;">撤回</button>
+                                <button class="modal-btn modal-btn-secondary" id="df-style-2" style="padding:5px 12px;font-size:12px;">换词</button>
+                            </div>
+                            <div class="setting-pill-row" id="dreamfree-punct-toggle" style="border-top:1px solid var(--border-color);">
+                                <span class="setting-pill-icon"><i class="fas fa-quote-right"></i></span>
+                                <span class="setting-pill-label">句尾自动补标点</span>
+                                <div class="setting-pill-switch"><div class="setting-pill-knob"></div></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
+                
 
                 <div class="cs-panel" id="cs-panel-sound">
                     <p class="cs-group-label">消息音效</p>
@@ -2501,6 +2529,7 @@
     <script src="js/utils.js"></script>
     <script src="js/backup-engine.js"></script>
     <script src="js/state.js"></script>
+    <script src="js/features/dream-free.js"></script>
     <script src="js/core.js"></script>
 
     <!-- == 功能模块 == -->

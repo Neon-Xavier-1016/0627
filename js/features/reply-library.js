@@ -39,15 +39,19 @@ function _getGroupCtx(tab) {
         if (!window.customStatusGroups) window.customStatusGroups = [];
         return { groups: window.customStatusGroups, items: customStatuses, itemLabel: '状态' };
     }
+    if (tab === 'dreamfree') {                                       // ← 新增
+        if (!window.dreamFreeGroups) window.dreamFreeGroups = [];    // ← 新增
+        if (!window.dreamFreeReplies) window.dreamFreeReplies = [];  // ← 新增
+        return { groups: window.dreamFreeGroups, items: window.dreamFreeReplies, itemLabel: '组词' };  // ← 新增
+    }
     // default: custom replies
     if (!window.customReplyGroups) window.customReplyGroups = [];
     return { groups: window.customReplyGroups, items: customReplies, itemLabel: '字卡' };
 }
-
 // 判断当前 tab 是否支持分组
 function _tabHasGroups(tab) {
     tab = tab || currentSubTab;
-    return tab === 'custom' || tab === 'pokes' || tab === 'statuses';
+    return tab === 'custom' || tab === 'dreamfree' || tab === 'pokes' || tab === 'statuses';
 }
 
 let _batchSelectedIndices = new Set();
@@ -166,6 +170,8 @@ function _renderListContentOnly() {
     if (currentMajorTab === 'reply') {
         if (currentSubTab === 'custom') {
             itemsToRender = customReplies;
+        } else if (currentSubTab === 'dreamfree') {          // ← 新增
+            itemsToRender = window.dreamFreeReplies || [];   // ← 新增
         } else if (currentSubTab === 'emojis') {
             itemsToRender = CONSTANTS.REPLY_EMOJIS;
             renderType = 'emoji';
@@ -193,11 +199,11 @@ function _renderListContentOnly() {
         return;
     }
 
-    if (currentMajorTab === 'reply' && currentSubTab === 'custom') {
-        _renderCardViewWithGroups(list, filtered);
-    } else {
-        _renderAtmosphereList(list, filtered);
-    }
+       if (_tabHasGroups()) {
+           _renderCardViewWithGroups(list, filtered);
+       } else {
+           _renderAtmosphereList(list, filtered);
+       }
 }
 
 let _rlRafId = null;
@@ -242,6 +248,7 @@ function renderReplyLibrary() {
                 _activeGroupFilter = null;
                 _searchVisible = false;
                 _searchQuery = '';
+                subTabsContainer.scrollLeft = 0;
                 renderReplyLibrary();
             });
         });
@@ -258,22 +265,24 @@ function renderReplyLibrary() {
     let itemsToRender = [];
     let renderType = 'text';
 
-    if (currentMajorTab === 'reply') {
-        if (currentSubTab === 'custom') {
-            itemsToRender = customReplies;
-        } else if (currentSubTab === 'emojis') {
-            itemsToRender = CONSTANTS.REPLY_EMOJIS;
-            renderType = 'emoji';
-        } else if (currentSubTab === 'stickers') {
-            itemsToRender = stickerLibrary;
-            renderType = 'image';
-        }
-    } else if (currentMajorTab === 'atmosphere') {
-        if (currentSubTab === 'pokes') itemsToRender = customPokes;
-        else if (currentSubTab === 'statuses') itemsToRender = customStatuses;
-        else if (currentSubTab === 'mottos') itemsToRender = customMottos;
-        else if (currentSubTab === 'intros') itemsToRender = customIntros;
-    }
+       if (currentMajorTab === 'reply') {
+           if (currentSubTab === 'custom') {
+               itemsToRender = customReplies;
+           } else if (currentSubTab === 'dreamfree') {
+               itemsToRender = window.dreamFreeReplies || [];
+           } else if (currentSubTab === 'emojis') {
+               itemsToRender = CONSTANTS.REPLY_EMOJIS;
+               renderType = 'emoji';
+           } else if (currentSubTab === 'stickers') {
+               itemsToRender = stickerLibrary;
+               renderType = 'image';
+           }
+       } else if (currentMajorTab === 'atmosphere') {   // ← 只有一个 }
+           if (currentSubTab === 'pokes') itemsToRender = customPokes;
+           else if (currentSubTab === 'statuses') itemsToRender = customStatuses;
+           else if (currentSubTab === 'mottos') itemsToRender = customMottos;
+           else if (currentSubTab === 'intros') itemsToRender = customIntros;
+       }
 
     if (renderType === 'emoji') { _renderEmojiTab(list, itemsToRender); return; }
     if (renderType === 'image') { _renderStickerTab(list, itemsToRender); return; }
@@ -1380,6 +1389,7 @@ function deleteItem(index) {
     else if (currentSubTab === 'statuses') customStatuses.splice(index, 1);
     else if (currentSubTab === 'mottos') customMottos.splice(index, 1);
     else if (currentSubTab === 'intros') customIntros.splice(index, 1);
+    else if (currentSubTab === 'dreamfree') window.dreamFreeReplies.splice(index, 1);   // ← 只保留这一行
     if (item && ctx.groups) {
         ctx.groups.forEach(g => { if (g.items) g.items = g.items.filter(t => t !== item); });
     }
@@ -1413,6 +1423,7 @@ function editItem(index, oldText) {
     else if (currentSubTab === 'statuses') customStatuses[index] = newText.trim();
     else if (currentSubTab === 'mottos') customMottos[index] = newText.trim();
     else if (currentSubTab === 'intros') customIntros[index] = newText.trim();
+    else if (currentSubTab === 'dreamfree') window.dreamFreeReplies[index] = newText.trim();   // ← 加这一行
     throttledSaveData();
     renderReplyLibrary();
 }

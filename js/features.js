@@ -1719,3 +1719,82 @@ window.tryShowDailyGreeting = function() {
     }
     setTimeout(bind, 1500);   // 保险起见再绑一次
 })();
+
+/* ===== 梦角自由造句 · 设置面板接线 ===== */
+(function () {
+  function $id(id) { return document.getElementById(id); }
+
+  function syncUI() {
+    if (!window.DreamFree) return;
+    const cfg = window.DreamFree.loadCfg();
+    const toggle = $id('dreamfree-toggle');
+    if (!toggle) return;
+    toggle.classList.toggle('active', cfg.enabled);
+    const detail = $id('dreamfree-detail');
+    if (detail) detail.style.display = cfg.enabled ? 'block' : 'none';
+    const prob = $id('dreamfree-prob');
+    if (prob) prob.value = cfg.prob;
+    const probVal = $id('dreamfree-prob-val');
+    if (probVal) probVal.textContent = cfg.prob + '%';
+    const punct = $id('dreamfree-punct-toggle');
+    if (punct) punct.classList.toggle('active', cfg.punctOn);
+    // 手法按钮高亮
+    ['mix', '0', '1', '2'].forEach(v => {
+      const b = $id('df-style-' + v);
+      if (!b) return;
+      const isOn = String(cfg.style) === String(v);
+      b.classList.toggle('modal-btn-primary', isOn);
+      b.classList.toggle('modal-btn-secondary', !isOn);
+    });
+  }
+
+  function set(k, v) {
+    if (!window.DreamFree) return;
+    const cfg = window.DreamFree.loadCfg();
+    cfg[k] = v;
+    window.DreamFree.saveCfg(cfg);
+  }
+
+  function bind() {
+    const toggle = $id('dreamfree-toggle');
+    if (!toggle || toggle.__dfBound) return;
+    toggle.__dfBound = true;
+
+    toggle.addEventListener('click', () => {
+      const cfg = window.DreamFree.loadCfg();
+      set('enabled', !cfg.enabled);
+      syncUI();
+    });
+    const prob = $id('dreamfree-prob');
+    if (prob) prob.addEventListener('input', e => {
+      const v = +e.target.value;
+      const el = $id('dreamfree-prob-val');
+      if (el) el.textContent = v + '%';
+      set('prob', v);
+    });
+    ['mix', '0', '1', '2'].forEach(v => {
+      const b = $id('df-style-' + v);
+      if (!b) return;
+      b.addEventListener('click', () => {
+        set('style', v === 'mix' ? 'mix' : +v);
+        syncUI();
+      });
+    });
+    const punct = $id('dreamfree-punct-toggle');
+    if (punct) punct.addEventListener('click', () => {
+      const cfg = window.DreamFree.loadCfg();
+      set('punctOn', !cfg.punctOn);
+      syncUI();
+    });
+  }
+
+  // 每次打开聊天设置时同步一次状态
+  const csBtn = document.getElementById('chat-settings-btn');
+  if (csBtn) csBtn.addEventListener('click', () => setTimeout(syncUI, 50));
+  const csTabs = document.getElementById('cs-tabs');
+  if (csTabs) csTabs.addEventListener('click', () => setTimeout(syncUI, 50));
+
+  document.addEventListener('DOMContentLoaded', () => { bind(); syncUI(); });
+  // 保险：DOM 已就绪时也执行
+  setTimeout(() => { bind(); syncUI(); }, 600);
+})();
