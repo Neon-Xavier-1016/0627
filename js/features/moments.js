@@ -1530,33 +1530,23 @@
 
         var items = [];
 
-        // 收藏 / 取消收藏
         items.push({
             label: moment.isFavorited ? '取消收藏' : '收藏',
             action: function() { toggleFavorite(momentId); }
         });
 
-        // 只有自己发的才能编辑 / 删除
-        if (moment.publisher === 'me') {
-            items.push({
-                label: '编辑',
-                action: function() { openEditor(momentId); }
-            });
-            items.push({
-                label: '删除',
-                action: function() {
-                    if (confirm('确定删除这条动态吗？')) deleteMoment(momentId);
-                }
-            });
-        } else {
-            // 对方发的也能删（清理用）
-            items.push({
-                label: '删除',
-                action: function() {
-                    if (confirm('确定删除这条动态吗？')) deleteMoment(momentId);
-                }
-            });
-        }
+        // 不分身份，都能编辑
+        items.push({
+            label: '编辑',
+            action: function() { openEditor(momentId); }
+        });
+
+        items.push({
+            label: '删除',
+            action: function() {
+                if (confirm('确定删除这条动态吗？')) deleteMoment(momentId);
+            }
+        });
 
         showContextMenu(items);
     }
