@@ -172,6 +172,9 @@ function _renderListContentOnly() {
             itemsToRender = customReplies;
         } else if (currentSubTab === 'dreamfree') {          // ← 新增
             itemsToRender = window.dreamFreeReplies || [];   // ← 新增
+        } else if (currentSubTab === 'voice') {
+            itemsToRender = (typeof settings !== 'undefined' && settings.voiceLibrary) || [];
+            renderType = 'voice';
         } else if (currentSubTab === 'emojis') {
             itemsToRender = CONSTANTS.REPLY_EMOJIS;
             renderType = 'emoji';
@@ -188,6 +191,7 @@ function _renderListContentOnly() {
 
     if (renderType === 'emoji') { _renderEmojiTab(list, itemsToRender); return; }
     if (renderType === 'image') { _renderStickerTab(list, itemsToRender); return; }
+    if (renderType === 'voice') { _renderVoiceTab(list, itemsToRender); return; }
 
     const q = _searchQuery.toLowerCase().trim();
     const filtered = q ? itemsToRender.filter(item => item.toLowerCase().includes(q)) : itemsToRender;
@@ -270,6 +274,9 @@ function renderReplyLibrary() {
                itemsToRender = customReplies;
            } else if (currentSubTab === 'dreamfree') {
                itemsToRender = window.dreamFreeReplies || [];
+           } else if (currentSubTab === 'voice') {
+               itemsToRender = (typeof settings !== 'undefined' && settings.voiceLibrary) || [];
+               renderType = 'voice';
            } else if (currentSubTab === 'emojis') {
                itemsToRender = CONSTANTS.REPLY_EMOJIS;
                renderType = 'emoji';
@@ -286,6 +293,7 @@ function renderReplyLibrary() {
 
     if (renderType === 'emoji') { _renderEmojiTab(list, itemsToRender); return; }
     if (renderType === 'image') { _renderStickerTab(list, itemsToRender); return; }
+    if (renderType === 'voice') { _renderVoiceTab(list, itemsToRender); return; }
 
     const q = _searchQuery.toLowerCase().trim();
     let filtered = q ? itemsToRender.filter(item => item.toLowerCase().includes(q)) : itemsToRender;

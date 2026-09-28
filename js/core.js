@@ -467,6 +467,7 @@ const LIBRARY_CONFIG = {
         tabs: [
             { id: 'custom', name: '主字卡', mode: 'list' },
             { id: 'dreamfree', name: '组词库', mode: 'list' },   // ← 新增
+            { id: 'voice',     name: '语音库',  mode: 'voice' },
             { id: 'emojis', name: 'Emoji', mode: 'grid' },
             { id: 'stickers', name: '表情库', mode: 'grid' },
             { id: 'period', name: '月经关怀', mode: 'list' }   // ✅ 新增
@@ -1185,15 +1186,21 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
         messageHTML += `<div class="reply-indicator" data-reply-id="${msg.replyTo.id || ''}" style="cursor:pointer;" onclick="scrollToQuotedMessage(this)"><span class="reply-indicator-sender">${repliedSender}</span><span class="reply-indicator-text">${repliedText}</span></div>`;
     }
 
-    const isImageOnly = !msg.text && !!msg.image;
-    let content = '';
-    if (msg.text) {
-        let textHtml = msg.text.replace(/\n/g, '<br>');
-        content = `<div>${textHtml}</div>`;
-    }
-    
-    if (msg.image) content += `<img src="${msg.image}" class="message-image${isImageOnly ? ' message-image-only' : ''}" alt="图片" style="max-width:${isImageOnly ? '100px' : '100px'}; border-radius: 12px;${!isImageOnly ? ' margin-top: 6px;' : ''} cursor: pointer;" onclick="viewImage('${msg.image}')">`;
-    messageHTML += content;
+        const isImageOnly = !msg.text && !!msg.image;
+        let content = '';
+        const __isVoiceMsg = (msg.type === 'voice' && msg.voiceId);
+        if (__isVoiceMsg) {
+            content = (window.VoiceLibrary && window.VoiceLibrary.buildVoiceBubbleHTML)
+                ? window.VoiceLibrary.buildVoiceBubbleHTML(msg)
+                : '<span style="opacity:0.6;">[语音]</span>';
+        } else {
+            if (msg.text) {
+                let textHtml = msg.text.replace(/\n/g, '<br>');
+                content = `<div>${textHtml}</div>`;
+            }
+            if (msg.image) content += `<img src="${msg.image}" class="message-image${isImageOnly ? ' message-image-only' : ''}" alt="图片" style="max-width:${isImageOnly ? '100px' : '100px'}; border-radius: 12px;${!isImageOnly ? ' margin-top: 6px;' : ''} cursor: pointer;" onclick="viewImage('${msg.image}')">`;
+        }
+        messageHTML += content;
 
     const messageDiv = document.createElement('div');
     if (isImageOnly) {
@@ -1208,7 +1215,10 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
    const starIcon = msg.favorited ? 'fas fa-star' : 'far fa-star';
    actionsHTML += `<button class="meta-action-btn favorite-action-btn ${msg.favorited ? 'favorited' : ''}" title="${msg.favorited ? '取消收藏' : '收藏'}"><i class="${starIcon}"></i></button>`;
    // 👇 新增编辑按钮（仅自己的消息显示）
-   if (msg.sender === 'user') {
+   if (msg.type === 'voice' && msg.voiceId) {
+       // 语音消息：显示/收起下方文字（不弹编辑）
+       actionsHTML += `<button class="meta-action-btn voice-text-btn" title="转文字" onclick="window.VoiceLibrary && window.VoiceLibrary.toggleTranscript && window.VoiceLibrary.toggleTranscript(this)"><span style="font-family:'Noto Serif SC',serif;font-size:13px;font-weight:700;line-height:1;">文</span></button>`;
+   } else if (msg.sender === 'user') {
        actionsHTML += `<button class="meta-action-btn edit-btn" title="编辑消息" onclick="editMessage('${msg.id}')"><i class="fas fa-pen"></i></button>`;
    }
    actionsHTML += `<button class="meta-action-btn delete-btn" title="删除"><i class="fas fa-trash-alt"></i></button>`;

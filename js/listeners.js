@@ -14,10 +14,58 @@ function setupEventListeners() {
         initThemeSchemes();
         initStickerUploadListeners();
         initComboMenu();
+        enforceNoEditOnVoice();
         
     } catch (e) {
         console.error("事件绑定过程中发生错误:", e);
     }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 强制清理：语音消息里不允许有"编辑消息"铅笔
+// ═══════════════════════════════════════════════════════════════
+function enforceNoEditOnVoice() {
+    function stripEditBtn(wrapper) {
+        if (!wrapper || !wrapper.querySelector) return;
+        if (!wrapper.querySelector('.voice-bubble')) return;
+        wrapper.querySelectorAll('.meta-action-btn.edit-btn').forEach(b => b.remove());
+    }
+
+    function sweep(root) {
+        const scope = root && root.querySelectorAll ? root : document;
+        scope.querySelectorAll('.message-wrapper').forEach(stripEditBtn);
+    }
+
+    // 首次执行（DOM 可能还没渲染好，延迟一下）
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => setTimeout(sweep, 300));
+    } else {
+        setTimeout(sweep, 300);
+    }
+
+    // 持续监听：新出现的语音消息也自动清理
+    if (typeof MutationObserver !== 'undefined') {
+        const observer = new MutationObserver((mutations) => {
+            let hasNew = false;
+            for (const m of mutations) {
+                if (m.type === 'childList' && m.addedNodes && m.addedNodes.length) {
+                    for (const n of m.addedNodes) {
+                        if (n.nodeType !== 1) continue;
+                        if (n.classList && n.classList.contains('message-wrapper')) { hasNew = true; break; }
+                        if (n.querySelector && n.querySelector('.message-wrapper')) { hasNew = true; break; }
+                    }
+                }
+                if (hasNew) break;
+            }
+            if (hasNew) requestAnimationFrame(() => sweep());
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+    }
+
+    // 兜底：每 1.5 秒扫一次（防止某些场景 MutationObserver 漏掉）
+    setInterval(sweep, 1500);
+
+    console.log('✅ 语音消息铅笔清理器已启动');
 }
 
 function initChatActionListeners() {
