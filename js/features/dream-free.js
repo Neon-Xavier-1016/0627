@@ -1,5 +1,5 @@
 /* ============================================================
-   dream-free.js —— 梦角自由造句（字级版，不依赖标点分词）
+   dream-free.js —— 梦角自由造句（独立概率版）
    - 源句：customReplies
    - 存库：window.dreamFreeReplies
    - 配置：localStorage 键 'xavier-dreamfree-cfg'
@@ -8,10 +8,14 @@
   'use strict';
 
   const CFG_KEY = 'xavier-dreamfree-cfg';
+  
+  // 新增三个独立概率字段，默认均衡分配
   const DEFAULT_CFG = {
     enabled: true,
-    prob: 25,
-    style: 'mix',
+    prob: 25,          // 整体触发概率
+    probTone: 33,      // 语气词权重
+    probRecall: 33,    // 撤回权重
+    probCutfill: 34,   // 换词权重
     punctOn: true,
     punctPool: '。 ~ ！ ……',
     minLen: 5,
@@ -25,6 +29,7 @@
     } catch (e) {}
     return Object.assign({}, DEFAULT_CFG);
   }
+
   function saveCfg(c) {
     try { localStorage.setItem(CFG_KEY, JSON.stringify(c)); } catch (e) {}
   }
@@ -49,7 +54,7 @@
     return hanN >= 3;
   }
 
-  // 手法 0：语气词式（字级）
+  // 手法 0：语气词式
   function styleTone(text) {
     const t = String(text || '').trim();
     if (!t || t.length < 3) return null;
@@ -66,7 +71,7 @@
     }
   }
 
-  // 手法 1：撤回式（砍后半句，字级）
+  // 手法 1：撤回式
   function styleRecall(text) {
     const t = String(text || '').trim().replace(/[，。！？、…～\s]+$/, '');
     if (t.length < 4) return null;
@@ -79,7 +84,7 @@
     return out + rand(SUFFIXES);
   }
 
-  // 手法 2：换词式（从别的源句借 2-3 个字替换原句一段）
+  // 手法 2：换词式
   function styleCutFill(text, pool) {
     const t = String(text || '').trim();
     if (t.length < 4) return null;
@@ -146,8 +151,24 @@
     }
     if (!source) source = rand(valid);
 
-    let style = cfg.style;
-    if (style === 'mix') style = Math.floor(Math.random() * 3);
+    // ==========================================
+    // 核心修改：基于独立权重的随机抽取
+    // ==========================================
+    let style = 0;
+    const p0 = cfg.probTone !== undefined ? cfg.probTone : 33;
+    const p1 = cfg.probRecall !== undefined ? cfg.probRecall : 33;
+    const p2 = cfg.probCutfill !== undefined ? cfg.probCutfill : 34;
+    const totalWeight = p0 + p1 + p2;
+
+    if (totalWeight > 0) {
+      const r = Math.random() * totalWeight;
+      if (r < p0) style = 0;                // 语气词
+      else if (r < p0 + p1) style = 1;      // 撤回
+      else style = 2;                       // 换词
+    } else {
+      // 兜底：如果用户把所有概率都调成了0，则恢复等概率
+      style = Math.floor(Math.random() * 3);
+    }
 
     let out = null;
     if (style === 0) out = styleTone(source);
@@ -185,11 +206,60 @@
     } catch (e) { return false; }
   }
 
+  // ==========================================
+  // 新增：外部调用更新概率并同步 UI
+  // ==========================================
+  function updateProb(type, val) {
+    const cfg = loadCfg();
+    val = parseInt(val, 10) || 0;
+    if (type === 'tone') cfg.probTone = val;
+    else if (type === 'recall') cfg.probRecall = val;
+    else if (type === 'cutfill') cfg.probCutfill = val;
+    
+    // 更新 UI 显示
+    const display = document.getElementById('df-prob-' + type + '-val');
+    if (display) display.textContent = val + '%';
+    
+    saveCfg(cfg);
+  }
+
   window.DreamFree = {
     build,
     save,
     loadCfg,
     saveCfg,
+    updateProb,
     DEFAULT_CFG
   };
+
+  // ==========================================
+  // 新增：页面加载时，将已保存的配置同步到滑块 UI
+  // ==========================================
+  document.addEventListener('DOMContentLoaded', () => {
+    const cfg = loadCfg();
+    const pTone = cfg.probTone !== undefined ? cfg.probTone : 33;
+    const pRecall = cfg.probRecall !== undefined ? cfg.probRecall : 33;
+    const pCut = cfg.probCutfill !== undefined ? cfg.probCutfill : 34;
+
+    const elTone = document.getElementById('df-prob-tone');
+    if (elTone) {
+      elTone.value = pTone;
+      const valSpan = document.getElementById('df-prob-tone-val');
+      if (valSpan) valSpan.textContent = pTone + '%';
+    }
+    
+    const elRecall = document.getElementById('df-prob-recall');
+    if (elRecall) {
+      elRecall.value = pRecall;
+      const valSpan = document.getElementById('df-prob-recall-val');
+      if (valSpan) valSpan.textContent = pRecall + '%';
+    }
+    
+    const elCut = document.getElementById('df-prob-cutfill');
+    if (elCut) {
+      elCut.value = pCut;
+      const valSpan = document.getElementById('df-prob-cutfill-val');
+      if (valSpan) valSpan.textContent = pCut + '%';
+    }
+  });
 })();

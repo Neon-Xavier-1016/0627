@@ -368,10 +368,20 @@ window.scrollToMessage = function(msgId) {
                     border-radius: 20px;
                     font-size: 12.5px;
                     color: var(--text-secondary, #999);
-                    background: transparent;
+                    /* ✅ 半透明灰底 + 毛玻璃，任何背景都清晰可读 */
+                    background: rgba(128, 128, 128, 0.22);
+                    backdrop-filter: blur(10px);
+                    -webkit-backdrop-filter: blur(10px);
+                    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
                     font-family: var(--font-family, inherit);
                     line-height: 1.4;
                     animation: recallFadeIn .28s ease;
+                }
+
+                /* 深色模式下稍微调整，让灰底更柔和 */
+                [data-theme="dark"] .recall-tip-inner {
+                    background: rgba(255, 255, 255, 0.10);
+                    border-color: rgba(255, 255, 255, 0.10);
                 }
                 @keyframes recallFadeIn {
                     from { opacity: 0; transform: scale(.96); }
@@ -524,22 +534,44 @@ window.scrollToMessage = function(msgId) {
         const msg    = findMessage(idStr);
         const text   = msg && msg.text ? msg.text : '';
 
-        // 【新增】最终保险：超过 2 分钟不撤回
         if (Date.now() - sentAt > CFG.RECALL_WINDOW_MS) return;
 
-        // ...下面原来的代码不动
         const canReedit = isMine
             && (Date.now() - sentAt <= CFG.REEDIT_WINDOW_MS)
             && !!text
             && !(msg && msg.image);
 
-        // 同步删除数据
-        removeMessage(idStr);
-
-        // DOM 替换
         const who = isMine ? '你' : getPartnerName();
+
+        // ✅ 关键修复：原地替换 messages 数组中的记录，而不是删除
+        if (typeof messages !== 'undefined' && Array.isArray(messages)) {
+            const idx = messages.findIndex(m => String(m.id) === String(idStr));
+            if (idx >= 0) {
+                const original = messages[idx];
+                messages[idx] = {
+                    id: original.id,                          // 保留原 id
+                    sender: 'system',
+                    type: 'recall',                           // 新的类型
+                    text: who + '撤回了一条消息',
+                    recalledText: canReedit ? text : '',      // 供「重新编辑」
+                    isMine: isMine,
+                    timestamp: new Date(original.timestamp),  // 保留原时间，排序不乱
+                    status: 'recalled'
+                };
+            }
+
+            // 立即持久化（防抖 + 本地紧急备份，双保险）
+            if (typeof throttledSaveData === 'function') {
+                try { throttledSaveData(); } catch (e) {}
+            }
+            if (typeof _backupCriticalData === 'function') {
+                try { _backupCriticalData(); } catch (e) {}
+            }
+        }
+
+        // 立即 DOM 替换（视觉上马上生效，不用等重渲染）
         const tip = buildTip(who, canReedit ? text : '');
-        if (wrapper.isConnected) wrapper.replaceWith(tip);
+        if (wrapper && wrapper.isConnected) wrapper.replaceWith(tip);
 
         // 对外回调
         const hook = window.RecallFeature && window.RecallFeature.onRecall;

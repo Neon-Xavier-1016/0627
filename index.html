@@ -1123,12 +1123,23 @@
                                 <input type="range" min="0" max="100" step="5" value="25" class="font-size-slider" id="dreamfree-prob">
                                 <span class="cs-slider-val" id="dreamfree-prob-val">25%</span>
                             </div>
-                            <div class="cs-rr-style-row" style="padding:8px 14px;">
-                                <span class="cs-rr-style-label">手法</span>
-                                <button class="modal-btn modal-btn-primary" id="df-style-mix" style="padding:5px 12px;font-size:12px;">混合</button>
-                                <button class="modal-btn modal-btn-secondary" id="df-style-0" style="padding:5px 12px;font-size:12px;">语气词</button>
-                                <button class="modal-btn modal-btn-secondary" id="df-style-1" style="padding:5px 12px;font-size:12px;">撤回</button>
-                                <button class="modal-btn modal-btn-secondary" id="df-style-2" style="padding:5px 12px;font-size:12px;">换词</button>
+                            <div style="padding: 8px 14px;">
+                                <div style="font-size:12px; color:var(--text-secondary); margin-bottom:8px; font-weight:500;">手法概率分配（按比例随机）</div>
+                                <div class="cs-slider-row">
+                                    <span class="cs-slider-label" style="width: 48px;">语气词</span>
+                                    <input type="range" min="0" max="100" step="5" value="33" class="font-size-slider" id="df-prob-tone" oninput="window.DreamFree.updateProb('tone', this.value)">
+                                    <span class="cs-slider-val" id="df-prob-tone-val">33%</span>
+                                </div>
+                                <div class="cs-slider-row">
+                                    <span class="cs-slider-label" style="width: 48px;">撤回</span>
+                                    <input type="range" min="0" max="100" step="5" value="33" class="font-size-slider" id="df-prob-recall" oninput="window.DreamFree.updateProb('recall', this.value)">
+                                    <span class="cs-slider-val" id="df-prob-recall-val">33%</span>
+                                </div>
+                                <div class="cs-slider-row">
+                                    <span class="cs-slider-label" style="width: 48px;">换词</span>
+                                    <input type="range" min="0" max="100" step="5" value="34" class="font-size-slider" id="df-prob-cutfill" oninput="window.DreamFree.updateProb('cutfill', this.value)">
+                                    <span class="cs-slider-val" id="df-prob-cutfill-val">34%</span>
+                                </div>
                             </div>
                             <div class="setting-pill-row" id="dreamfree-punct-toggle" style="border-top:1px solid var(--border-color);">
                                 <span class="setting-pill-icon"><i class="fas fa-quote-right"></i></span>

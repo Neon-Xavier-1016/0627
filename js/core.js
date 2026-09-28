@@ -1037,6 +1037,41 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
         lastSenderRef.current = null;
     }
 
+        // ✅ 撤回消息：渲染为居中灰色胶囊提示条（与撤回瞬间的 DOM 完全一致）
+        if (msg.type === 'recall') {
+            const recallDiv = document.createElement('div');
+            recallDiv.className = 'recall-tip';
+            recallDiv.dataset.msgId = msg.id;
+
+            const inner = document.createElement('div');
+            inner.className = 'recall-tip-inner';
+
+            const label = document.createElement('span');
+            label.textContent = msg.text || '撤回了一条消息';
+            inner.appendChild(label);
+
+            if (msg.recalledText) {
+                const btn = document.createElement('span');
+                btn.className = 'recall-tip-reedit';
+                btn.textContent = '重新编辑';
+                btn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    const input = document.getElementById('message-input');
+                    if (!input) return;
+                    input.value = msg.recalledText;
+                    input.focus();
+                    try { input.setSelectionRange(msg.recalledText.length, msg.recalledText.length); } catch (err) {}
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                });
+                inner.appendChild(btn);
+            }
+
+            recallDiv.appendChild(inner);
+            fragment.appendChild(recallDiv);
+            lastSenderRef.current = 'system';
+            return fragment;
+        }
+
     if (msg.type === 'system') {
         const systemMsgDiv = document.createElement('div');
         systemMsgDiv.className = 'system-message';

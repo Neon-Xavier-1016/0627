@@ -1401,17 +1401,22 @@
         .call-event-pill {
             display: inline-flex;
             align-items: center;
-            gap: 7px;
+            gap: 6px;
+            padding: 5px 14px;
             border-radius: 20px;
-            padding: 6px 13px 6px 10px;
-            font-size: 12px;
-            font-weight: 500;
-            letter-spacing: 0.2px;
-            border: 1px solid;
-            position: relative;
-            animation: systemMsgPop 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards;
-            opacity: 0;
-            transform: scale(0.9) translateY(4px);
+            font-size: 12.5px;
+            /* ✅ 与撤回提示条一致的灰底风格 */
+            background: rgba(128, 128, 128, 0.22);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(128, 128, 128, 0.25);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+            color: var(--text-secondary);
+        }
+
+        [data-theme="dark"] .call-event-pill {
+            background: rgba(255, 255, 255, 0.10);
+            border-color: rgba(255, 255, 255, 0.10);
         }
         .call-event-pill--ended {
             background: rgba(var(--accent-color-rgb, 180,140,100), 0.06);
@@ -11969,3 +11974,4 @@ html, body {
 .modal-sidebar .sidebar-btn span {
   font-size: 14px !important;
 }
+
