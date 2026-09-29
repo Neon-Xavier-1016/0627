@@ -186,7 +186,9 @@ autoSendInterval: 5,
         partnerPokeCustomSoundUrl: '',
         soundVolume: 0.15,
         bottomCollapseMode: false,
-        emojiMixEnabled: true
+        emojiMixEnabled: true,
+        voiceMessageEnabled: true,     // ← 新增：默认开启
+        voiceMessageChance: 15,        // ← 新增：默认 15%
             };
         }
 
@@ -1880,6 +1882,39 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                         } else {
                             separateEmoji = emoji;
                         }
+                    }
+
+                    // ★ 语音触发：按设置里的开关和概率
+                    const _voiceEnabled = settings.voiceMessageEnabled !== false;
+                    const _voiceChance = (typeof settings.voiceMessageChance === 'number' ? settings.voiceMessageChance : 15) / 100;
+                    const _voiceLib = (typeof settings !== 'undefined' && Array.isArray(settings.voiceLibrary)) ? settings.voiceLibrary : [];
+                    if (_voiceEnabled && _voiceChance > 0 && _voiceLib.length > 0 && Math.random() < _voiceChance) {
+                        const _meta = _voiceLib[Math.floor(Math.random() * _voiceLib.length)];
+                        addMessage({
+                            id: Date.now() + i + 3000,
+                            sender: settings.partnerName || '对方',
+                            text: '',
+                            type: 'voice',
+                            voiceId: _meta.id,
+                            duration: _meta.duration,
+                            timestamp: new Date(),
+                            status: 'received',
+                            favorited: false,
+                            note: null,
+                            replyTo: null,
+                        });
+                        if (typeof playSound === 'function') playSound('message');
+                        if (i === replyCount - 1) {
+                            try {
+                                if (window._typingIndicatorAutoHideTimer) {
+                                    clearTimeout(window._typingIndicatorAutoHideTimer);
+                                    window._typingIndicatorAutoHideTimer = null;
+                                }
+                            } catch (e) {}
+                            var _tiW = document.getElementById('typing-indicator-wrapper');
+                            if (_tiW) _tiW.style.display = 'none';
+                        }
+                        return;
                     }
 
                     addMessage({

@@ -381,7 +381,6 @@ if (target.classList.contains('delete-btn')) {
                     urlInput.focus();
                 });
 
-
 fileInput.addEventListener('change', function(e) {
     const file = e.target.files[0];
     if (file) {
@@ -1137,6 +1136,40 @@ if (_chatSettingsEl) _chatSettingsEl.addEventListener('click', () => {
                 updateDelayUI();
             });
             maxDelaySlider.addEventListener('change', throttledSaveData);
+
+            // ═══ 语音消息设置 ═══
+            (function initVoiceMessageSettings() {
+                const vmToggle = document.getElementById('voice-message-toggle');
+                const vmChanceRow = document.getElementById('voice-message-chance-row');
+                const vcSlider = document.getElementById('voice-chance-slider');
+                const vcVal = document.getElementById('voice-chance-value');
+
+                if (vmToggle) {
+                    const _initVal = settings.voiceMessageEnabled !== false;  // 默认开启
+                    vmToggle.classList.toggle('active', _initVal);
+                    if (vmChanceRow) vmChanceRow.style.display = _initVal ? 'block' : 'none';
+
+                    vmToggle.addEventListener('click', () => {
+                        settings.voiceMessageEnabled = !(settings.voiceMessageEnabled !== false);
+                        const nowOn = settings.voiceMessageEnabled !== false;
+                        vmToggle.classList.toggle('active', nowOn);
+                        if (vmChanceRow) vmChanceRow.style.display = nowOn ? 'block' : 'none';
+                        throttledSaveData();
+                        showNotification(`语音消息已${nowOn ? '开启' : '关闭'}`, 'success');
+                    });
+                }
+
+                if (vcSlider) {
+                    const cur = (typeof settings.voiceMessageChance === 'number') ? settings.voiceMessageChance : 15;
+                    vcSlider.value = cur;
+                    if (vcVal) vcVal.textContent = cur + '%';
+                    vcSlider.addEventListener('input', (e) => {
+                        settings.voiceMessageChance = parseInt(e.target.value, 10);
+                        if (vcVal) vcVal.textContent = vcSlider.value + '%';
+                    });
+                    vcSlider.addEventListener('change', throttledSaveData);
+                }
+            })();
 
             const settingToggles = {
                 '#reply-toggle': {
