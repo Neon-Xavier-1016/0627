@@ -37,21 +37,81 @@
                 color: var(--accent-color) !important;
                 animation: voicePulse 1s ease-in-out infinite;
             }
-            /* 语音消息功能气泡默认隐藏，双击才显示 */
             .message-wrapper:has(.voice-bubble) .message-meta-actions {
                 opacity: 0 !important;
                 pointer-events: none !important;
                 transition: opacity 0.15s ease;
             }
-            .voice-transcript {
-                margin-top: 6px;
-                font-size: 13px;
-                color: var(--text-secondary);
-                line-height: 1.6;
-                padding-left: 2px;
-                word-break: break-word;
-                display: none;
+
+            /* ═══════════ 语音消息排版 ═══════════ */
+
+            /* 1. 外层 .message 气泡：去掉，让语音条和文字各画各的 */
+            .message.is-voice-message {
+                background: transparent !important;
+                box-shadow: none !important;
+                border: none !important;
+                padding: 0 !important;
+                width: auto !important;
+                max-width: 100%;
             }
+
+            /* 2. 竖排容器：语音条在上，文字在下 */
+            .voice-bubble-wrap {
+                display: inline-flex;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 6px;
+                max-width: 100%;
+            }
+
+            /* 3. 语音条：固定宽度的粉色气泡 */
+            .voice-bubble {
+                display: inline-flex;
+                align-items: center;
+                justify-content: flex-start;
+                gap: 10px;
+                padding: 10px 14px;
+                box-sizing: border-box;
+                width: var(--voice-w, 100px);
+                flex-shrink: 0;
+                cursor: pointer;
+                user-select: none;
+                background: var(--message-received-bg, #f0f0f0);
+                color: var(--message-received-text, #333);
+                border-radius: 16px 16px 16px 4px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+                transition: transform 0.15s ease;
+            }
+            .message-sent .voice-bubble {
+                background: var(--message-sent-bg, #fff);
+                color: var(--message-sent-text, #333);
+                border-radius: 16px 16px 4px 16px;
+            }
+            .voice-bubble:active { transform: scale(0.97); }
+
+            /* 4. 转文字：另一个粉色气泡，最大宽度 240px，短则自适应 */
+            .voice-transcript {
+                display: none;
+                padding: 10px 14px;
+                box-sizing: border-box;
+                background: var(--message-received-bg, #f0f0f0);
+                color: var(--message-received-text, #333);
+                border-radius: 16px 16px 16px 4px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+                font-size: 14px;
+                line-height: 1.6;
+                word-break: break-word;
+                white-space: normal;
+                max-width: 240px;                 /* ← 文字气泡的最大宽度 */
+                min-width: var(--voice-w, 100px); /* ← 至少和语音条一样宽 */
+                width: fit-content;               /* ← 短文字自然宽度 */
+            }
+            .message-sent .voice-transcript {
+                background: var(--message-sent-bg, #fff);
+                color: var(--message-sent-text, #333);
+                border-radius: 16px 16px 4px 16px;
+            }
+            .voice-transcript.show { display: block; }
         `;
         document.head.appendChild(s);
     })();
@@ -410,8 +470,8 @@
             t.textContent = meta.text;
             wrap.appendChild(t);
         }
-        const isHidden = (t.style.display === 'none' || getComputedStyle(t).display === 'none');
-        t.style.display = isHidden ? 'block' : 'none';
+        const isHidden = !t.classList.contains('show');
+        t.classList.toggle('show', isHidden);
         // 让按钮有"按下"感
         btn.classList.toggle('active', isHidden);
     }
@@ -662,20 +722,18 @@
     function buildVoiceBubbleHTML(msg) {
         const dur = Number(msg.duration) || 0;
         const widthPx = Math.min(220, 70 + dur * 4.5);
-        // 查语音库里的文字（默认隐藏，等用户点"文"才显示）
         let transcriptHTML = '';
         try {
             if (typeof settings !== 'undefined' && settings && Array.isArray(settings.voiceLibrary)) {
                 const meta = settings.voiceLibrary.find(v => v.id === msg.voiceId);
                 if (meta && meta.text) {
-                    transcriptHTML = `<div class="voice-transcript" style="display:none;">${_escape(meta.text)}</div>`;
+                    transcriptHTML = `<div class="voice-transcript">${_escape(meta.text)}</div>`;
                 }
             }
         } catch (e) {}
         return `
-            <div class="voice-bubble-wrap" style="display:inline-block;max-width:100%;">
-                <div class="voice-bubble" data-voice-id="${msg.voiceId}"
-                     style="display:flex;align-items:center;gap:10px;cursor:pointer;min-width:${widthPx}px;padding:2px 0;user-select:none;">
+            <div class="voice-bubble-wrap" style="--voice-w:${widthPx}px;">
+                <div class="voice-bubble" data-voice-id="${msg.voiceId}">
                     <i class="fas fa-wifi" style="transform:rotate(90deg);font-size:16px;opacity:0.8;flex-shrink:0;"></i>
                     <span style="font-size:14px;font-weight:500;letter-spacing:0.5px;">${dur}"</span>
                 </div>
@@ -760,6 +818,32 @@
     };
     window._renderVoiceTab = _renderVoiceTab;
     window._openVoiceAddMenu = openAddMenu;
+
+        // ═══ 给语音消息的外层 .message 加一个标记 class，去掉原有气泡 ═══
+        (function _markVoiceMessages() {
+            function mark(root) {
+                const scope = root && root.querySelectorAll ? root : document;
+                scope.querySelectorAll('.message-wrapper').forEach(w => {
+                    if (!w.querySelector('.voice-bubble')) return;
+                    w.querySelectorAll('.message').forEach(m => m.classList.add('is-voice-message'));
+                });
+            }
+            // 首次
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', () => setTimeout(mark, 200));
+            } else {
+                setTimeout(mark, 200);
+            }
+            // 持续监听
+            if (typeof MutationObserver !== 'undefined') {
+                const mo = new MutationObserver(() => {
+                    requestAnimationFrame(() => mark());
+                });
+                mo.observe(document.body, { childList: true, subtree: true });
+            }
+            // 兜底
+            setInterval(mark, 2000);
+        })();
 
     console.log('✅ voice-library.js 已加载');
 })();
