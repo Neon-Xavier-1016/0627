@@ -1708,6 +1708,10 @@ window.tryShowDailyGreeting = function() {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.combo-tab-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
+                if (btn.dataset.tab === 'change' && typeof window.showChangeTab === 'function') {
+                    window.showChangeTab();
+                    return;
+                }
                 if (typeof renderComboMenu === 'function') renderComboMenu();
             });
         });

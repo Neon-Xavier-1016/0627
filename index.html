@@ -1175,6 +1175,20 @@
                         </div>
                     </div>
 
+                    <p class="cs-group-label" style="margin-top:4px;">形象互动</p>
+                    <div class="cs-card">
+                        <div class="setting-pill-row" id="imagepool-name-toggle">
+                            <span class="setting-pill-icon"><i class="fas fa-signature"></i></span>
+                            <span class="setting-pill-label">允许他换名字</span>
+                            <div class="setting-pill-switch"><div class="setting-pill-knob"></div></div>
+                        </div>
+                        <div class="setting-pill-row" id="imagepool-avatar-toggle">
+                            <span class="setting-pill-icon"><i class="fas fa-user-circle"></i></span>
+                            <span class="setting-pill-label">允许他换头像</span>
+                            <div class="setting-pill-switch"><div class="setting-pill-knob"></div></div>
+                        </div>
+                    </div>
+
                 </div>
                 
 
@@ -1895,6 +1909,10 @@
                     <i class="fas fa-newspaper"></i>
                     <span>公告</span>
                 </button>
+                <button class="sidebar-btn" data-major="imagepool" onclick="switchToImagePoolPanel()">
+                    <i class="fas fa-user-circle"></i>
+                    <span>形象库</span>
+                </button>
             </div>
     
             <div class="modal-main-view">
@@ -1921,6 +1939,7 @@
                                     上传卡片背景
                                 </button>
                                 <button onclick="clearDgOverlayBg()" style="padding:9px 14px;border:1px solid var(--border-color);border-radius:10px;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:12px;font-family:var(--font-family);">清除</button>
+
                             </div>
                             <input type="file" id="dg-overlay-bg-input" accept="image/*" style="display:none" onchange="handleDgOverlayBgUpload(this)">
                             <div id="dg-overlay-bg-preview" style="margin-top:8px;display:none;border-radius:10px;overflow:hidden;position:relative;">
@@ -1999,6 +2018,12 @@
                             </div>
                         </div>
                     </div>
+                </div>
+
+                <!-- ★ 在这里插入（同级，不在 announcement-panel 里面） -->
+                <div id="imagepool-panel" style="display:none; padding:0 16px 80px; overflow-y:auto; flex:1; min-height:0; -webkit-overflow-scrolling:touch;">
+                    <div id="imagepool-tabs" style="display:flex;gap:6px;margin-bottom:16px;background:var(--secondary-bg);border-radius:12px;padding:4px;"></div>
+                    <div id="imagepool-body"></div>
                 </div>
     
                 <div class="modal-buttons">
@@ -2593,6 +2618,7 @@
     <script src="js/features/message-cards.js"></script>
     <script src="js/features/voice-library.js"></script>
     <script src="js/features/music-invite.js"></script>
+    <script src="js/features/image-pool.js"></script>
 
 
     <!-- == 合并模块 == -->

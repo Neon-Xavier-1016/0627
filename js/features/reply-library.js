@@ -221,6 +221,9 @@ function renderReplyLibraryRaf() {
 }
 
 function renderReplyLibrary() {
+    const _ip = document.getElementById('imagepool-panel');
+    if (_ip) _ip.style.display = 'none';
+
     if (currentMajorTab === 'announcement') return;
     const list = document.getElementById('custom-replies-list');
     const titleEl = document.getElementById('cr-modal-title');
@@ -2293,8 +2296,12 @@ function initReplyLibraryListeners() {
             currentMajorTab = btn.dataset.major;
 
             if (currentMajorTab === 'announcement') {
-                // switchToAnnouncementPanel 内部已处理所有清理，这里不重复操作
                 if (typeof window.switchToAnnouncementPanel === 'function') window.switchToAnnouncementPanel();
+                return;
+            }
+
+            if (currentMajorTab === 'imagepool') {
+                if (typeof window.switchToImagePoolPanel === 'function') window.switchToImagePoolPanel();
                 return;
             }
 
