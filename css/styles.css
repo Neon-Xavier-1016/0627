@@ -6286,6 +6286,11 @@
             touch-action: none;
         }
 
+        .player-container:not(.collapsed) {
+            height: auto !important;
+            min-height: 148px !important;
+        }
+
         .player-container.visible {
             display: block;
         }

@@ -1,6 +1,9 @@
 /* ============================================================
    信封接收 · Incoming Letter
    对方主动来信 → 我回信 → 一轮终止
+   ——————————————————————————————————————————————
+   排期机制：每个周期内，随机生成 N 封信各自的投递时刻
+   到点自动投递一封、独立提醒，而不是到期一次性爆发
    ============================================================ */
 
 let incomingLetterData = {
@@ -10,7 +13,8 @@ let incomingLetterData = {
         intervalDays: 30,
         minCount: 2,
         maxCount: 8,
-        nextCheckTime: null,
+        nextScheduleTime: null,   // 下一个排期周期开始时间
+        scheduledLetters: [],     // 已排期待投递的信件（每封带 deliverTime）
         urgeRequestTime: null
     }
 };
@@ -33,57 +37,103 @@ async function loadIncomingData() {
         incomingLetterData.received = saved.received || [];
         incomingLetterData.myReplies = saved.myReplies || [];
         incomingLetterData.settings = Object.assign(
-            { intervalDays: 30, minCount: 2, maxCount: 8, nextCheckTime: null, urgeRequestTime: null },
+            {
+                intervalDays: 30,
+                minCount: 2,
+                maxCount: 8,
+                nextScheduleTime: null,
+                scheduledLetters: [],
+                urgeRequestTime: null
+            },
             saved.settings || {}
         );
-    }
-    if (!incomingLetterData.settings.nextCheckTime) {
-        scheduleNextIncoming();
+        // 兜底：确保是数组
+        if (!Array.isArray(incomingLetterData.settings.scheduledLetters)) {
+            incomingLetterData.settings.scheduledLetters = [];
+        }
     }
 }
 function saveIncomingData() {
     localforage.setItem(getStorageKey('incomingLetterData'), incomingLetterData);
 }
-function scheduleNextIncoming() {
+
+/* ---------- 排期：在一个周期内随机分布若干封信的投递时刻 ---------- */
+function scheduleIncomingLetters() {
     const days = incomingLetterData.settings.intervalDays || 30;
-    const jitter = (Math.random() * 0.2 - 0.1) * days;
-    const ms = Math.max(1, days + jitter) * 24 * 60 * 60 * 1000;
-    incomingLetterData.settings.nextCheckTime = Date.now() + ms;
+    const minC = incomingLetterData.settings.minCount || 2;
+    const maxC = incomingLetterData.settings.maxCount || 8;
+    const count = Math.floor(Math.random() * (maxC - minC + 1)) + minC;
+
+    const now = Date.now();
+    const intervalMs = days * 24 * 60 * 60 * 1000;
+    const minWait = 60 * 60 * 1000;                 // 最早 1 小时后才可能来第一封
+    const windowStart = now + minWait;
+    const windowEnd = now + intervalMs;
+
+    // 生成 count 个随机投递时间点，落在 [windowStart, windowEnd] 内
+    const times = [];
+    for (let i = 0; i < count; i++) {
+        times.push(windowStart + Math.random() * (windowEnd - windowStart));
+    }
+    times.sort((a, b) => a - b);
+
+    incomingLetterData.settings.scheduledLetters = times.map(t => {
+        const letter = generateIncomingLetter();
+        letter.deliverTime = t;      // 计划投递时刻
+        return letter;
+    });
+    incomingLetterData.settings.nextScheduleTime = windowEnd;
     saveIncomingData();
 }
 
-/* ---------- 状态检查（同 envelope 模式） ---------- */
+/* ---------- 状态检查：到点投递，独立提醒 ---------- */
 async function checkIncomingStatus() {
     await loadIncomingData();
     const now = Date.now();
     let changed = false;
-    const newLetters = [];
+    const delivered = [];   // 本次新投递的信
 
-    // 1. 催一封信
+    /* 1. 催一封信 —— 立即投递 */
     if (incomingLetterData.settings.urgeRequestTime && now >= incomingLetterData.settings.urgeRequestTime) {
         const letter = generateIncomingLetter();
+        letter.receivedTime = now;
         incomingLetterData.received.push(letter);
         incomingLetterData.settings.urgeRequestTime = null;
-        newLetters.push(letter);
+        delivered.push(letter);
         changed = true;
     }
 
-    // 2. 定时来信
-    if (incomingLetterData.settings.nextCheckTime && now >= incomingLetterData.settings.nextCheckTime) {
-        const minC = incomingLetterData.settings.minCount || 2;
-        const maxC = incomingLetterData.settings.maxCount || 8;
-        const count = Math.floor(Math.random() * (maxC - minC + 1)) + minC;
-        for (let i = 0; i < count; i++) {
-            const letter = generateIncomingLetter();
-            letter.receivedTime = now + i * 500;
-            incomingLetterData.received.push(letter);
-            newLetters.push(letter);
+    /* 2. 若还没排过任何周期，先排一个 */
+    if (!incomingLetterData.settings.nextScheduleTime) {
+        scheduleIncomingLetters();
+        changed = true;
+    } else {
+        /* 3. 逐封检查已排期的信 —— 到点就投一封 */
+        const queue = incomingLetterData.settings.scheduledLetters || [];
+        if (queue.length > 0) {
+            const remaining = [];
+            queue.forEach(letter => {
+                if (now >= letter.deliverTime) {
+                    letter.receivedTime = letter.deliverTime;   // 用计划时刻（不是"现在"）
+                    delete letter.deliverTime;
+                    incomingLetterData.received.push(letter);
+                    delivered.push(letter);
+                    changed = true;
+                } else {
+                    remaining.push(letter);
+                }
+            });
+            incomingLetterData.settings.scheduledLetters = remaining;
         }
-        scheduleNextIncoming();
-        changed = true;
+
+        /* 4. 周期结束 → 排下一批 */
+        if (now >= incomingLetterData.settings.nextScheduleTime) {
+            scheduleIncomingLetters();
+            changed = true;
+        }
     }
 
-    // 3. 刷新已读状态
+    /* 5. 我的回信 已读状态刷新 */
     incomingLetterData.myReplies.forEach(reply => {
         if (!reply.isRead && reply.readTime && now >= reply.readTime) {
             reply.isRead = true;
@@ -94,9 +144,10 @@ async function checkIncomingStatus() {
     if (changed) {
         saveIncomingData();
         updateIncBadges();
-        if (newLetters.length > 0) {
+        if (delivered.length > 0) {
             playSound('message');
-            showIncomingLetterPopup(newLetters[0], newLetters.length);
+            // 本次投递的信件合并成一个弹窗（通常 1 封；补发时可能多封）
+            showIncomingLetterPopup(delivered[0], delivered.length);
             const m = document.getElementById('incoming-modal');
             if (m && m.style.display === 'flex') renderIncLists();
         }
@@ -106,7 +157,7 @@ async function checkIncomingStatus() {
 /* ---------- 生成来信内容 ---------- */
 function generateIncomingLetter() {
     const sourcePool = (typeof customReplies !== 'undefined' && Array.isArray(customReplies)) ? customReplies : [];
-    const cardCount = Math.floor(Math.random() * (45 - 15 + 1)) + 15; // 15-45
+    const cardCount = Math.floor(Math.random() * (45 - 15 + 1)) + 15;
     let content = '';
     if (sourcePool.length === 0) {
         content = '（回复库还没有内容，先去添加一些字卡吧）';
@@ -115,7 +166,7 @@ function generateIncomingLetter() {
         for (let i = 0; i < cardCount; i++) {
             cards.push(sourcePool[Math.floor(Math.random() * sourcePool.length)]);
         }
-        content = cards.join('  '); // 字卡间两个空格
+        content = cards.join('  ');
     }
     return {
         id: 'inc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
@@ -128,7 +179,7 @@ function generateIncomingLetter() {
     };
 }
 
-/* ---------- 通知弹窗 ---------- */
+/* ---------- 通知弹窗（不变） ---------- */
 function showIncomingLetterPopup(letter, count) {
     const existing = document.getElementById('incoming-letter-popup');
     if (existing) existing.remove();
@@ -277,7 +328,7 @@ function renderIncSentList() {
     }).join('');
 }
 
-/* ---------- 查看详情 ---------- */
+/* ---------- 查看详情（不变） ---------- */
 window.viewIncLetter = function(section, id) {
     const letters = section === 'received' ? incomingLetterData.received : incomingLetterData.myReplies;
     const letter = letters.find(l => l.id === id);
@@ -403,7 +454,7 @@ window.deleteIncLetter = function(event, section, id) {
     showNotification('已删除', 'success');
 };
 
-/* ---------- 回信 ---------- */
+/* ---------- 回信（不变） ---------- */
 window.openIncReplyFormFromView = function() {
     const letter = incomingLetterData.received.find(l => l.id === editingIncId);
     if (!letter) return;
@@ -467,7 +518,7 @@ window.handleSendIncomingReply = function() {
     showNotification('回信已寄出 ✉', 'success');
 };
 
-/* ---------- 催一封信 ---------- */
+/* ---------- 催一封信（不变） ---------- */
 window.urgeIncomingLetter = function() {
     const partnerName = (typeof settings !== 'undefined' && settings.partnerName) || '对方';
     if (incomingLetterData.settings.urgeRequestTime) {
@@ -511,13 +562,15 @@ window.saveIncSettings = function() {
     incomingLetterData.settings.intervalDays = days;
     incomingLetterData.settings.minCount = minC;
     incomingLetterData.settings.maxCount = maxC;
-    scheduleNextIncoming();
+
+    // 用新设置重新排期（旧排期作废，避免参数不一致）
+    scheduleIncomingLetters();
     saveIncomingData();
     hideModal(document.getElementById('incoming-settings-modal'));
-    showNotification('设置已保存', 'success');
+    showNotification('设置已保存，已按新参数重新安排来信 ✉', 'success');
 };
 
-/* ---------- 初始化（延迟到 SESSION_ID 就绪） ---------- */
+/* ---------- 初始化 ---------- */
 window.initIncomingLetter = function() {
     if (window.__incomingLetterInited) return;
     window.__incomingLetterInited = true;
@@ -536,10 +589,15 @@ window.initIncomingLetter = function() {
         updateIncBadges();
         setTimeout(checkIncomingStatus, 2000);
     });
+    // 每分钟检查一次；页面从后台恢复时浏览器会自动补跑，所以到点就能投递
     setInterval(checkIncomingStatus, 60000);
+
+    // 页面重新可见时立即检查一次（补发离线期间到点的信）
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) checkIncomingStatus();
+    });
 };
 
-/* 轮询等待 SESSION_ID 就绪后再初始化 */
 (function waitForSession() {
     let tries = 0;
     const timer = setInterval(() => {
@@ -555,7 +613,6 @@ window.initIncomingLetter = function() {
             clearInterval(timer);
             window.initIncomingLetter();
         } else if (tries > 40) {
-            // 最多等 20 秒，避免死循环
             clearInterval(timer);
             console.warn('[incoming-letter] SESSION_ID 长时间未就绪，放弃自动初始化');
         }

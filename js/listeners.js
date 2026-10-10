@@ -504,6 +504,9 @@ window.setReadReceiptStyle = function(style) {
 const _chatSettingsEl = document.getElementById('chat-settings');
 if (_chatSettingsEl) _chatSettingsEl.addEventListener('click', () => {
     hideModal(DOMElements.settingsModal.modal);
+
+const _miEl = document.querySelector('#music-invite-toggle');
+if (_miEl) _miEl.classList.toggle('active', settings.musicInviteEnabled !== false);
     
     const toggleSyncMap = {
         '#reply-toggle': { prop: 'replyEnabled', name: '引用回复' },
@@ -1136,6 +1139,23 @@ if (_chatSettingsEl) _chatSettingsEl.addEventListener('click', () => {
                 updateDelayUI();
             });
             maxDelaySlider.addEventListener('change', throttledSaveData);
+
+            // ═══ 一起听邀请开关 ═══
+            (function initMusicInviteSetting() {
+                const t = document.getElementById('music-invite-toggle');
+                if (!t || t._bound) return;
+                t._bound = true;
+                const _init = settings.musicInviteEnabled !== false;  // 默认开启
+                t.classList.toggle('active', _init);
+
+                t.addEventListener('click', () => {
+                    settings.musicInviteEnabled = !(settings.musicInviteEnabled !== false);
+                    const nowOn = settings.musicInviteEnabled !== false;
+                    t.classList.toggle('active', nowOn);
+                    throttledSaveData();
+                    showNotification(`一起听邀请已${nowOn ? '开启' : '关闭'}`, 'success');
+                });
+            })();
 
             // ═══ 语音消息设置 ═══
             (function initVoiceMessageSettings() {
