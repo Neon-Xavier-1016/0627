@@ -1200,7 +1200,11 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
                 let textHtml = msg.text.replace(/\n/g, '<br>');
                 content = `<div>${textHtml}</div>`;
             }
-            if (msg.image) content += `<img src="${msg.image}" class="message-image${isImageOnly ? ' message-image-only' : ''}" alt="图片" style="max-width:${isImageOnly ? '100px' : '100px'}; border-radius: 12px;${!isImageOnly ? ' margin-top: 6px;' : ''} cursor: pointer;" onclick="viewImage('${msg.image}')">`;
+            if (msg.image) {
+                const isSticker = (msg.type === 'sticker' || msg.isSticker === true || isImageOnly);
+                const imgMax = isSticker ? 120 : 160;
+                content += `<img src="${msg.image}" class="message-image${isImageOnly ? ' message-image-only' : ''}" alt="图片" style="max-width:${imgMax}px !important; max-height:${imgMax}px !important; width:auto !important; height:auto !important; object-fit:contain !important; border-radius:12px;${!isImageOnly ? ' margin-top: 6px;' : ''} cursor:pointer;" onclick="viewImage('${msg.image}')">`;
+            }
         }
         messageHTML += content;
 

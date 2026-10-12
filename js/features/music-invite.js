@@ -1,8 +1,11 @@
 /* ============================================================
- * music-invite.js v15
+ * music-invite.js v16
  * 新增：
+ *  - TA 随机切歌（默认 5% 概率，可在 settings.musicSwitchProb 调整）
  *  - 尊重 settings.musicInviteEnabled 开关（关闭后永不邀请）
  *  - 用户输入"听歌"关键词 → 8% 概率 TA 邀请听歌
+ * 修复：
+ *  - 按钮虚线在主题切换时闪烁（transition 排除 border-color）
  * 保留 v14 修复：
  *  - safePlay 吞掉 AbortError
  *  - 预订仅一起听时触发
@@ -69,6 +72,7 @@ function safePlay(a) {
 /* ───────────── 全局状态 ───────────── */
 let listeningWith = null;
 let _reservedTrack = null;
+let _taSwitchTimer = null;   // 🆕 TA 随机切歌定时器
 
 const cooldown = {};
 const cdOk = (k, ms) => !cooldown[k] || Date.now() - cooldown[k] >= ms;
@@ -136,6 +140,61 @@ function playUrlDirect(url, name) {
   } catch(e) { return false; }
 }
 
+/* ───────────── TA 随机切歌 ───────────── */
+function scheduleTaSwitch() {
+  if (_taSwitchTimer) { clearTimeout(_taSwitchTimer); _taSwitchTimer = null; }
+  if (!listeningWith) return;
+  // 随机延迟：30 秒 ~ 3 分钟后检查一次
+  const delay = randRange(30 * 1000, 3 * 60 * 1000);
+  _taSwitchTimer = setTimeout(() => {
+    _taSwitchTimer = null;
+    maybeTaSwitchSong();
+  }, delay);
+}
+
+async function maybeTaSwitchSong() {
+  if (!listeningWith) return;
+
+  // 冷却：3 分钟内最多切一次
+  if (!cdOk('taSwitch', 3 * 60 * 1000)) {
+    scheduleTaSwitch();
+    return;
+  }
+
+  await loadSongs();
+  if (!_songs.length) return;
+
+  // 概率（默认 5%，可在 settings.musicSwitchProb 调整）
+  const prob = S().musicSwitchProb ?? 5;
+  if (Math.random() * 100 >= prob) {
+    scheduleTaSwitch();
+    return;
+  }
+
+  setCD('taSwitch');
+
+  const curName = ($('music-title')?.textContent || '').trim();
+  let pool = _songs.filter(s => s.name !== curName);
+  if (!pool.length) pool = _songs;
+  const track = rand(pool);
+
+  const msgs = [
+    '换一首吧，这首听腻了。',
+    '我给你换首歌。',
+    '这首不太想听了，切一首。',
+    '来，换首别的听听。',
+    '让我切一首。'
+  ];
+  inMsg(rand(msgs), false);
+
+  setTimeout(() => {
+    playUrlDirect(track.url, track.name);
+    if (listeningWith) listeningWith.name = track.name;
+    sysMsg('🎧 ' + partnerName() + ' 切到了《' + track.name + '》');
+    scheduleTaSwitch(); // 切完再安排下一次
+  }, 800 + Math.random() * 500);
+}
+
 /* ───────────── 一起听状态 ───────────── */
 function setListening(on, trackName, force) {
   if (on) {
@@ -150,10 +209,17 @@ function setListening(on, trackName, force) {
         setListening(false);
       }
     }, exitDelay);
+
+    scheduleTaSwitch();                    // ✅ 开始一起听时安排切歌
   } else {
     if (listeningWith && listeningWith.timer) clearTimeout(listeningWith.timer);
     listeningWith = null;
     _reservedTrack = null;
+
+    if (_taSwitchTimer) {                  // ✅ 结束一起听时清掉切歌定时器
+      clearTimeout(_taSwitchTimer);
+      _taSwitchTimer = null;
+    }
   }
   updateBadge();
 }
@@ -296,6 +362,13 @@ async function taInviteMe(isReInvite, force) {
 
 /* ───────────── 我邀请 TA ───────────── */
 function meInviteTa() {
+  // ✅ 已经在一起听 → 提示并中止
+  if (listeningWith) {
+    if (typeof showNotification === 'function')
+      showNotification(partnerName() + '已经在一起听歌了', 'info', 2000);
+    return;
+  }
+
   const a = $('audio');
   if (!a || !a.src) {
     if (typeof showNotification === 'function')
@@ -368,16 +441,19 @@ function taJoinNow(track) {
 
 function maybeTaAutoJoin(track) {
   if (listeningWith) return;
-  if (!cdOk('autoJoin', 15 * 60 * 1000)) return;
-  const prob = (S().musicAutoJoinProb ?? 15);
+  // 冷却从 15 分钟缩到 5 分钟，配合短延迟更合理
+  if (!cdOk('autoJoin', 5 * 60 * 1000)) return;
+  const prob = (S().musicAutoJoinProb ?? 5);   // 默认改成 5%
   if (Math.random() * 100 >= prob) return;
   setCD('autoJoin');
-  const delay = randRange(2 * 60 * 1000, 15 * 60 * 1000);
+
+  // 延迟改为 10 秒 ~ 3 分钟，落在大多数歌的时长之内
+  const delay = randRange(10 * 1000, 3 * 60 * 1000);
   setTimeout(() => {
     const a = $('audio');
     if (!a || a.paused) return;
     const curName = ($('music-title')?.textContent || '').trim();
-    if (curName !== track.name) return;
+    if (curName !== track.name) return;   // 中途切歌就放弃
     taJoinNow(track);
   }, delay);
 }
@@ -514,7 +590,7 @@ function injectBtn() {
   const btn = document.createElement('button');
   btn.id = 'mi-player-invite-btn';
   btn.type = 'button';
-  btn.className = 'btn mi-player-invite-btn';
+  btn.className = 'mi-player-invite-btn';
   btn.title = '邀请TA一起听';
   btn.textContent = '♪';
 
@@ -543,6 +619,7 @@ function attachPlayListener() {
       if (!listeningWith) maybeTaAutoJoin({ url, name });
       if (listeningWith) {
         setTimeout(() => { taReserveNext(); }, 1500 + Math.random() * 3000);
+        scheduleTaSwitch();                // ✅ 每次开始播放都重新安排切歌
       }
     } catch(e) {}
   });
@@ -640,13 +717,13 @@ function injectStyles() {
 .mi-card{position:relative;display:flex;flex-direction:column;gap:10px;padding:16px 16px 14px;background:var(--secondary-bg,#fff);border:1px solid var(--border-color,rgba(0,0,0,.08));border-radius:16px;text-align:left;color:var(--text-primary,#222);width:280px;max-width:100%;margin:8px auto;box-shadow:0 3px 16px rgba(0,0,0,.06);box-sizing:border-box}
 .mi-corner-tag{position:absolute;top:-8px;right:12px;font-size:10px;padding:2px 8px;border-radius:8px;background:var(--accent-color,#7c5cff);color:#fff;font-weight:600}
 .mi-head{display:flex;align-items:center;gap:8px}
-.mi-ico{width:24px;height:24px;border-radius:50%;background:rgba(var(--accent-color-rgb,124,92,255),.12);color:var(--accent-color,#7c5cff);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;font-weight:700}
+.mi-ico{width:24px;height:24px;border-radius:50%;background:rgba(128,128,128,0.15);color:var(--text-secondary,#888);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;font-weight:700}
 .mi-title{font-size:12.5px;font-weight:500;color:var(--text-secondary,#888)}
 .mi-track{text-align:center;padding:6px 0 4px;display:flex;align-items:center;justify-content:center;gap:2px;flex-wrap:wrap}
 .mi-track-name{font-size:15px;font-weight:700;color:var(--accent-color,#7c5cff);word-break:break-word}
 .mi-q{font-size:14px;color:var(--accent-color,#7c5cff);opacity:.5}
 .mi-btns{display:flex;gap:6px;margin-top:2px}
-.mi-btn{flex:1;min-width:0;padding:8px 0;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;border:1px solid var(--border-color,rgba(0,0,0,.1));background:transparent;color:var(--text-secondary,#666);white-space:nowrap}
+.mi-btn{flex:1;min-width:0;padding:8px 0;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition: color .15s, opacity .15s, border-color .15s;border:1px solid var(--border-color,rgba(0,0,0,.1));background:transparent;color:var(--text-secondary,#666);white-space:nowrap}
 .mi-btn:active{transform:scale(.97)}
 .mi-primary{background:var(--accent-color,#7c5cff);color:#fff;border-color:transparent}
 .mi-card.mi-done,.mi-card.mi-skip,.mi-card.mi-rejected{opacity:.7}
@@ -674,21 +751,38 @@ function injectStyles() {
 @keyframes miDot{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.4);opacity:.5}}
 
 .mi-player-invite-btn{
-  position:absolute;top:12px;left:48px;
-  width:24px;height:24px;border-radius:50%;
-  border:1px dashed rgba(0,0,0,.2);
-  background:rgba(255,255,255,.6);
-  color:#999;cursor:pointer;font-size:13px;
-  display:flex;align-items:center;justify-content:center;
-  z-index:20;padding:0;
-  touch-action:manipulation;pointer-events:auto;
-  font-family:inherit;line-height:1;transition:all .15s;
+  position:absolute!important;
+  top:12px!important;
+  left:48px!important;
+  width:24px!important;
+  height:24px!important;
+  border-radius:50%!important;
+  border:1px dashed var(--border-color)!important;
+  background:none!important;
+  box-shadow:none!important;
+  color:var(--text-secondary,#999)!important;
+  cursor:pointer;
+  font-size:13px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index:20;
+  padding:0;
+  touch-action:manipulation;
+  pointer-events:auto;
+  font-family:inherit;
+  line-height:1;
+  /* ✅ 只过渡 color / opacity，避免主题切换时虚线闪烁 */
+  transition: color .15s, opacity .15s;
+  opacity:.7;
 }
 .mi-player-invite-btn:hover,
 .mi-player-invite-btn:active{
-  background:rgba(var(--accent-color-rgb,124,92,255),.15);
-  border-color:var(--accent-color,#7c5cff);
-  color:var(--accent-color,#7c5cff);opacity:1;
+  background:none!important;
+  border-color:var(--accent-color,#7c5cff)!important;
+  box-shadow:none!important;
+  color:var(--accent-color,#7c5cff)!important;
+  opacity:1;
 }
 `;
   document.head.appendChild(st);
@@ -786,6 +880,14 @@ window.MusicInvite = {
     /* 手动测试关键词触发（无视概率/冷却） */
     forceKeywordInvite: () => {
       taInviteMe(false, true).then(t => console.log('🎧 已强制触发关键词邀请 →', t?.name));
+    },
+    /* 🆕 手动测试随机切歌（无视概率/冷却） */
+    forceSwitch: () => {
+      if (!listeningWith) { console.warn('当前不在一起听状态，无法切歌'); return; }
+      delete cooldown.taSwitch;
+      const old = S().musicSwitchProb;
+      S().musicSwitchProb = 100;
+      maybeTaSwitchSong().then(() => { S().musicSwitchProb = old; });
     }
   },
 
@@ -797,7 +899,9 @@ window.MusicInvite = {
       console.log('✅ 已清空所有冷却');
     },
     /* 查看当前开关状态 */
-    inviteEnabled: () => S().musicInviteEnabled !== false
+    inviteEnabled: () => S().musicInviteEnabled !== false,
+    /* 查看切歌概率 */
+    switchProb: () => S().musicSwitchProb ?? 5
   }
 };
 })();

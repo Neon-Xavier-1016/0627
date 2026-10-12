@@ -421,7 +421,8 @@ function showEmojiTab() {
                 timestamp: new Date(),
                 image: src,
                 status: 'sent',
-                type: 'normal'
+                type: 'sticker',      // ← 从 normal 改为 sticker
+                isSticker: true       // ← 双保险
             });
             playSound('send');
             const delayRange = settings.replyDelayMax - settings.replyDelayMin;
