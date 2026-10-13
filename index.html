@@ -16,6 +16,7 @@
     <link rel="icon" type="image/png" sizes="192x192" href="image/Xavier.png?v=1">
     <link rel="apple-touch-icon" href="image/Xavier.png?v=1">
     <meta name="apple-mobile-web-app-title" content="ʚ 𝑿𝒂𝒗𝒊𝒆𝒓 ɞ">
+    <link rel="manifest" href="manifest.json">
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -2628,5 +2629,38 @@
     <script src="js/onboarding.js"></script> 
     <script src="js/listeners.js"></script>
     <script src="js/app.js"></script>
+
+        <!-- ⚡ PWA 持久化：防止 iOS 清空数据 -->
+        <script>
+            (function() {
+                // 1. 注册 Service Worker —— 让 iOS 认你是"正经 App"
+                if ('serviceWorker' in navigator) {
+                    window.addEventListener('load', function() {
+                        navigator.serviceWorker.register('sw.js').then(function(reg) {
+                            console.log('[SW] 注册成功:', reg.scope);
+                        }).catch(function(e) {
+                            console.warn('[SW] 注册失败:', e);
+                        });
+                    });
+                }
+
+                // 2. 申请持久化存储 —— 让浏览器承诺不清理你的数据
+                if (navigator.storage && navigator.storage.persist) {
+                    navigator.storage.persist().then(function(granted) {
+                        console.log('[Storage] 持久化 =', granted);
+                    }).catch(function(e){
+                        console.warn('[Storage] persist 失败:', e);
+                    });
+                }
+
+                // 3. 心跳：每次打开都写一下，告诉系统"这个站在用"
+                try {
+                    localStorage.setItem('__heartbeat__', String(Date.now()));
+                    if (typeof localforage !== 'undefined') {
+                        localforage.setItem('__heartbeat__', Date.now()).catch(function(){});
+                    }
+                } catch(e) {}
+            })();
+        </script>
 </body>
 </html>
