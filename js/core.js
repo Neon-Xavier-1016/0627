@@ -1,4 +1,14 @@
 /*核心应用逻辑：数据加载保存、消息渲染、会话管理等*/
+// 先看实时快照
+try {
+    const rtRaw = localStorage.getItem('xy-home-v2:__realtime-snapshot');
+    if (rtRaw) {
+        const rt = JSON.parse(rtRaw);
+        if (rt && Array.isArray(rt.messages) && rt.messages.length > 0) {
+            return rt; // 实时快照优先
+        }
+    }
+} catch (e) { /* 继续走下面的老逻辑 */ }
 
         function clearAllAppData() {
     const overlay = document.createElement('div');
@@ -539,7 +549,16 @@ function _backupCriticalData() {
             messages: messages,
             settings: settings,
             sessionId: SESSION_ID,
-            anniversaries: anniversaries
+            anniversaries: anniversaries,
+            customReplies: (typeof customReplies !== 'undefined') ? customReplies : [],
+            customPokes: (typeof customPokes !== 'undefined') ? customPokes : [],
+            customStatuses: (typeof customStatuses !== 'undefined') ? customStatuses : [],
+            customMottos: (typeof customMottos !== 'undefined') ? customMottos : [],
+            customIntros: (typeof customIntros !== 'undefined') ? customIntros : [],
+            customEmojis: (typeof customEmojis !== 'undefined') ? customEmojis : [],
+            stickerLibrary: (typeof stickerLibrary !== 'undefined') ? stickerLibrary : [],
+            myStickerLibrary: (typeof myStickerLibrary !== 'undefined') ? myStickerLibrary : [],
+            savedBackgrounds: (typeof savedBackgrounds !== 'undefined') ? savedBackgrounds : []
         };
 
         let payloadToStore = backupPayload;
@@ -575,7 +594,30 @@ function _tryRecoverFromBackup() {
     try {
         const raw = localStorage.getItem(_BACKUP_PREFIX + 'critical');
         if (!raw) return null;
-        return JSON.parse(raw);
+        const data = JSON.parse(raw);
+        // 顺便把额外备份的数据也恢复回去
+        if (Array.isArray(data.customReplies) && data.customReplies.length > 0 && typeof customReplies !== 'undefined' && customReplies.length === 0) {
+            customReplies = data.customReplies;
+        }
+        if (Array.isArray(data.customPokes) && data.customPokes.length > 0 && typeof customPokes !== 'undefined' && customPokes.length === 0) {
+            customPokes = data.customPokes;
+        }
+        if (Array.isArray(data.customStatuses) && data.customStatuses.length > 0 && typeof customStatuses !== 'undefined' && customStatuses.length === 0) {
+            customStatuses = data.customStatuses;
+        }
+        if (Array.isArray(data.customMottos) && data.customMottos.length > 0 && typeof customMottos !== 'undefined' && customMottos.length === 0) {
+            customMottos = data.customMottos;
+        }
+        if (Array.isArray(data.customIntros) && data.customIntros.length > 0 && typeof customIntros !== 'undefined' && customIntros.length === 0) {
+            customIntros = data.customIntros;
+        }
+        if (Array.isArray(data.stickerLibrary) && data.stickerLibrary.length > 0 && typeof stickerLibrary !== 'undefined' && stickerLibrary.length === 0) {
+            stickerLibrary = data.stickerLibrary;
+        }
+        if (Array.isArray(data.myStickerLibrary) && data.myStickerLibrary.length > 0 && typeof myStickerLibrary !== 'undefined' && myStickerLibrary.length === 0) {
+            myStickerLibrary = data.myStickerLibrary;
+        }
+        return data;
     } catch (e) {
         return null;
     }

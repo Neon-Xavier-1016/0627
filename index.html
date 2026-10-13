@@ -18,8 +18,8 @@
     <meta name="apple-mobile-web-app-title" content="ʚ 𝑿𝒂𝒗𝒊𝒆𝒓 ɞ">
     <link rel="manifest" href="manifest.json">
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="js/lib/localforage.min.js"></script>
+    <script src="js/lib/jszip.min.js"></script>
 
     <link rel="stylesheet" href="css/styles.css">
 
@@ -2660,6 +2660,61 @@
                         localforage.setItem('__heartbeat__', Date.now()).catch(function(){});
                     }
                 } catch(e) {}
+            })();
+        </script>
+        <script>
+            // ============ 实时快照 · 双保险 ============
+            (function() {
+                'use strict';
+                var KEY = 'xy-home-v2:__realtime-snapshot';
+                var lastHash = '';
+                var lastWrite = 0;
+
+                function snap() {
+                    try {
+                        // 拿 messages（全局变量）
+                        if (typeof messages === 'undefined' || !Array.isArray(messages) || messages.length === 0) return;
+
+                        // 用「条数 + 最后一条 ID」当哈希，变化才写
+                        var last = messages[messages.length - 1];
+                        var hash = messages.length + '|' + (last && (last.id || last.timestamp || ''));
+                        if (hash === lastHash) return;
+
+                        // 最快 15 秒写一次，防抖
+                        var now = Date.now();
+                        if (now - lastWrite < 15000) return;
+                        lastHash = hash;
+                        lastWrite = now;
+
+                        var data = {
+                            ts: now,
+                            messages: messages.slice(-500), // 最多 500 条
+                            settings: (typeof settings !== 'undefined') ? settings : null
+                        };
+
+                        var json = JSON.stringify(data);
+                        // 太大就减量
+                        if (json.length > 4 * 1024 * 1024) {
+                            data.messages = messages.slice(-100);
+                            json = JSON.stringify(data);
+                        }
+                        localStorage.setItem(KEY, json);
+                    } catch (e) {
+                        // 静默失败，不影响主流程
+                    }
+                }
+
+                // 每 20 秒检查一次
+                setInterval(snap, 20000);
+
+                // 切后台 / 关页面时立即写一次
+                document.addEventListener('visibilitychange', function() {
+                    if (document.visibilityState === 'hidden') snap();
+                });
+                window.addEventListener('pagehide', snap);
+
+                // 页面加载 8 秒后先写一次（首次进入时 messages 可能还没准备好）
+                setTimeout(snap, 8000);
             })();
         </script>
 </body>
