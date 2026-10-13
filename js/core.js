@@ -1,14 +1,4 @@
 /*核心应用逻辑：数据加载保存、消息渲染、会话管理等*/
-// 先看实时快照
-try {
-    const rtRaw = localStorage.getItem('xy-home-v2:__realtime-snapshot');
-    if (rtRaw) {
-        const rt = JSON.parse(rtRaw);
-        if (rt && Array.isArray(rt.messages) && rt.messages.length > 0) {
-            return rt; // 实时快照优先
-        }
-    }
-} catch (e) { /* 继续走下面的老逻辑 */ }
 
         function clearAllAppData() {
     const overlay = document.createElement('div');

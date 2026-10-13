@@ -18,7 +18,7 @@
     <meta name="apple-mobile-web-app-title" content="ʚ 𝑿𝒂𝒗𝒊𝒆𝒓 ɞ">
     <link rel="manifest" href="manifest.json">
 
-    <script src="js/lib/localforage.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
     <script src="js/lib/jszip.min.js"></script>
 
     <link rel="stylesheet" href="css/styles.css">
@@ -2682,16 +2682,15 @@
 
                         // 最快 15 秒写一次，防抖
                         var now = Date.now();
-                        if (now - lastWrite < 15000) return;
+                        if (now - lastWrite < 60000) return;   // 从 15 秒改成 60 秒
                         lastHash = hash;
                         lastWrite = now;
 
                         var data = {
-                            ts: now,
-                            messages: messages.slice(-500), // 最多 500 条
-                            settings: (typeof settings !== 'undefined') ? settings : null
+                        ts: now,
+                        essages: messages.slice(-100), // 最多 100 条
+                        settings: (typeof settings !== 'undefined') ? settings : null
                         };
-
                         var json = JSON.stringify(data);
                         // 太大就减量
                         if (json.length > 4 * 1024 * 1024) {
