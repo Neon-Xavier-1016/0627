@@ -2734,6 +2734,7 @@
             })();
         </script>
         <!-- 每次打开自动清理 localStorage 冗余大副本（图片类真身都在 IndexedDB） -->
+        <!-- 每次打开自动清理 localStorage 冗余大副本（图片类真身都在 IndexedDB） -->
         <script>
             (function() {
                 try {
@@ -2754,7 +2755,13 @@
                     for (var j = 0; j < toDel.length; j++) {
                         localStorage.removeItem(toDel[j]);
                     }
-                } catch(e) {}
+
+                    // 旧版实时快照超过 200KB 直接删（新版只写 30 条，约 5KB）
+                    var _snapRaw = localStorage.getItem('xy-home-v2:__realtime-snapshot');
+                    if (_snapRaw && _snapRaw.length > 200 * 1024) {
+                        localStorage.removeItem('xy-home-v2:__realtime-snapshot');
+                    }
+                } catch(e) {}   // ← 关键：补上这一个 catch
             })();
         </script>
         <script>
