@@ -2633,7 +2633,7 @@
         <!-- ⚡ PWA 持久化：防止 iOS 清空数据 -->
         <script>
             (function() {
-                // 1. 注册 Service Worker —— 让 iOS 认你是"正经 App"
+                // 1. 注册 Service Worker
                 if ('serviceWorker' in navigator) {
                     window.addEventListener('load', function() {
                         navigator.serviceWorker.register('sw.js').then(function(reg) {
@@ -2644,77 +2644,159 @@
                     });
                 }
 
-                // 2. 申请持久化存储 —— 让浏览器承诺不清理你的数据
-                if (navigator.storage && navigator.storage.persist) {
-                    navigator.storage.persist().then(function(granted) {
-                        console.log('[Storage] 持久化 =', granted);
-                    }).catch(function(e){
-                        console.warn('[Storage] persist 失败:', e);
-                    });
-                }
+                // 2. 智能申请持久化存储：
+                //    首次加载直接申请大概率被拒 → 等用户第一次触摸后再试一次
+                (function() {
+                    if (!navigator.storage || !navigator.storage.persist) return;
 
-                // 3. 心跳：每次打开都写一下，告诉系统"这个站在用"
+                    function tryPersist(tag) {
+                        return navigator.storage.persisted().then(function(already) {
+                            if (already) {
+                                console.log('[Storage] 已是持久化存储（' + tag + '）');
+                                window.__persistOK = true;
+                                return true;
+                            }
+                            return navigator.storage.persist().then(function(granted) {
+                                console.log('[Storage] 持久化申请（' + tag + '）=', granted);
+                                window.__persistOK = !!granted;
+                                return granted;
+                            });
+                        }).catch(function(e) {
+                            console.warn('[Storage] persist 失败（' + tag + '）:', e);
+                            return false;
+                        });
+                    }
+
+                    // 首次尝试
+                    tryPersist('首次').then(function(ok) {
+                        if (ok) return;
+
+                        // 被拒了 → 等用户第一次交互
+                        var retried = false;
+                        var retry = function() {
+                            if (retried) return;
+                            retried = true;
+                            setTimeout(function() { tryPersist('手势后'); }, 800);
+                        };
+                        document.addEventListener('touchend',    retry, { once: true, capture: true, passive: true });
+                        document.addEventListener('pointerup',   retry, { once: true, capture: true, passive: true });
+                        document.addEventListener('click',       retry, { once: true, capture: true, passive: true });
+                    });
+                })();
+
+                // 3. 心跳
                 try {
                     localStorage.setItem('__heartbeat__', String(Date.now()));
                     if (typeof localforage !== 'undefined') {
                         localforage.setItem('__heartbeat__', Date.now()).catch(function(){});
                     }
                 } catch(e) {}
+
+                // 4. 内存体检：随时在控制台敲 memCheck() 或复制粘贴查看
+                window.memCheck = function() {
+                    var out = {};
+                    try { out['DOM 节点'] = document.getElementsByTagName('*').length; } catch(e) { out['DOM 节点'] = '读取失败'; }
+                    try {
+                        var imgs = document.images || [];
+                        var dataImgs = 0, totalImgBytes = 0;
+                        for (var i = 0; i < imgs.length; i++) {
+                            var src = imgs[i].currentSrc || imgs[i].src || '';
+                            if (src.indexOf('data:') === 0) {
+                                dataImgs++;
+                                totalImgBytes += src.length;
+                            }
+                        }
+                        out['img 元素'] = imgs.length + '（其中 data: 格式 ' + dataImgs + ' 张，约 ' + Math.round(totalImgBytes/1024) + ' KB）';
+                    } catch(e) { out['img 元素'] = '读取失败'; }
+                    try {
+                        var lsBytes = 0, lsKeys = 0;
+                        for (var i = 0; i < localStorage.length; i++) {
+                            var k = localStorage.key(i);
+                            lsKeys++;
+                            lsBytes += (k.length + (localStorage.getItem(k) || '').length) * 2;
+                        }
+                        out['localStorage'] = lsKeys + ' 键，约 ' + Math.round(lsBytes/1024) + ' KB';
+                    } catch(e) { out['localStorage'] = '读取失败'; }
+                    try {
+                        out['messages 数组'] = (typeof messages !== 'undefined' && Array.isArray(messages)) ? (messages.length + ' 条') : '未定义';
+                    } catch(e) { out['messages 数组'] = '读取失败'; }
+                    try {
+                        out['聊天 DOM 条数'] = (document.querySelectorAll('#chat-container .message-wrapper') || []).length;
+                    } catch(e) { out['聊天 DOM 条数'] = '读取失败'; }
+                    out['持久化存储'] = window.__persistOK === true ? '✅ 已授权' : (window.__persistOK === false ? '❌ 被拒' : '⏳ 未判定');
+                    out['standalone 模式'] = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone ? '是（桌面图标）' : '否（浏览器内）';
+
+                    console.log('===== 内存体检 =====');
+                    for (var k in out) console.log(k + ': ' + out[k]);
+                    console.log('====================');
+                    return out;
+                };
+            })();
+        </script>
+        <!-- 每次打开自动清理 localStorage 冗余大副本（图片类真身都在 IndexedDB） -->
+        <script>
+            (function() {
+                try {
+                    // 2MB+ 冗余备份
+                    localStorage.removeItem('BACKUP_V1_critical');
+                    localStorage.removeItem('BACKUP_V1_timestamp');
+
+                    // 头像类大图（真身在 IDB 和 settings）
+                    localStorage.removeItem('partnerAvatar');
+                    localStorage.removeItem('myAvatar');
+
+                    // 所有聊天背景副本（真身在 IDB）
+                    var toDel = [];
+                    for (var i = 0; i < localStorage.length; i++) {
+                        var k = localStorage.key(i);
+                        if (k && /_chatBackground$/.test(k)) toDel.push(k);
+                    }
+                    for (var j = 0; j < toDel.length; j++) {
+                        localStorage.removeItem(toDel[j]);
+                    }
+                } catch(e) {}
             })();
         </script>
         <script>
-            // ============ 实时快照 · 双保险 ============
-            (function() {
-                'use strict';
-                var KEY = 'xy-home-v2:__realtime-snapshot';
-                var lastHash = '';
-                var lastWrite = 0;
+            // ============ 实时快照 · 精简版 ============
+(function() {
+    'use strict';
+    var KEY = 'xy-home-v2:__realtime-snapshot';
+    var lastHash = '';
+    var lastWrite = 0;
 
-                function snap() {
-                    try {
-                        // 拿 messages（全局变量）
-                        if (typeof messages === 'undefined' || !Array.isArray(messages) || messages.length === 0) return;
+    function snap() {
+        try {
+            if (typeof messages === 'undefined' || !Array.isArray(messages) || messages.length === 0) return;
 
-                        // 用「条数 + 最后一条 ID」当哈希，变化才写
-                        var last = messages[messages.length - 1];
-                        var hash = messages.length + '|' + (last && (last.id || last.timestamp || ''));
-                        if (hash === lastHash) return;
+            var last = messages[messages.length - 1];
+            var hash = messages.length + '|' + (last && (last.id || last.timestamp || ''));
+            if (hash === lastHash) return;
 
-                        // 最快 15 秒写一次，防抖
-                        var now = Date.now();
-                        if (now - lastWrite < 60000) return;   // 从 15 秒改成 60 秒
-                        lastHash = hash;
-                        lastWrite = now;
+            var now = Date.now();
+            if (now - lastWrite < 90000) return;
+            lastHash = hash;
+            lastWrite = now;
 
-                        var data = {
-                        ts: now,
-                        essages: messages.slice(-100), // 最多 100 条
-                        settings: (typeof settings !== 'undefined') ? settings : null
-                        };
-                        var json = JSON.stringify(data);
-                        // 太大就减量
-                        if (json.length > 4 * 1024 * 1024) {
-                            data.messages = messages.slice(-100);
-                            json = JSON.stringify(data);
-                        }
-                        localStorage.setItem(KEY, json);
-                    } catch (e) {
-                        // 静默失败，不影响主流程
-                    }
-                }
+            // 只留最后 30 条，不带 settings
+            var data = {
+                ts: now,
+                messages: messages.slice(-30)
+            };
 
-                // 每 20 秒检查一次
-                setInterval(snap, 20000);
+            var json = JSON.stringify(data);
 
-                // 切后台 / 关页面时立即写一次
-                document.addEventListener('visibilitychange', function() {
-                    if (document.visibilityState === 'hidden') snap();
-                });
-                window.addEventListener('pagehide', snap);
+            // 硬闸门：超过 200KB 就不写（宁可不写也不卡死）
+            if (json.length > 200 * 1024) return;
 
-                // 页面加载 8 秒后先写一次（首次进入时 messages 可能还没准备好）
-                setTimeout(snap, 8000);
-            })();
+            localStorage.setItem(KEY, json);
+        } catch (e) { /* 静默 */ }
+    }
+
+    setInterval(snap, 60000);
+    window.addEventListener('pagehide', snap);
+    setTimeout(snap, 10000);
+})();
         </script>
 </body>
 </html>

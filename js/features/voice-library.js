@@ -120,6 +120,13 @@
     function ensureVoiceLibrary() {
         if (typeof settings === 'undefined' || !settings) return null;
         if (!Array.isArray(settings.voiceLibrary)) settings.voiceLibrary = [];
+        // 顺手建索引（供 buildVoiceBubbleHTML 快查）
+        if (!window.__voiceMetaMap || window.__voiceMetaMap._stale !== settings.voiceLibrary.length) {
+            const m = {};
+            settings.voiceLibrary.forEach(v => { if (v && v.id) m[v.id] = v; });
+            m._stale = settings.voiceLibrary.length;
+            window.__voiceMetaMap = m;
+        }
         return settings.voiceLibrary;
     }
 
@@ -406,7 +413,7 @@
             <div style="background:var(--secondary-bg);border-radius:22px;padding:22px;width:92%;max-width:400px;box-shadow:0 24px 80px rgba(0,0,0,.45);">
                 <div style="font-size:16px;font-weight:700;color:var(--text-primary);margin-bottom:4px;">转文字</div>
                 <div style="font-size:11px;color:var(--text-secondary);margin-bottom:14px;">为「${_escape(meta.name)}」写一段文字，聊天里点"文"才显示</div>
-                <textarea id="_vte_input" placeholder="在这里输入这段语音的内容…" style="
+                <textarea id="_vte_input" maxlength="500" placeholder="在这里输入这段语音的内容…" style="
                     width:100%;box-sizing:border-box;min-height:120px;padding:12px 14px;
                     border:1.5px solid var(--border-color);border-radius:13px;
                     background:var(--primary-bg);color:var(--text-primary);
@@ -725,7 +732,7 @@
         let transcriptHTML = '';
         try {
             if (typeof settings !== 'undefined' && settings && Array.isArray(settings.voiceLibrary)) {
-                const meta = settings.voiceLibrary.find(v => v.id === msg.voiceId);
+                const meta = (window.__voiceMetaMap && window.__voiceMetaMap[msg.voiceId]) || null;
                 if (meta && meta.text) {
                     transcriptHTML = `<div class="voice-transcript">${_escape(meta.text)}</div>`;
                 }
@@ -841,8 +848,6 @@
                 });
                 mo.observe(document.body, { childList: true, subtree: true });
             }
-            // 兜底
-            setInterval(mark, 2000);
         })();
 
     console.log('✅ voice-library.js 已加载');

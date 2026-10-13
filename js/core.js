@@ -226,7 +226,14 @@ autoSendInterval: 5,
                 item.onclick = (e) => {
                     if (e.target.closest('.bg-delete-btn')) return;
                     applyBackground(bg.value);
-                    safeSetItem(getStorageKey('chatBackground'), bg.value);
+                    // 只在短字符串（渐变等）时写 LS；图片 base64 只写 IDB
+                    try {
+                        if (bg.value && bg.value.length < 64 * 1024) {
+                            safeSetItem(getStorageKey('chatBackground'), bg.value);
+                        } else {
+                            safeRemoveItem(getStorageKey('chatBackground'));
+                        }
+                    } catch (e2) {}
                     localforage.setItem(getStorageKey('chatBackground'), bg.value);
                     renderBackgroundGallery();
                     showNotification('背景已切换', 'success');
@@ -532,52 +539,11 @@ window.deleteAnniversaryItem = function(id) {
 
 const _BACKUP_PREFIX = 'BACKUP_V1_';
 function _backupCriticalData() {
-    if (window._skipBackup) return;
-    try {
-        const backupPayload = {
-            ts: Date.now(),
-            messages: messages,
-            settings: settings,
-            sessionId: SESSION_ID,
-            anniversaries: anniversaries,
-            customReplies: (typeof customReplies !== 'undefined') ? customReplies : [],
-            customPokes: (typeof customPokes !== 'undefined') ? customPokes : [],
-            customStatuses: (typeof customStatuses !== 'undefined') ? customStatuses : [],
-            customMottos: (typeof customMottos !== 'undefined') ? customMottos : [],
-            customIntros: (typeof customIntros !== 'undefined') ? customIntros : [],
-            customEmojis: (typeof customEmojis !== 'undefined') ? customEmojis : [],
-            stickerLibrary: (typeof stickerLibrary !== 'undefined') ? stickerLibrary : [],
-            myStickerLibrary: (typeof myStickerLibrary !== 'undefined') ? myStickerLibrary : [],
-            savedBackgrounds: (typeof savedBackgrounds !== 'undefined') ? savedBackgrounds : []
-        };
-
-        let payloadToStore = backupPayload;
-        const msgSizeEstimate = messages.length * 500; 
-        if (msgSizeEstimate > 3 * 1024 * 1024) {
-            payloadToStore = {
-                ...backupPayload,
-                messages: messages.slice(-200),
-                _truncated: true
-            };
-        }
-
-        const json = JSON.stringify(payloadToStore);
-
-        if (json.length > 4.5 * 1024 * 1024) {
-            const smallerPayload = {
-                ...payloadToStore,
-                messages: messages.slice(-50),
-                _truncated: true
-            };
-            const smallerJson = JSON.stringify(smallerPayload);
-            localStorage.setItem(_BACKUP_PREFIX + 'critical', smallerJson);
-        } else {
-            localStorage.setItem(_BACKUP_PREFIX + 'critical', json);
-        }
-        localStorage.setItem(_BACKUP_PREFIX + 'timestamp', String(Date.now()));
-    } catch (e) {
-        console.warn('localStorage 备份写入失败（可能存储已满）:', e);
-    }
+    // 已停用（重要）：原实现在 localStorage 写 2~4 MB 冗余快照，
+    // 与 IndexedDB 主存储双写会同步阻塞主线程、逼近 iOS 5 MB 配额上限
+    // （实测占用 2.28 MB），是手机被系统强制重置的主要诱因。
+    // 数据主存储为 IndexedDB，此处改为空操作，不再主动写入。
+    return;
 }
 
 function _tryRecoverFromBackup() {
@@ -688,11 +654,11 @@ const saveData = async () => {
     localStorage.setItem('myName', settings.myName || '我');
     localStorage.setItem('partnerName', settings.partnerName || '梦角');
 
-    // 朋友圈头像刷新（兜底）
+    // 朋友圈头像刷新（兜底）—— 大图可能只在 settings 或 IDB 里，不再依赖 LS
     if (window.moments && typeof window.moments.render === 'function') {
         try {
-            const myAv = localStorage.getItem('myAvatar');
-            const partnerAv = localStorage.getItem('partnerAvatar');
+            const myAv = localStorage.getItem('myAvatar') || (settings && settings.myAvatar) || null;
+            const partnerAv = localStorage.getItem('partnerAvatar') || (settings && settings.partnerAvatar) || null;
             if (myAv && window.settings) window.settings.myAvatar = myAv;
             if (partnerAv && window.settings) window.settings.partnerAvatar = partnerAv;
             window.moments.render();
@@ -995,8 +961,16 @@ function manageAutoSendTimer() {
                 // 2. 更新 settings（内存）
                 if (settings) settings[key] = src;
 
-                // 3. 更新 localStorage（朋友圈读取的源头）
-                localStorage.setItem(key, src);
+
+                // 3. 只在小图（<64KB）时同步写 localStorage；
+                //    大图只走 IndexedDB（真身），避免撑爆 localStorage 配额
+                try {
+                  if (src.length < 64 * 1024) {
+                  localStorage.setItem(key, src);
+                     } else {
+                  localStorage.removeItem(key);
+                              }
+               } catch (e) {}
 
                 // 4. 异步保存到 localforage（持久化）
                 localforage.setItem(getStorageKey(key), src).catch(() => {});
