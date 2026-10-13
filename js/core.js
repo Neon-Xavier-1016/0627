@@ -1185,7 +1185,7 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
     if (msg.replyTo) {
         const repliedText = msg.replyTo.text || (msg.replyTo.image ? '🖼 图片' : '[消息]');
         const repliedSender = msg.replyTo.sender === 'user' ? (settings.myName || '我') : (settings.partnerName || '对方');
-        messageHTML += `<div class="reply-indicator" data-reply-id="${msg.replyTo.id || ''}" style="cursor:pointer;" onclick="scrollToQuotedMessage(this)"><span class="reply-indicator-sender">${repliedSender}</span><span class="reply-indicator-text">${repliedText}</span></div>`;
+        messageHTML += `<div class="reply-indicator" data-reply-id="${msg.replyTo.id || ''}" style="cursor:pointer;display:flex;flex-direction:column;gap:2px;" onclick="scrollToQuotedMessage(this)"><span class="reply-indicator-sender" style="display:block;font-size:11px;line-height:1.2;">${repliedSender}</span><span class="reply-indicator-text" style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">${repliedText}</span></div>`;
     }
 
         const isImageOnly = !msg.text && !!msg.image;
