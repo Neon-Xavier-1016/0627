@@ -351,6 +351,25 @@ async function taInviteMe(isReInvite, force) {
   // ✅ 关键：开关关闭时，非 force 永不邀请
   if (!force && S().musicInviteEnabled === false) return null;
 
+  // 🆕 【需求1】已经在一起听 → 不能邀请
+  //    预定下一首的事由 attachPlayListener 里的 taReserveNext 独立按概率处理
+  if (listeningWith) {
+    console.log('[music-invite] 已在一起听，跳过邀请（如需预定下一首，等待自动触发）');
+    return null;
+  }
+
+  // 🆕 【需求2】我在听歌但还没一起听 → 改为 TA 加入一起听
+  const audioEl = $('audio');
+  if (audioEl && audioEl.src && !audioEl.paused) {
+    const curName = ($('music-title')?.textContent || '').trim() || '这首歌';
+    console.log('[music-invite] 用户正在听歌，改为加入一起听');
+    // 轻微延迟，模拟 TA「听到你在放歌」的自然反应
+    setTimeout(() => {
+      taJoinNow({ url: audioEl.src, name: curName });
+    }, 800 + Math.random() * 1200);
+    return null;
+  }
+
   await loadSongs();
   if (!_songs.length) return null;
   if (!force && !cdOk('taInvite', 8 * 60 * 1000)) return null;
@@ -686,23 +705,28 @@ function wrapReply() {
   if (typeof window.simulateReply !== 'function') return false;
   if (window.simulateReply.__miWrapped) return true;
   const orig = window.simulateReply;
-  window.simulateReply = function () {
-    const r = orig.apply(this, arguments);
-    setTimeout(() => {
-      try {
-        const s = S();
-        // ✅ 开关关闭时直接跳过
-        if (s.musicInviteEnabled === false) return;
-        const prob = (s.musicInviteProb ?? 8);
-        const cdMs = (s.musicInviteCooldown ?? 10 * 60 * 1000);
-        if (!cdOk('invite', cdMs)) return;
-        if (Math.random() * 100 >= prob) return;
-        setCD('invite');
-        taInviteMe(false);
-      } catch(e) {}
-    }, 1800);
-    return r;
-  };
+ window.simulateReply = function () {
+     const r = orig.apply(this, arguments);
+     setTimeout(() => {
+       try {
+         const s = S();
+         if (s.musicInviteEnabled === false) return;
+
+         // 🆕 提前判断：如果已在一起听 / 正在放歌，直接放弃这次邀请，不浪费冷却
+         if (listeningWith) return;
+         const _a = $('audio');
+         if (_a && _a.src && !_a.paused) return;
+
+         const prob = (s.musicInviteProb ?? 8);
+         const cdMs = (s.musicInviteCooldown ?? 10 * 60 * 1000);
+         if (!cdOk('invite', cdMs)) return;
+         if (Math.random() * 100 >= prob) return;
+         setCD('invite');
+         taInviteMe(false);
+       } catch(e) {}
+     }, 1800);
+     return r;
+ };
   window.simulateReply.__miWrapped = true;
   return true;
 }
