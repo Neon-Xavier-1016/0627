@@ -233,7 +233,7 @@ function checkAllQaStatus() {
 
     // ===== 自动提问（每周 5~6 次） =====
     const hisAuto = qaData.hisQuestions;
-    if (!hisAuto.currentQuestion && !hisAuto.pendingQuestion && !hisAuto.pendingResponse) {
+    if (!(window.QALive && window.QALive.handlesAuto()) && !hisAuto.currentQuestion && !hisAuto.pendingQuestion && !hisAuto.pendingResponse) {
         // 重置每周配额
         if (!hisAuto.autoWeekStart || now - hisAuto.autoWeekStart > QA_WEEK_MS) {
             hisAuto.autoWeekStart = now;
@@ -389,14 +389,6 @@ function _qaRenderHome() {
     content.innerHTML = `
         <div class="modal-title"><i class="fas fa-comments"></i><span>Q & A</span></div>
         <div class="qa-home-grid">
-            <div class="qa-home-card" data-target="his-question">
-                <div class="qa-home-card-icon">💭</div>
-                <div class="qa-home-card-body">
-                    <div class="qa-home-card-title">他的问题</div>
-                    <div class="qa-home-card-sub">梦角来问你</div>
-                </div>
-                <div class="qa-home-card-badge" id="qa-badge-his"></div>
-            </div>
             <div class="qa-home-card" data-target="my-question">
                 <div class="qa-home-card-icon">✨</div>
                 <div class="qa-home-card-body">
@@ -450,6 +442,7 @@ function _qaRenderHome() {
     content.querySelectorAll('.qa-home-card').forEach(card => {
         card.onclick = () => _qaRouteTo(card.dataset.target);
     });
+    if (window.QALive) window.QALive.attachHome(content);
     _qaUpdateBadges();
 }
 

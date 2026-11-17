@@ -54,7 +54,7 @@ async function loadIncomingData() {
     }
 }
 function saveIncomingData() {
-    localforage.setItem(getStorageKey('incomingLetterData'), incomingLetterData);
+    return localforage.setItem(getStorageKey('incomingLetterData'), incomingLetterData);
 }
 
 /* ---------- 排期：在一个周期内随机分布若干封信的投递时刻 ---------- */
@@ -87,7 +87,33 @@ function scheduleIncomingLetters() {
 }
 
 /* ---------- 状态检查：到点投递，独立提醒 ---------- */
-async function checkIncomingStatus() {
+let incomingStatusPromise = null;
+const incomingNotifiedIds = new Set();
+
+function isIncomingHomeReady() {
+    const welcome = document.getElementById('welcome-animation');
+    return !document.hidden && (!welcome || getComputedStyle(welcome).display === 'none');
+}
+
+// 同一次打开中仅提醒一次；未读信下次登录仍会提醒。
+function notifyUnreadIncomingLetters() {
+    if (!isIncomingHomeReady()) return;
+    const unread = incomingLetterData.received.filter(letter => letter.isNew);
+    if (!unread.some(letter => !incomingNotifiedIds.has(letter.id))) return;
+    unread.forEach(letter => incomingNotifiedIds.add(letter.id));
+    showIncomingLetterPopup(unread[unread.length - 1], unread.length);
+}
+
+// 定时器、打开列表、回到前台可能同时触发，合并为一次检查。
+function checkIncomingStatus() {
+    if (incomingStatusPromise) return incomingStatusPromise;
+    incomingStatusPromise = runIncomingStatusCheck().finally(() => {
+        incomingStatusPromise = null;
+    });
+    return incomingStatusPromise;
+}
+
+async function runIncomingStatusCheck() {
     await loadIncomingData();
     const now = Date.now();
     let changed = false;
@@ -142,16 +168,16 @@ async function checkIncomingStatus() {
     });
 
     if (changed) {
-        saveIncomingData();
-        updateIncBadges();
+        await saveIncomingData();
         if (delivered.length > 0) {
             playSound('message');
-            // 本次投递的信件合并成一个弹窗（通常 1 封；补发时可能多封）
-            showIncomingLetterPopup(delivered[0], delivered.length);
+            // 通知在主页可见时统一处理，后台投递不会消耗提醒。
             const m = document.getElementById('incoming-modal');
             if (m && m.style.display === 'flex') renderIncLists();
         }
     }
+    updateIncBadges();
+    notifyUnreadIncomingLetters();
 }
 
 /* ---------- 生成来信内容 ---------- */
@@ -192,15 +218,16 @@ function showIncomingLetterPopup(letter, count) {
             <span style="font-size:26px;">💌</span>
             <div>
                 <div style="font-size:14px;font-weight:700;color:var(--text-primary);">收到${count > 1 ? count + '封' : '一封'}来信</div>
-                <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;opacity:0.8;">${partnerName} 给你写了信，快去看看吧~</div>
+                <div data-incoming-message style="font-size:11px;color:var(--text-secondary);margin-top:2px;opacity:0.8;">有未读来信，快去看看吧~</div>
             </div>
         </div>
         <div style="display:flex;gap:8px;">
             <button onclick="document.getElementById('incoming-letter-popup').remove();" style="flex:1;padding:8px 0;border-radius:12px;border:1px solid var(--border-color);background:var(--primary-bg);color:var(--text-secondary);font-size:13px;cursor:pointer;">稍后查看</button>
             <button onclick="document.getElementById('incoming-letter-popup').remove(); openIncomingAndView('${letter.id}');" style="flex:2;padding:8px 0;border-radius:12px;border:none;background:var(--accent-color);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">立即阅读 ✉</button>
         </div>`;
+    popup.querySelector('[data-incoming-message]').textContent = `${partnerName} 给你写了信，快去看看吧~`;
     document.body.appendChild(popup);
-    setTimeout(() => { if (popup.parentNode) popup.remove(); }, 8000);
+    // 保留提示，直到用户选择稍后查看或立即阅读。
 }
 
 /* ---------- 入口 / Tab ---------- */
@@ -328,6 +355,29 @@ function renderIncSentList() {
     }).join('');
 }
 
+/* ---------- 原信预览：展开 / 收起 ---------- */
+function setIncOriginalPreview(textEl, content) {
+    textEl.textContent = content;
+    textEl.style.maxHeight = '100px';
+    let button = document.getElementById('inc-view-original-expand');
+    if (!button) {
+        button = document.createElement('button');
+        button.id = 'inc-view-original-expand';
+        button.type = 'button';
+        button.style.cssText = 'display:block;border:0;background:none;padding:0;margin-top:5px;font:inherit;font-size:11px;color:var(--accent-color);cursor:pointer;text-align:left;';
+        textEl.parentNode.appendChild(button);
+    }
+    button.textContent = '展开查看全文';
+    button.setAttribute('aria-expanded', 'false');
+    button.setAttribute('aria-controls', textEl.id);
+    button.onclick = () => {
+        const expanded = button.getAttribute('aria-expanded') === 'true';
+        textEl.style.maxHeight = expanded ? '100px' : 'none';
+        button.textContent = expanded ? '展开查看全文' : '收起';
+        button.setAttribute('aria-expanded', String(!expanded));
+    };
+}
+
 /* ---------- 查看详情（不变） ---------- */
 window.viewIncLetter = function(section, id) {
     const letters = section === 'received' ? incomingLetterData.received : incomingLetterData.myReplies;
@@ -377,7 +427,7 @@ window.viewIncLetter = function(section, id) {
         if (signNameEl) signNameEl.textContent = myName;
         const txt = document.getElementById('inc-view-original-text');
         if (origCtx && txt && letter.originalContent) {
-            txt.textContent = letter.originalContent;
+            setIncOriginalPreview(txt, letter.originalContent);
             origCtx.style.display = 'block';
         } else if (origCtx) {
             origCtx.style.display = 'none';
@@ -388,6 +438,7 @@ window.viewIncLetter = function(section, id) {
     document.getElementById('inc-view-content').style.display = 'block';
     document.getElementById('inc-view-edit').style.display = 'none';
     document.getElementById('inc-view-edit-btn').style.display = 'inline-flex';
+    document.getElementById('inc-view-edit-btn').textContent = '编辑';
     document.getElementById('inc-view-save-btn').style.display = 'none';
 
     const replyBtn = document.getElementById('inc-view-reply-btn');
@@ -585,36 +636,31 @@ window.initIncomingLetter = function() {
     const gearBtn = document.getElementById('inc-settings-entry');
     if (gearBtn) gearBtn.addEventListener('click', openIncSettings);
 
-    loadIncomingData().then(() => {
-        updateIncBadges();
-        setTimeout(checkIncomingStatus, 2000);
+    const safeCheck = () => checkIncomingStatus().catch(error => {
+        console.warn('[incoming-letter] 来信检查失败，将在下次检查重试:', error);
     });
+    safeCheck();
     // 每分钟检查一次；页面从后台恢复时浏览器会自动补跑，所以到点就能投递
-    setInterval(checkIncomingStatus, 60000);
+    setInterval(safeCheck, 60000);
 
     // 页面重新可见时立即检查一次（补发离线期间到点的信）
     document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) checkIncomingStatus();
+        if (!document.hidden) safeCheck();
     });
 };
 
 (function waitForSession() {
-    let tries = 0;
     const timer = setInterval(() => {
-        tries++;
         let ready = false;
         if (typeof getStorageKey === 'function') {
             try {
                 getStorageKey('__inc_probe__');
-                ready = true;
+                ready = isIncomingHomeReady();
             } catch (e) { /* SESSION_ID 还没好 */ }
         }
         if (ready) {
             clearInterval(timer);
             window.initIncomingLetter();
-        } else if (tries > 40) {
-            clearInterval(timer);
-            console.warn('[incoming-letter] SESSION_ID 长时间未就绪，放弃自动初始化');
         }
     }, 500);
 })();

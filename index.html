@@ -1331,6 +1331,10 @@
                         <i class="fas fa-envelope-open-text"></i><span>信封接收</span>
                         <span class="env-badge" id="inc-entry-badge" style="display:none; position:absolute; top:6px; right:10px;"></span>
                     </div>
+                    <div class="settings-item" id="decision-helper-function" style="position:relative;" onclick="window.DecisionHelper && window.DecisionHelper.open()">
+                        <i class="fas fa-check-circle"></i><span>帮我拿主意</span>
+                        <span class="env-badge" id="decision-entry-badge" hidden style="position:absolute;top:6px;right:10px;"></span>
+                    </div>
                     <div class="settings-item" id="qa-function" onclick="window.openQaModal && window.openQaModal()">
                         <i class="fas fa-comments"></i><span>Q & A</span>
                     </div>
@@ -2612,10 +2616,12 @@
     <script src="js/features/anniversary.js"></script>
     <script src="js/features/moments.js"></script>
     <script src="js/features/incoming-letter.js"></script>
+    <script src="js/features/decision-helper.js"></script>
     <script src="js/features/core-utils.js"></script>
     <script src="js/features/where.js"></script>
     <script src="js/features/what-are-you-doing.js"></script>
     <script src="js/features/qa.js"></script>
+    <script src="js/features/qa-live.js"></script>
     <script src="js/features/message-cards.js"></script>
     <script src="js/features/voice-library.js"></script>
     <script src="js/features/music-invite.js"></script>

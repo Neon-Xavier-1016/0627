@@ -1046,6 +1046,12 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
         lastSenderRef.current = null;
     }
 
+    if (msg.type === 'qa-live' && window.QALive) {
+        fragment.appendChild(window.QALive.renderMessage(msg));
+        lastSenderRef.current = null;
+        return fragment;
+    }
+
         // ✅ 撤回消息：渲染为居中灰色胶囊提示条（与撤回瞬间的 DOM 完全一致）
         if (msg.type === 'recall') {
             const recallDiv = document.createElement('div');

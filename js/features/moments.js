@@ -144,10 +144,8 @@
     /**
      * 生成本周计划：随机选 N 天，每天一个随机时间点
      */
-    function buildWeeklyPlan(weekKey) {
-        var weekStart = getWeekStartDate();
-        var today = new Date();
-        today.setHours(0, 0, 0, 0);
+    function buildWeeklyPlan(weekKey, date) {
+        var weekStart = getWeekStartDate(date);
 
         var dayCount = randomInt(CONFIG.WEEKLY_MIN_DAYS, CONFIG.WEEKLY_MAX_DAYS);
 
@@ -179,7 +177,7 @@
         // 按时间排序
         days.sort(function(a, b) { return a.time - b.time; });
 
-        return { weekKey: weekKey, days: days };
+        return { weekKey: weekKey, weekStart: weekStart.getTime(), days: days };
     }
 
     function loadWeeklyPlan() {
@@ -193,11 +191,11 @@
     }
 
     /**
-     * 确保当前周有计划；如果跨周，重新生成
+     * 首次创建计划；跨周的旧计划留给检查器补发
      */
     function ensureWeeklyPlan() {
         var currentKey = getWeekKey();
-        if (!weeklyPlan || weeklyPlan.weekKey !== currentKey) {
+        if (!weeklyPlan) {
             weeklyPlan = buildWeeklyPlan(currentKey);
             saveWeeklyPlan();
             console.log('[朋友圈] 已生成本周发帖计划:', weeklyPlan.days.map(function(d) {
@@ -1151,7 +1149,7 @@
 
     /**
      * 生成一条对方动态
-     * @param {number} ts 发布时刻，默认当前时间（绝不回填过去）
+     * @param {number} ts 发布时刻，默认当前时间；补发时使用计划中的历史时间
      */
     function generatePartnerMoment(ts) {
         ts = ts || Date.now();
@@ -1199,25 +1197,44 @@
         if (getReplyLibrary().length === 0) return false;
 
         ensureWeeklyPlan();
-        if (!weeklyPlan || !weeklyPlan.days || weeklyPlan.days.length === 0) return false;
+        if (!weeklyPlan || !Array.isArray(weeklyPlan.days)) return false;
 
         var now = Date.now();
+        var currentWeek = getWeekStartDate(now);
+        // 最多回溯 16 周，足以覆盖原有 30 条保留上限，避免多年离线时卡顿。
+        var oldestWeek = new Date(currentWeek);
+        oldestWeek.setDate(oldestWeek.getDate() - 16 * 7);
+        var anchor = weeklyPlan.weekStart ||
+            (weeklyPlan.days.length ? weeklyPlan.days[0].time : now);
+        var planWeek = getWeekStartDate(anchor);
         var published = false;
+        var planChanged = false;
 
-        weeklyPlan.days.forEach(function(day) {
-            if (!day.published && now >= day.time) {
-                // 到点了，发一条
-                generatePartnerMoment(now);   // 用当前时间发布，不回填
-                day.published = true;
-                published = true;
-                console.log('[朋友圈] 按周计划发布了一条，计划时间:',
-                    formatDateTime(day.time),
-                    '实际发布:', formatDateTime(now));
-            }
-        });
+        if (planWeek < oldestWeek) {
+            planWeek = oldestWeek;
+            weeklyPlan = buildWeeklyPlan(getWeekKey(planWeek), planWeek);
+            planChanged = true;
+        }
 
+        while (planWeek <= currentWeek) {
+            weeklyPlan.days.forEach(function(day) {
+                if (!day.published && now >= day.time) {
+                    // 使用原定时刻，离线补发也会落在各自的历史日期。
+                    if (generatePartnerMoment(day.time)) {
+                        day.published = true;
+                        published = true;
+                        planChanged = true;
+                    }
+                }
+            });
+            if (planWeek.getTime() === currentWeek.getTime()) break;
+            planWeek.setDate(planWeek.getDate() + 7);
+            weeklyPlan = buildWeeklyPlan(getWeekKey(planWeek), planWeek);
+            planChanged = true;
+        }
+
+        if (planChanged) saveWeeklyPlan();
         if (published) {
-            saveWeeklyPlan();
             enforceLimits();
             saveMoments().then(function() {
                 renderMoments();
