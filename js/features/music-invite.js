@@ -33,8 +33,8 @@ const partnerName = () => S().partnerName || 'TA';
 const myName = () => S().myName || '我';
 
 function getMessages() {
-  if (window.messages && Array.isArray(window.messages)) return window.messages;
   if (typeof messages !== 'undefined' && Array.isArray(messages)) return messages;
+  if (Array.isArray(window.messages)) return window.messages;
   return null;
 }
 function saveNow() {
@@ -346,6 +346,37 @@ function updateCardDom(card, state) {
   else if (state === 'reject-ta' || state === 'reject-me') card.classList.add('mi-rejected');
 }
 
+const inviteResponseMs = 5 * 60 * 1000;
+let expiryTimer;
+function syncExpiry() {
+  clearTimeout(expiryTimer);
+  const now = Date.now();
+  let next = Infinity, changed = false;
+  for (const message of getMessages() || []) {
+    if (message.type !== 'system' || typeof message.text !== 'string'
+        || !message.text.includes('data-mi-from="ta"') || !message.text.includes('class="mi-btns"')) continue;
+    const sentAt = new Date(message.timestamp).getTime();
+    if (!Number.isFinite(sentAt)) continue;
+    const deadline = sentAt + inviteResponseMs;
+    if (deadline > now) {
+      next = Math.min(next, deadline);
+      continue;
+    }
+    const template = document.createElement('template');
+    template.innerHTML = message.text;
+    const card = template.content.querySelector('.mi-card[data-mi-id][data-mi-from="ta"]:not([data-mi-done])');
+    if (!card) continue;
+    const {miId, miUrl, miName} = card.dataset;
+    message.text = cardHTML({url: miUrl, name: miName}, false, 'reject-me', '超时未回应', miId);
+    const visibleCard = document.querySelector('.mi-card[data-mi-id="' + CSS.escape(miId) + '"]');
+    if (visibleCard) visibleCard.outerHTML = message.text;
+    changed = true;
+  }
+  if (changed) saveNow();
+  if (Number.isFinite(next)) expiryTimer = setTimeout(syncExpiry, next - Date.now());
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) syncExpiry(); });
+
 /* ───────────── TA 邀请我 ───────────── */
 async function taInviteMe(isReInvite, force) {
   // ✅ 关键：开关关闭时，非 force 永不邀请
@@ -376,6 +407,7 @@ async function taInviteMe(isReInvite, force) {
   if (!force) setCD('taInvite');
   const track = rand(_songs);
   sysMsg(cardHTML(track, false, 'reply', isReInvite ? '再次邀请' : ''));
+  syncExpiry();
   return track;
 }
 
@@ -580,8 +612,8 @@ document.addEventListener('click', function (e) {
   if (!c) return;
 
   if (c.dataset.miReserve === '1') {
+    if (c.dataset.miDone === '1' || !t.closest('.mi-track')) return;
     e.preventDefault(); e.stopPropagation();
-    if (c.dataset.miDone === '1') return;
     const url = c.getAttribute('data-mi-url');
     const name = c.getAttribute('data-mi-name');
     if (url) playUrlDirect(url, name);
@@ -593,9 +625,14 @@ document.addEventListener('click', function (e) {
   }
 
   if (c.dataset.miFrom !== 'ta' || c.dataset.miDone === '1') return;
-  if (t.closest('.mi-join'))        { e.preventDefault(); e.stopPropagation(); handleJoin(c); }
-  else if (t.closest('.mi-later'))  { e.preventDefault(); e.stopPropagation(); handleLater(c); }
-  else if (t.closest('.mi-reject')) { e.preventDefault(); e.stopPropagation(); handleReject(c); }
+  const action = t.closest('.mi-join, .mi-later, .mi-reject');
+  if (!action) return;
+  e.preventDefault(); e.stopPropagation();
+  syncExpiry();
+  if (!c.isConnected) return;
+  if (action.classList.contains('mi-join')) handleJoin(c);
+  else if (action.classList.contains('mi-later')) handleLater(c);
+  else handleReject(c);
 }, true);
 
 /* ───────────── ♪ 按钮 ───────────── */
@@ -695,9 +732,6 @@ function attachKeywordListeners() {
 
   // 捕获阶段读取输入（在 sendMessage 清空输入框之前）
   sendBtn.addEventListener('click', checkKeyword, true);
-  inp.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) checkKeyword();
-  }, true);
 }
 
 /* ───────────── 包装 simulateReply ───────────── */
@@ -850,6 +884,7 @@ setTimeout(boot, 2500);
 
 /* ───────────── 对外 API ───────────── */
 window.MusicInvite = {
+  syncExpiry,
   songs: () => _songs.slice(),
   reloadSongs: loadSongs,
   isListening: () => !!listeningWith,

@@ -571,6 +571,7 @@ window.scrollToMessage = function(msgId) {
 
         // 立即 DOM 替换（视觉上马上生效，不用等重渲染）
         const tip = buildTip(who, canReedit ? text : '');
+        attachChatEntryActions(tip, idStr);
         if (wrapper && wrapper.isConnected) wrapper.replaceWith(tip);
 
         // 对外回调

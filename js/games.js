@@ -1622,8 +1622,11 @@ function initComboMenu() {
         var pName = (typeof settings !== 'undefined' && settings.partnerName) ? settings.partnerName : '对方';
         var mName = (typeof settings !== 'undefined' && settings.myName)      ? settings.myName      : '我';
 
-        var partnerMsgs = messages.filter(function(m) { return m.sender !== 'user' && m.text && m.type !== 'system' && m.type !== 'call-event'; });
-        var myMsgs      = messages.filter(function(m) { return m.sender === 'user' && m.text && m.type !== 'system' && m.type !== 'call-event'; });
+        var chatTexts = messages.filter(function(m) {
+            return m.text && m.sender !== 'system' && !['system', 'recall', 'call-event'].includes(m.type);
+        });
+        var partnerMsgs = chatTexts.filter(function(m) { return m.sender !== 'user'; });
+        var myMsgs = chatTexts.filter(function(m) { return m.sender === 'user'; });
 
         var pFreq = {}, mFreq = {};
         partnerMsgs.forEach(function(m) { pFreq = mergeFreq(pFreq, tokenize(m.text)); });
@@ -1710,19 +1713,19 @@ function initComboMenu() {
                 +   '<div class="wc-rank-list"></div>'
                 + '</div>';
 
-            container.querySelector('.wc-tabs-track').addEventListener('click', function(e) {
-                var b = e.target.closest('.wc-view-btn');
-                if (b) renderView(b.dataset.view);
-            });
-            container.querySelector('.wc-regen-btn').addEventListener('click', function() {
-                var canvas = container.querySelector('#wc-canvas');
-                var d = data(container._currentView);
-                var shuffled = d.words.slice().sort(function(a, b) {
-                    return a.count !== b.count ? b.count - a.count : Math.random() - 0.5;
-                });
-                drawWordCloud(canvas, shuffled);
-            });
         }
+        container.querySelector('.wc-tabs-track').onclick = function(e) {
+            var b = e.target.closest('.wc-view-btn');
+            if (b) renderView(b.dataset.view);
+        };
+        container.querySelector('.wc-regen-btn').onclick = function() {
+            var canvas = container.querySelector('#wc-canvas');
+            var d = data(container._currentView);
+            var shuffled = d.words.slice().sort(function(a, b) {
+                return a.count !== b.count ? b.count - a.count : Math.random() - 0.5;
+            });
+            drawWordCloud(canvas, shuffled);
+        };
 
         renderView(cur);
     };

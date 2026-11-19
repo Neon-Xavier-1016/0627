@@ -141,7 +141,7 @@
                    bindOnce('stats-function', () => openModal('stats-modal'));
 
                    // 抉择
-                   bindOnce('decision-function', () => openModal('decision-modal'));
+                   // 抉择入口由 initDecisionModule 绑定，避免重复打开两个窗口。
 
                    // 心情手帐（如有的话）
                    bindOnce('mood-diary-function', () => openModal('mood-diary-modal'));

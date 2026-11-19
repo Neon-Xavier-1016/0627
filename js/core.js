@@ -75,7 +75,8 @@
 function loadMoreHistory() {
     const historyLoader = document.getElementById('history-loader');
     const container = DOMElements && DOMElements.chatContainer;
-    const currentOldestMsgIndex = messages.length - displayedMessageCount;
+    const visibleCount = messages.reduce((count, msg) => count + Number(msg.type !== 'qa-live'), 0);
+    const currentOldestMsgIndex = visibleCount - displayedMessageCount;
 
     if (!container) return;
     if (isLoadingHistory) return;
@@ -107,7 +108,7 @@ function loadMoreHistory() {
     container.style.scrollBehavior = 'auto';
 
     setTimeout(() => {
-        displayedMessageCount = Math.min(messages.length, displayedMessageCount + HISTORY_BATCH_SIZE);
+        displayedMessageCount = Math.min(visibleCount, displayedMessageCount + HISTORY_BATCH_SIZE);
         renderMessages(true);
 
         requestAnimationFrame(() => {
@@ -1026,6 +1027,17 @@ function manageAutoSendTimer() {
             }
         };
 
+function attachChatEntryActions(entry, id) {
+    entry.classList.add('has-chat-entry-actions');
+    entry.dataset.id = id;
+    entry.tabIndex = 0;
+    entry.setAttribute('aria-keyshortcuts', 'Enter Space');
+    const actions = document.createElement('div');
+    actions.className = 'message-meta-actions chat-entry-actions';
+    actions.innerHTML = '<button type="button" class="meta-action-btn delete-btn" title="删除" aria-label="删除"><i class="fas fa-trash-alt" aria-hidden="true"></i></button>';
+    entry.append(actions);
+}
+
 function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
     const fragment = new DocumentFragment();
     const messageDate = new Date(msg.timestamp).toDateString();
@@ -1044,12 +1056,6 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
         dateDivider.innerHTML = `<span>${displayDate}</span>`;
         fragment.appendChild(dateDivider);
         lastSenderRef.current = null;
-    }
-
-    if (msg.type === 'qa-live' && window.QALive) {
-        fragment.appendChild(window.QALive.renderMessage(msg));
-        lastSenderRef.current = null;
-        return fragment;
     }
 
         // ✅ 撤回消息：渲染为居中灰色胶囊提示条（与撤回瞬间的 DOM 完全一致）
@@ -1082,6 +1088,7 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
             }
 
             recallDiv.appendChild(inner);
+            attachChatEntryActions(recallDiv, msg.id);
             fragment.appendChild(recallDiv);
             lastSenderRef.current = 'system';
             return fragment;
@@ -1091,6 +1098,7 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
         const systemMsgDiv = document.createElement('div');
         systemMsgDiv.className = 'system-message';
         systemMsgDiv.innerHTML = msg.text;
+        attachChatEntryActions(systemMsgDiv, msg.id);
         fragment.appendChild(systemMsgDiv);
         lastSenderRef.current = 'system';
         return fragment;
@@ -1104,7 +1112,8 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
         const isRejected = icon === 'fa-phone-slash';
         const colorClass = isRejected ? 'call-event-pill--rejected' : 'call-event-pill--ended';
         const detail = msg.callDetail ? `<span class="call-event-detail">${msg.callDetail}</span>` : '';
-        callEvDiv.innerHTML = `<div class="call-event-pill ${colorClass}"><i class="fas ${icon} call-event-icon"></i><span class="call-event-label">${msg.text.replace(/ · .*/, '')}</span>${detail}<button class="call-event-delete" title="删除" onclick="(function(btn){const id=btn.closest('[data-id]').dataset.id;const idx=messages.findIndex(m=>String(m.id)===String(id));if(idx>-1){messages.splice(idx,1);renderMessages();throttledSaveData();}})(this)"><i class="fas fa-times"></i></button></div>`;
+        callEvDiv.innerHTML = `<div class="call-event-pill ${colorClass}"><i class="fas ${icon} call-event-icon"></i><span class="call-event-label">${msg.text.replace(/ · .*/, '')}</span>${detail}</div>`;
+        attachChatEntryActions(callEvDiv, msg.id);
         fragment.appendChild(callEvDiv);
         lastSenderRef.current = 'system';
         return fragment;
@@ -1324,9 +1333,11 @@ function _updateReadReceiptsDOM() {
 
 function renderMessages(preserveScroll = false) {
     const container = DOMElements.chatContainer;
-    const totalMessages = messages.length;
+    window.MusicInvite?.syncExpiry?.();
+    const visibleMessages = messages.filter(msg => msg.type !== 'qa-live');
+    const totalMessages = visibleMessages.length;
     const startIndex = Math.max(0, totalMessages - displayedMessageCount);
-    const msgsToRender = messages.slice(startIndex);
+    const msgsToRender = visibleMessages.slice(startIndex);
 
     const historyLoader = document.getElementById('history-loader');
     if (historyLoader) {
@@ -1379,12 +1390,13 @@ function renderMessages(preserveScroll = false) {
     }
 
 const addMessage = (message) => {
+    const hsContainer = DOMElements.chatContainer;
+    const hsAtBottom = hsContainer.scrollHeight - hsContainer.scrollTop - hsContainer.clientHeight < 90;
     if (!(message.timestamp instanceof Date)) message.timestamp = new Date(message.timestamp);
     
     const container = DOMElements.chatContainer;
-    const wasEmpty = messages.length === 0;
-
-    const prevMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+    const prevMsg = messages.findLast(msg => msg.type !== 'qa-live');
+    const wasEmpty = !prevMsg;
     messages.push(message);
     
     if (wasEmpty) {
@@ -1422,8 +1434,9 @@ const addMessage = (message) => {
         container.appendChild(newMsgFragment);
     }
 
+    if (window.HomeShell) window.HomeShell.onMessage(message, hsAtBottom);
     requestAnimationFrame(() => {
-        container.scrollTop = container.scrollHeight;
+        if (!window.HomeShell || (window.HomeShell.isChat() && (hsAtBottom || message.sender === 'user'))) container.scrollTop = container.scrollHeight;
     });
 
     throttledSaveData();
@@ -1564,14 +1577,14 @@ const addMessage = (message) => {
                 const cmd = text.replace(/\s+/g, '').toLowerCase();
                 if (cmd === '/测试拍一拍' || cmd === '/testpoke') {
                     DOMElements.messageInput.value = '';
-                    DOMElements.messageInput.style.height = '46px';
+                    DOMElements.messageInput.style.height = '';
                     if (typeof window._triggerPartnerPoke === 'function') window._triggerPartnerPoke();
                     if (typeof showNotification === 'function') showNotification('✦ 强制触发对方拍一拍', 'info', 1800);
                     return;
                 }
                 if (cmd === '/测试状态更新' || cmd === '/teststatus') {
                     DOMElements.messageInput.value = '';
-                    DOMElements.messageInput.style.height = '46px';
+                    DOMElements.messageInput.style.height = '';
                     if (typeof window._triggerStatusChange === 'function') window._triggerStatusChange();
                     if (typeof showNotification === 'function') showNotification('✦ 强制触发状态更新', 'info', 1800);
                     return;
@@ -1579,7 +1592,7 @@ const addMessage = (message) => {
             }
 
             DOMElements.messageInput.value = '';
-            DOMElements.messageInput.style.height = '46px';
+            DOMElements.messageInput.style.height = '';
             if (imageFile && imageFile.size > MAX_IMAGE_SIZE) {
                 showNotification('图片大小不能超过5MB', 'error'); DOMElements.imageInput.value = ''; return;
             }
@@ -1677,7 +1690,7 @@ if (!isBatchMode && type === 'normal') {
             batchMessages.push({
                 id: Date.now() + batchMessages.length, text: text || '', image: imageOverride || null
             });
-            DOMElements.messageInput.value = ''; DOMElements.messageInput.style.height = '46px';
+            DOMElements.messageInput.value = ''; DOMElements.messageInput.style.height = '';
             updateBatchPreview();
         }
 
@@ -2027,6 +2040,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
         }
 
 function showModal(modalElement, focusElement = null) {
+            if (window.HomeShell && window.HomeShell.routeModal(modalElement, true)) return;
             if (modalElement._hideTimeout) {
                 clearTimeout(modalElement._hideTimeout);
                 modalElement._hideTimeout = null;
@@ -2045,6 +2059,7 @@ function showModal(modalElement, focusElement = null) {
         }
 
         function hideModal(modalElement) {
+            if (window.HomeShell && window.HomeShell.routeModal(modalElement, false)) return;
             const content = modalElement.querySelector('.modal-content');
             if (content) {
                 content.style.opacity = '0';

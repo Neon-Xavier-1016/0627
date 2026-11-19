@@ -69,25 +69,25 @@ function enforceNoEditOnVoice() {
 }
 
 function initChatActionListeners() {
-            DOMElements.chatContainer.addEventListener('click', (e) => {
+            const chat = DOMElements.chatContainer;
+            const entrySelector = '.message-wrapper, .has-chat-entry-actions';
+            function closeOtherActions(entry) {
+                chat.querySelectorAll('.message-meta-actions.active').forEach(actions => {
+                    if (actions.closest(entrySelector) !== entry) actions.classList.remove('active');
+                });
+            }
+            chat.addEventListener('keydown', event => {
+                if (!event.target.matches('.has-chat-entry-actions') || !['Enter', ' '].includes(event.key)) return;
+                event.preventDefault();
+                if (!event.repeat) event.target.click();
+            });
+            chat.addEventListener('click', (e) => {
 
-                // 1️⃣ 点击空白区域 → 关闭所有操作栏
-                if (!e.target.closest('.message-wrapper')) {
-                    document.querySelectorAll('.message-meta-actions.active').forEach(el => el.classList.remove('active'));
-                }
-
-                // 2️⃣ 点击消息本身 → 切换操作栏（你之前加的）
-                const msgWrapper = e.target.closest('.message-wrapper');
-                if (msgWrapper && !e.target.closest('.message-meta-actions') && !e.target.closest('.meta-action-btn')) {
-                    document.querySelectorAll('.message-wrapper .message-meta-actions.active').forEach(el => {
-                        if (el.closest('.message-wrapper') !== msgWrapper) {
-                            el.classList.remove('active');
-                        }
-                    });
-                    const actions = msgWrapper.querySelector('.message-meta-actions');
-                    if (actions) {
-                        actions.classList.toggle('active');
-                    }
+                const entry = e.target.closest(entrySelector);
+                closeOtherActions(entry);
+                if (entry && !e.target.closest('.message-meta-actions')) {
+                    if (entry.classList.contains('has-chat-entry-actions') && e.target.closest('button, a, input, .recall-tip-reedit')) return;
+                    entry.querySelector('.message-meta-actions')?.classList.toggle('active');
                     return;
                 }
 
@@ -136,16 +136,14 @@ function initChatActionListeners() {
                 const target = e.target.closest('.meta-action-btn');
                 if (!target) return;
                 
-                const wrapper = e.target.closest('.message-wrapper');
-                if (!wrapper) return; 
-                
-                const messageId = Number(wrapper.dataset.id);
-                const message = messages.find(m => m.id === messageId);
+                if (!entry) return;
+                const messageId = entry.dataset.id;
+                const message = messages.find(m => String(m.id) === messageId);
                 if (!message) return;
 
 if (target.classList.contains('delete-btn')) {
     if (confirm('确定要删除这条消息吗？')) {
-        const index = messages.findIndex(m => m.id === messageId);
+        const index = messages.indexOf(message);
         if (index > -1) {
             const savedScrollTop = DOMElements.chatContainer.scrollTop;
             messages.splice(index, 1); 
@@ -3030,14 +3028,80 @@ playlist.style.top = (rect.top + (player.classList.contains('collapsed') ? 65 : 
                 }
             });
 
-            DOMElements.sendBtn.addEventListener('click', () => isBatchMode ? addToBatch(): sendMessage());
-            DOMElements.messageInput.addEventListener('keydown', e => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault(); isBatchMode ? addToBatch(): sendMessage();
+            const input = DOMElements.messageInput;
+            const submitDraft = () => DOMElements.sendBtn.click();
+            DOMElements.sendBtn.addEventListener('click', () => isBatchMode ? addToBatch() : sendMessage());
+            let allowLineBreak = false;
+            input.addEventListener('keydown', event => {
+                if (event.key !== 'Enter') return;
+                if (event.shiftKey || event.isComposing || event.keyCode === 229) {
+                    allowLineBreak = true;
+                    setTimeout(() => { allowLineBreak = false; }, 0);
+                    return;
+                }
+                event.preventDefault();
+                if (!event.repeat) submitDraft();
+            });
+            input.addEventListener('beforeinput', event => {
+                // 部分手机键盘直接发出换行输入事件，没有 Enter 键盘事件。
+                if (event.inputType !== 'insertLineBreak' && event.inputType !== 'insertParagraph') return;
+                if (allowLineBreak || event.isComposing || !event.cancelable) return;
+                event.preventDefault();
+                submitDraft();
+            });
+            input.addEventListener('input', () => {
+                input.style.height = 'auto';
+                input.style.height = Math.min(input.scrollHeight + 2, 120) + 'px';
+            });
+
+            const mediaToggle = document.getElementById('chat-media-toggle');
+            const mediaPanel = document.getElementById('chat-media-panel');
+            const mediaChatArea = mediaPanel.closest('.main-chat-area');
+            const panelHeightProperty = '--chat-media-panel-height';
+            const chat = DOMElements.chatContainer;
+            const nearBottom = () => chat.clientHeight && chat.scrollHeight - chat.scrollTop - chat.clientHeight < 90;
+            function updateMediaPanelHeight(keepBottom = nearBottom()) {
+                const height = mediaPanel.offsetHeight + 'px';
+                if (mediaChatArea.style.getPropertyValue(panelHeightProperty) === height) return;
+                mediaChatArea.style.setProperty(panelHeightProperty, height);
+                if (keepBottom) chat.scrollTo({top: chat.scrollHeight, behavior: 'instant'});
+            }
+            if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => updateMediaPanelHeight()).observe(mediaPanel);
+            function setMediaOpen(open) {
+                if (mediaPanel.hidden === !open) return;
+                const keepBottom = nearBottom();
+                mediaPanel.hidden = !open;
+                mediaToggle.setAttribute('aria-expanded', String(open));
+                updateMediaPanelHeight(keepBottom);
+            }
+            mediaToggle.addEventListener('click', () => {
+                if (!mediaPanel.hidden) {
+                    setMediaOpen(false);
+                    return;
+                }
+                input.blur();
+                document.getElementById('user-sticker-picker').classList.remove('active');
+                document.getElementById('continue-sub-btns').classList.remove('active');
+                setMediaOpen(true);
+            });
+            document.getElementById('chat-music-btn').addEventListener('click', () => document.getElementById('music-player-toggle')?.click());
+            document.getElementById('chat-decision-btn').addEventListener('click', () => document.getElementById('decision-function')?.click());
+            mediaPanel.addEventListener('click', event => {
+                if (event.target.closest('button')) {
+                    if (mediaPanel.contains(document.activeElement)) mediaToggle.focus();
+                    setMediaOpen(false);
                 }
             });
-            DOMElements.messageInput.addEventListener('input', () => {
-                DOMElements.messageInput.style.height = 'auto'; DOMElements.messageInput.style.height = `${Math.min(DOMElements.messageInput.scrollHeight, 120)}px`;
+            document.addEventListener('click', event => {
+                if (!mediaPanel.contains(event.target) && !mediaToggle.contains(event.target)) setMediaOpen(false);
+            });
+            document.getElementById('combo-btn').addEventListener('click', () => setMediaOpen(false));
+            document.getElementById('continue-btn').addEventListener('click', () => setMediaOpen(false));
+            input.addEventListener('focus', () => setMediaOpen(false));
+            document.addEventListener('keydown', event => {
+                if (event.key !== 'Escape' || mediaPanel.hidden) return;
+                setMediaOpen(false);
+                mediaToggle.focus();
             });
 
 

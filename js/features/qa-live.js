@@ -122,10 +122,46 @@
         else{
             html+=`<div class="ql-my">你：${esc(r.answer)}</div><div class="ql-reply">${esc(r.reply)}</div>`;
             if(interactive&&r.followUpOffered&&!r.finished&&!r.continued&&r.depth<2)html+=`<div class="ql-invite"><p>我还想问你一个，可以吗？</p><div class="ql-actions"><button data-ql="continue" data-id="${r.id}">好呀</button><button class="ql-soft" data-ql="question-close">下次再聊</button></div></div>`;
-            if(!interactive)html+=`<div class="ql-actions"><button class="ql-soft" data-ql="open-question" data-id="${r.id}">回看这次问答</button></div>`;
+        }
+        if(state?.history.some(record=>record.id===r.id)){
+            const id=esc(r.id);
+            html+=`<div class="ql-actions ql-history-actions">
+                ${!interactive&&r.status==='answered'?`<button data-ql="open-question" data-id="${id}">回看这次问答</button>`:''}
+                <button data-ql="repeat" data-id="${id}">再聊一次</button>
+                ${r.status==='answered'?`<button data-ql="edit-reply" data-id="${id}">编辑 TA 的留言</button>`:''}
+                <button class="ql-delete-record" data-ql="delete-record" data-id="${id}">删除这条记录</button>
+            </div>`;
         }
         html+=`<button class="ql-star ql-soft" data-ql="favorite" data-question="${q.id}">${state?.favorites.includes(q.id)?'★ 已收藏问题':'☆ 收藏问题'}</button>`;
         return html;
+    }
+    function showReplyEditor(button,id){
+        const record=state.history.find(r=>r.id===id&&r.status==='answered');
+        if(!record)throw Error('这条留言已不存在。');
+        const card=button.closest('#qa-question-body, .ql-item');
+        const existing=card.querySelector('.ql-reply-editor textarea');
+        if(existing){existing.focus();return;}
+        const reply=card.querySelector('.ql-reply');
+        const editor=document.createElement('div');
+        editor.className='ql-reply-editor';
+        editor.innerHTML=`<label>TA 的留言<textarea maxlength="4000"></textarea></label><div class="ql-actions">
+            <button type="button" data-ql="save-reply" data-id="${esc(id)}">保存留言</button>
+            <button type="button" data-ql="cancel-reply">取消</button>
+        </div>`;
+        const input=editor.querySelector('textarea');
+        input.value=record.reply||'';
+        reply.hidden=true;
+        reply.after(editor);
+        input.focus();
+    }
+    function redrawHistory(){
+        const body=$('qa-live-body');
+        if($('qa-live-modal').style.display==='flex'){
+            const offset=body.scrollTop;
+            renderManager();
+            body.scrollTop=offset;
+        }
+        if(activeQuestionId)openQuestion(activeQuestionId);
     }
     function openQuestion(id){
         mount();
@@ -145,10 +181,6 @@
         if(id&&state?.history.some(r=>r.id===id&&r.status==='answered'&&!r.finished))await transaction(s=>{const r=s.history.find(r=>r.id===id);if(r)r.finished=true;});
         hideModal($('qa-question-modal'));activeQuestionId=null;refresh();
     }
-    function renderMessage(msg){
-        const node=document.createElement('div');node.className='ql-chat-card';node.dataset.qlRecord=msg.qaRecordId;
-        node.innerHTML=cardHTML(currentRecord(msg.qaRecordId,msg.qaSnapshot));return node;
-    }
     function refresh(){
         document.querySelectorAll('[data-ql-record]').forEach(node=>{
             const r=currentRecord(node.dataset.qlRecord,null);if(r)node.innerHTML=cardHTML(r);
@@ -159,12 +191,6 @@
         }
         const button=$('qa-live-home');if(button){const pending=state?.pending;button.textContent=pending?'💭 Ta 的问题等你回答 · 问题库与记录':'💭 主动问答 · 问题库与记录';}
     }
-    function syncChat(r){
-        if(!r||typeof addMessage!=='function'||typeof messages==='undefined')return;
-        if(!messages.some(m=>m.type==='qa-live'&&m.qaRecordId===r.id)){
-            addMessage({id:Date.now()+Math.random(),sender:'partner',type:'qa-live',text:r.question.text,timestamp:new Date(r.askedAt),qaRecordId:r.id,qaSnapshot:copy(r)});
-        }
-    }
     function homeReady(){return !document.hidden&&(!$('welcome-animation')||getComputedStyle($('welcome-animation')).display==='none');}
     function busy(){
         if(!homeReady()||Date.now()-lastInputAt<20000)return true;
@@ -173,14 +199,14 @@
         return [...document.querySelectorAll('.modal')].some(el=>getComputedStyle(el).display!=='none');
     }
     function notify(){
-        const r=state?.pending;if(!r||!homeReady()||shown===r.id||busy())return;
+        const r=state?.pending;if(!r||!homeReady()||shown===r.id||window.HomeShell?.isChat()||busy())return;
         openQuestion(r.id);
     }
     async function tick(){
         if(!homeReady())return;
         // 已计划的问题只补一题；等停止输入、关闭弹窗后再呈现。
         if(!state||key!==getStorageKey('qaLiveData')||!busy())await transaction(s=>advance(s,Date.now()));
-        if(state?.pending){syncChat(state.pending);notify();}
+        if(state?.pending)notify();
     }
     function mount(){
         if($('qa-live-modal'))return;
@@ -195,6 +221,9 @@
         .ql-notice{position:fixed;z-index:8150;bottom:82px;left:50%;transform:translateX(-50%);width:88%;max-width:340px;box-shadow:0 8px 30px #0003}.ql-notice p{font-size:13px;line-height:1.7}
         #qa-live-modal{z-index:2300}#qa-live-modal .ql-shell{width:94%;max-width:550px;padding:0;max-height:90vh;max-height:90dvh;display:flex;flex-direction:column;overflow:hidden;background:var(--secondary-bg)}
         #qa-live-modal .ql-head{padding:16px 18px;display:flex;justify-content:space-between;align-items:center;background:rgba(var(--accent-color-rgb),.08);gap:10px}#qa-live-modal h3{margin:0;font-size:16px}#qa-live-body{overflow-y:auto;padding:16px 18px;min-height:0;overscroll-behavior:contain}
+        .ql-reply:empty,.ql-reply[hidden]{display:none}
+        .ql-reply-editor{margin:12px 0}.ql-reply-editor textarea{display:block;width:100%;margin-top:6px;resize:vertical}
+        #qa-live-modal .ql-delete-record,#qa-question-modal .ql-delete-record{color:var(--danger-color,#b34a54)}
         #qa-live-modal .ql-item{border:1px solid var(--border-color);border-radius:14px;padding:13px;margin:10px 0;overflow-wrap:anywhere}#qa-live-modal .ql-item p{white-space:pre-wrap;line-height:1.8;font-size:14px;margin:8px 0}
         .ql-chat-card textarea,#qa-live-modal textarea,#qa-live-modal input[type=text],#qa-live-modal select{box-sizing:border-box;width:100%;font:inherit;font-size:14px;color:var(--text-primary);border:1px solid var(--border-color);border-radius:10px;padding:10px;background:var(--primary-bg)}.ql-chat-card textarea,#qa-live-modal textarea{min-height:85px;resize:vertical;line-height:1.8}#qa-live-modal label{display:block;font-size:13px;margin:12px 0 6px;line-height:1.8}#qa-live-modal input[type=checkbox]{accent-color:var(--accent-color)}
         #qa-live-home{width:100%;padding:13px;border:1px solid var(--border-color);border-radius:13px;color:var(--accent-color);background:rgba(var(--accent-color-rgb),.06);font:inherit;font-size:13px;cursor:pointer;margin-bottom:12px}.ql-chat-card button:focus-visible,#qa-live-modal button:focus-visible{outline:2px solid var(--accent-color);outline-offset:2px}
@@ -254,12 +283,39 @@
     }
     function locate(){
         hideModal($('qa-live-modal'));if($('qa-modal'))hideModal($('qa-modal'));if($('advanced-modal'))hideModal($('advanced-modal'));if($('settings-modal'))hideModal($('settings-modal'));
-        const r=state?.pending;if(r){syncChat(r);openQuestion(r.id);}
+        const r=state?.pending;if(r)openQuestion(r.id);
     }
     async function action(button){
         const a=button.dataset.ql,id=button.dataset.id,qid=button.dataset.question;
         if(a==='question-close'){await closeQuestion();return;}
         if(a==='open-question'){openQuestion(id);return;}
+        if(a==='edit-reply'){showReplyEditor(button,id);return;}
+        if(a==='cancel-reply'){
+            const editor=button.closest('.ql-reply-editor');
+            editor.previousElementSibling.hidden=false;
+            const editButton=editor.parentElement.querySelector('[data-ql="edit-reply"]');
+            editor.remove();editButton?.focus();return;
+        }
+        if(a==='save-reply'){
+            const reply=button.closest('.ql-reply-editor').querySelector('textarea').value.trim();
+            await transaction(s=>{
+                const record=s.history.find(r=>r.id===id&&r.status==='answered');
+                if(!record)throw Error('这条留言已不存在。');
+                record.reply=reply;
+            });
+            refresh();redrawHistory();return;
+        }
+        if(a==='delete-record'){
+            if(!confirm('删除这次问答记录？'))return;
+            await transaction(s=>{s.history=s.history.filter(r=>r.id!==id);});
+            if(typeof messages!=='undefined'){
+                for(let i=messages.length-1;i>=0;i--){
+                    if(messages[i].type==='qa-live'&&messages[i].qaRecordId===id)messages.splice(i,1);
+                }
+            }
+            if(activeQuestionId===id){activeQuestionId=null;hideModal($('qa-question-modal'));}
+            refresh();redrawHistory();return;
+        }
         if(a==='legacy'){hideModal($('qa-live-modal'));showModal($('qa-modal'));if(typeof _qaRenderHisView==='function')_qaRenderHisView();return;}
         if(a==='close'){hideModal($('qa-live-modal'));return;}
         if(a==='dismiss'){$('qa-live-notice')?.remove();return;}
@@ -302,20 +358,22 @@
             await transaction(s=>{if(s.pending?.id!==id)return;const r=s.pending;r.status='skipped';s.history.unshift(r);s.history=s.history.slice(0,25);s.pending=null;arm(s,Date.now());});drafts.delete(id);hideModal($('qa-question-modal'));activeQuestionId=null;$('qa-live-notice')?.remove();refresh();if($('qa-live-modal').style.display==='flex')renderManager();if(activeQuestionId)openQuestion(activeQuestionId);return;
         }
         if(a==='finish'){await transaction(s=>{const r=s.history.find(r=>r.id===id);if(r)r.finished=true;});refresh();if($('qa-live-modal').style.display==='flex')renderManager();if(activeQuestionId)openQuestion(activeQuestionId);return;}
-        if(a==='ask'||a==='continue'){
-            const r=await transaction(s=>{
+        if(a==='ask'||a==='continue'||a==='repeat'){
+            await transaction(s=>{
                 if(s.pending)throw Error('先回答或跳过 Ta 当前的问题吧。');
                 let depth=0,q;
                 if(a==='continue'){
                     const previous=s.history.find(r=>r.id===id);if(!previous||previous.depth>=2||previous.finished||!previous.followUpOffered)throw Error('这次先聊到这里吧。');
                     if(previous.continued)throw Error('这轮已经继续问过了，看看新问题吧。');
                     depth=previous.depth+1;q=pick(s);if(!q)throw Error('没有可用问题，去问题库开启一些吧。');previous.continued=true;
+                }else if(a==='repeat'){
+                    q=s.history.find(r=>r.id===id)?.question;
                 }else q=[...PRESETS,...s.questions].find(q=>q.id===qid);
                 if(!q)throw Error('找不到这道问题。');return copy(issue(s,q,Date.now(),depth));
-            });syncChat(r);refresh();locate();return;
+            });refresh();locate();return;
         }
     }
-    window.QALive={renderMessage,attachHome,open:()=>openManager().catch(safeError),handlesAuto:()=>!!state};
+    window.QALive={attachHome,open:()=>openManager().catch(safeError),handlesAuto:()=>!!state};
     const timer=setInterval(async()=>{
         if(started)return;
         try{getStorageKey('qaLiveData');if(!homeReady())return;started=true;mount();await transaction();await tick();refresh();clearInterval(timer);

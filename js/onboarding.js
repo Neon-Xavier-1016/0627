@@ -373,19 +373,13 @@ const tourSteps = [
     {
         element: '#message-input',
         title: "⌨️ 消息输入框",
-        content: "在这里<b>输入你想说的话</b>，按回车键或点击右边的发送按钮就能发出去。",
+        content: "在这里输入消息。电脑按<b>回车</b>发送，按 Shift + 回车换行。手机点键盘上的<b>发送</b>。",
         position: 'top'
     },
     {
-        element: '#send-btn',
-        title: "🚀 发送消息",
-        content: "点击这个<b>纸飞机按钮</b>就能发送消息。<br><br>发送后对方会在几秒内给你回复，你可以在「聊天设置」里调整回复的速度快慢哦。",
-        position: 'top'
-    },
-    {
-        element: '#attachment-btn',
-        title: "🖼️ 发送图片 / 表情包",
-        content: "点击这里可以<b>发送图片</b>，支持相册图片和表情包。<br><br>你还可以在「高级功能 → 回复库」中上传自定义的表情，到时候对方也会发给你！",
+        element: '#chat-media-toggle',
+        title: "聊天工具",
+        content: "点右边的加号可以发送图片、视频通话，也可以打开音乐播放器和抉择。",
         position: 'top'
     },
     {

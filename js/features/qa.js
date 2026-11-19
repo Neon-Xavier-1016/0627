@@ -1947,21 +1947,7 @@ setTimeout(() => {
             !!sv.slow?.currentPending ||
             !!sv.fast?.currentPending;
 
-        let dot = entry.querySelector('.qa-entry-dot');
         let spin = entry.querySelector('.qa-entry-spin');
-
-        if (hasDot) {
-            if (!dot) {
-                dot = document.createElement('span');
-                dot.className = 'qa-entry-dot';
-                dot.style.cssText = 'position:absolute;top:8px;right:12px;width:8px;height:8px;border-radius:50%;background:#ff4757;box-shadow:0 0 0 2px var(--secondary-bg);';
-                entry.style.position = 'relative';
-                entry.appendChild(dot);
-            }
-            dot.style.display = 'block';
-        } else if (dot) {
-            dot.style.display = 'none';
-        }
 
         if (hasSpin && !hasDot) {
             if (!spin) {

@@ -484,16 +484,18 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         if (!anchor) return;
         const btn = document.createElement('button');
         btn.id = 'call-toolbar-btn';
+        btn.type = 'button';
         btn.title = '视频通话';
+        btn.setAttribute('aria-label', '视频通话');
         btn.className = 'input-btn collapse-hideable';
         btn.style.display = S.enabled ? '' : 'none';
-        btn.innerHTML = '<i class="fas fa-video"></i>';
+        btn.innerHTML = '<i class="fas fa-video" aria-hidden="true"></i>';
         btn.addEventListener('click', () => {
             if (!S.enabled) return;
             if (S.active) { restoreWindow(); return; }
             startCall(false);
         });
-        anchor.parentNode.insertBefore(btn, anchor);
+        anchor.after(btn);
     }
 
     function fmt(ms) {
