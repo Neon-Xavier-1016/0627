@@ -1202,13 +1202,6 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
         }
     }
 
-    let messageHTML = '';
-    if (msg.replyTo) {
-        const repliedText = msg.replyTo.text || (msg.replyTo.image ? '🖼 图片' : '[消息]');
-        const repliedSender = msg.replyTo.sender === 'user' ? (settings.myName || '我') : (settings.partnerName || '对方');
-        messageHTML += `<div class="reply-indicator" data-reply-id="${msg.replyTo.id || ''}" style="cursor:pointer;display:flex;flex-direction:column;gap:2px;" onclick="scrollToQuotedMessage(this)"><span class="reply-indicator-sender" style="display:block;font-size:11px;line-height:1.2;">${repliedSender}</span><span class="reply-indicator-text" style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">${repliedText}</span></div>`;
-    }
-
         const isImageOnly = !msg.text && !!msg.image;
         let content = '';
         const __isVoiceMsg = (msg.type === 'voice' && msg.voiceId);
@@ -1227,7 +1220,6 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
                 content += `<img src="${msg.image}" class="message-image${isImageOnly ? ' message-image-only' : ''}" alt="图片" style="max-width:${imgMax}px !important; max-height:${imgMax}px !important; width:auto !important; height:auto !important; object-fit:contain !important; border-radius:12px;${!isImageOnly ? ' margin-top: 6px;' : ''} cursor:pointer;" onclick="viewImage('${msg.image}')">`;
             }
         }
-        messageHTML += content;
 
     const messageDiv = document.createElement('div');
     if (isImageOnly) {
@@ -1235,7 +1227,23 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
     } else {
         messageDiv.className = `message message-${msg.sender === 'user' ? 'sent' : 'received'} ${settings.bubbleStyle}`;
     }
-    messageDiv.innerHTML = messageHTML;
+    messageDiv.innerHTML = content;
+    if (msg.replyTo) {
+        const quote = document.createElement('div');
+        quote.className = 'reply-indicator';
+        quote.dataset.replyId = msg.replyTo.id ?? '';
+        quote.addEventListener('click', () => window.scrollToQuotedMessage(quote));
+
+        const sender = document.createElement('span');
+        sender.className = 'reply-indicator-sender';
+        sender.textContent = msg.replyTo.sender === 'user' ? (settings.myName || '我') : (settings.partnerName || '对方');
+
+        const excerpt = document.createElement('span');
+        excerpt.className = 'reply-indicator-text';
+        excerpt.textContent = msg.replyTo.text || (msg.replyTo.image ? '🖼 图片' : '[消息]');
+        quote.append(sender, excerpt);
+        messageDiv.prepend(quote);
+    }
 
    let actionsHTML = '';
    if (settings.replyEnabled) actionsHTML += `<button class="meta-action-btn reply-btn" title="回复"><i class="fas fa-reply"></i></button>`;
