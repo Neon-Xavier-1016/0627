@@ -428,7 +428,7 @@ const loadData = async () => {
         if (savedThemeSchemes) themeSchemes = savedThemeSchemes;
         try { const ce = await localforage.getItem(getStorageKey('customEmojis')); if (ce && Array.isArray(ce)) customEmojis = ce; } catch(e) {}
         window.dreamFreeReplies = Array.isArray(savedDreamFreeReplies) ? savedDreamFreeReplies : []; //新增
-        window.dreamFreeGroups = [];
+        window.dreamFreeGroups = Array.isArray(savedDreamFreeGroups) ? savedDreamFreeGroups : [];
         window._customReplies = customReplies;
         window._CONSTANTS = CONSTANTS;
 

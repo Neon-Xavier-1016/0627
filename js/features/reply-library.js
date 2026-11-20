@@ -1449,168 +1449,135 @@ function renderEmptyState(text) {
     </div>`;
 }
 
-function _showExportUI() {
-    // 读取公告数据（localStorage）
-    let _annCustomData = {};
-    let _annStatusPool = [];
-    try { _annCustomData = JSON.parse(localStorage.getItem('dg_custom_data') || '{}'); } catch(e) {}
-    try { _annStatusPool = JSON.parse(localStorage.getItem('dg_status_pool') || '[]'); } catch(e) {}
-    const _annTextCount = (_annCustomData.titles || []).length + (_annCustomData.notes || []).length;
-    const _annPoolCount = _annStatusPool.length;
-    const _annTotalCount = _annTextCount + _annPoolCount;
-
-    const modules = [
-        { id: '_re_replies',  icon: ICONS.comment,   label: '主字卡',        count: customReplies.length,                     key: 'customReplies' },
-        { id: '_re_pokes',    icon: ICONS.hand,      label: '拍一拍',        count: customPokes.length,                       key: 'customPokes' },
-        { id: '_re_statuses', icon: ICONS.dot,       label: '对方状态',      count: customStatuses.length,                    key: 'customStatuses' },
-        { id: '_re_mottos',   icon: ICONS.quote,     label: '顶部格言',      count: customMottos.length,                      key: 'customMottos' },
-        { id: '_re_intros',   icon: ICONS.play,      label: '开场动画',      count: customIntros.length,                      key: 'customIntros' },
-        { id: '_re_emojis',   icon: ICONS.smile,     label: 'Emoji 库',      count: customEmojis.length,                      key: 'customEmojis' },
-        { id: '_re_ann',      icon: ICONS.folderBig, label: '今日公告配置',  count: _annTotalCount,                           key: 'announcementConfig' },
-        { id: '_re_groups',   icon: ICONS.folderBig, label: '字卡分组',      count: (customReplyGroups||[]).length,            key: 'customReplyGroups',  extra: true },
-        { id: '_re_pokg',     icon: ICONS.folderBig, label: '拍一拍分组',    count: (window.customPokeGroups||[]).length,     key: 'customPokeGroups',   extra: true },
-        { id: '_re_statg',    icon: ICONS.folderBig, label: '对方状态分组',  count: (window.customStatusGroups||[]).length,   key: 'customStatusGroups', extra: true },
-        { id: '_re_qa', icon: ICONS.comment, label: 'Q&A 问题库', count: (typeof qaData !== 'undefined' && qaData?.questionLibrary || []).length, key: 'qaQuestionLibrary' },
-    ];
-
-    // 检测当前 tab 决定哪个分组有「按分组导出」选项
-    const replyGroupsExist  = customReplyGroups        && customReplyGroups.length > 0;
-    const pokeGroupsExist   = window.customPokeGroups  && window.customPokeGroups.length > 0;
-    const statusGroupsExist = window.customStatusGroups && window.customStatusGroups.length > 0;
-    const onAnnTab          = currentMajorTab === 'announcement';
-    const anyGroupExists    = replyGroupsExist || pokeGroupsExist || statusGroupsExist || onAnnTab;
-
-    // 根据当前 tab 决定「按分组导出」对应哪个类型
-    const onPokeTab   = currentMajorTab === 'atmosphere' && currentSubTab === 'pokes';
-    const onStatusTab = currentMajorTab === 'atmosphere' && currentSubTab === 'statuses';
-    let groupExportType = null;
-    if (onAnnTab)                          groupExportType = 'announcement';
-    if (onPokeTab   && pokeGroupsExist)    groupExportType = 'pokes';
-    if (onStatusTab && statusGroupsExist)  groupExportType = 'statuses';
-    // 只有在字卡 tab（非拍一拍/状态/公告 tab）时才 fallback 到字卡分组
-    if (!groupExportType && !onPokeTab && !onStatusTab && !onAnnTab && replyGroupsExist) groupExportType = 'replies';
-
-    const groupDescMap = {
-        replies:      '仅导出指定分组的字卡内容',
-        pokes:        '仅导出指定分组的拍一拍内容',
-        statuses:     '仅导出指定分组的对方状态内容',
-        announcement: '选择要导出的公告内容模块',
-    };
-
-    if (anyGroupExists) {
-        const overlay = _makeOverlay();
-        const panel = document.createElement('div');
-        panel.style.cssText = `
-            background:var(--secondary-bg);border-radius:22px;padding:24px;
-            width:92%;max-width:380px;
-            box-shadow:0 24px 80px rgba(0,0,0,.45);
-            animation:popIn 0.22s cubic-bezier(.34,1.56,.64,1);
-        `;
-        panel.innerHTML = `
-            <style>@keyframes popIn{from{opacity:0;transform:scale(.93)}to{opacity:1;transform:scale(1)}}</style>
-            <div style="font-size:16px;font-weight:700;color:var(--text-primary);margin-bottom:6px;display:flex;align-items:center;gap:8px;">
-                ${ICONS.export} 导出方式
-            </div>
-            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:18px;">请选择导出模式</div>
-            <div style="display:flex;flex-direction:column;gap:10px;">
-                <button id="_exp_all_btn" style="
-                    display:flex;align-items:center;gap:12px;padding:14px 16px;
-                    border:1.5px solid var(--border-color);border-radius:14px;
-                    background:var(--primary-bg);cursor:pointer;text-align:left;transition:border-color 0.15s;
-                ">
-                    <div style="width:38px;height:38px;border-radius:10px;background:rgba(var(--accent-color-rgb),0.12);display:flex;align-items:center;justify-content:center;color:var(--accent-color);flex-shrink:0;">${ICONS.export}</div>
-                    <div>
-                        <div style="font-size:13px;font-weight:600;color:var(--text-primary);">全量导出</div>
-                        <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">自由选择要导出的模块</div>
-                    </div>
-                </button>
-                ${groupExportType ? `
-                <button id="_exp_group_btn" style="
-                    display:flex;align-items:center;gap:12px;padding:14px 16px;
-                    border:1.5px solid var(--border-color);border-radius:14px;
-                    background:var(--primary-bg);cursor:pointer;text-align:left;transition:border-color 0.15s;
-                ">
-                    <div style="width:38px;height:38px;border-radius:10px;background:rgba(var(--accent-color-rgb),0.12);display:flex;align-items:center;justify-content:center;color:var(--accent-color);flex-shrink:0;">${ICONS.folderBig}</div>
-                    <div>
-                        <div style="font-size:13px;font-weight:600;color:var(--text-primary);">按分组导出</div>
-                        <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">${groupDescMap[groupExportType] || '仅导出指定分组内容'}</div>
-                    </div>
-                </button>` : ''}
-            </div>
-            <button id="_exp_cancel_btn" style="
-                width:100%;margin-top:14px;padding:12px;border:1.5px solid var(--border-color);
-                border-radius:13px;background:none;color:var(--text-secondary);
-                font-size:13px;cursor:pointer;font-family:var(--font-family);
-            ">取消</button>
-        `;
-        overlay.appendChild(panel);
-        document.body.appendChild(overlay);
-
-        panel.querySelector('#_exp_cancel_btn').onclick = () => overlay.remove();
-        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-
-        panel.querySelector('#_exp_all_btn').onclick = () => {
-            overlay.remove();
-            _showIOSheet('导出字卡', '选择要导出的模块', modules, ICONS.export, (selected) => {
-                if (!selected.length) { showNotification('请至少选择一项', 'error'); return; }
-                _doExport(selected);
-            });
-        };
-
-        const groupBtn = panel.querySelector('#_exp_group_btn');
-        if (groupBtn) {
-            groupBtn.onclick = () => {
-                overlay.remove();
-                if (groupExportType === 'announcement') {
-                    _showAnnouncementExportPicker();
-                } else {
-                    _showGroupExportPicker(groupExportType);
+function _libraryAssetModules() {
+    const lists = (existing, incoming, overwrite) => [...new Set([...(overwrite ? [] : existing), ...incoming])];
+    const stickers = values => values.filter(value => typeof value === 'string' &&
+        /^(?:data:image\/|https?:\/\/|(?:\.\/)?image\/)/i.test(value) && !/["'<>]/.test(value));
+    const imageModule = (key, owner, label) => ({
+        id: '_rl_' + key, key, label, icon: ICONS.folderBig, section: '形象库',
+        count: () => {
+            const pool = window.ImagePool?.getPool();
+            const prefix = owner === 'partner' ? 'partner' : 'my';
+            return (pool?.[prefix+'NamePool']?.length || 0) + (pool?.[prefix+'AvatarHashes']?.length || 0);
+        },
+        measure: data => (data?.names?.length || 0) + (data?.avatars?.length || 0),
+        read: () => window.ImagePool.exportLibrary(owner),
+        restore: (data, overwrite) => window.ImagePool.restoreLibrary(owner, data, overwrite)
+    });
+    const periodKeys = ['approaching','during','delayed'];
+    const period = () => window.periodCareMessages || {};
+    const periodCount = data => periodKeys.reduce((count,key) => count + (data[key]?.length || 0),0);
+    return [
+        {id:'_rl_partner_stickers', key:'stickerLibrary', label:'对方的表情库', icon:ICONS.smile, section:'表情与语音',
+            count:()=>stickerLibrary.length, measure:data=>data.length, read:()=>stickerLibrary,
+            restore:(data,overwrite)=>{stickerLibrary=lists(stickerLibrary,stickers(data),overwrite);window.stickerLibrary=stickerLibrary;}},
+        {id:'_rl_my_stickers', key:'myStickerLibrary', label:'我的表情库', icon:ICONS.smile, section:'表情与语音',
+            count:()=>window.myStickerLibrary.length, measure:data=>data.length, read:()=>window.myStickerLibrary,
+            restore:(data,overwrite)=>{window.myStickerLibrary=lists(window.myStickerLibrary,stickers(data),overwrite);}},
+        {id:'_rl_voice', key:'voiceLibrary', label:'语音库', icon:ICONS.play, section:'表情与语音',
+            count:()=>settings.voiceLibrary?.length || 0, measure:data=>data.length,
+            restore:(_,overwrite,zip)=>window.VoiceLibrary.restoreVoiceArchive(zip,overwrite)},
+        imageModule('partnerImageLibrary','partner','对方的头像和昵称'),
+        imageModule('myImageLibrary','me','我的头像和昵称'),
+        {id:'_rl_words', key:'dreamFreeLibrary', label:'组词库', icon:ICONS.comment, section:'回复库',
+            count:()=>window.dreamFreeReplies?.length || 0, measure:data=>data.items.length,
+            read:()=>({items:window.dreamFreeReplies||[],groups:window.dreamFreeGroups||[]}),
+            restore:(data,overwrite)=>{
+                window.dreamFreeReplies=lists(window.dreamFreeReplies||[],data.items,overwrite);
+                const groups=new Map((overwrite?[]:window.dreamFreeGroups||[]).map(group=>[group.name,group]));
+                for(const group of data.groups||[]){
+                    const previous=groups.get(group.name);
+                    groups.set(group.name,previous?{...previous,items:lists(previous.items||[],group.items||[],false)}:group);
                 }
-            };
-        }
-        return;
-    }
-
-    _showIOSheet('导出字卡', '选择要导出的模块', modules, ICONS.export, (selected) => {
-        if (!selected.length) { showNotification('请至少选择一项', 'error'); return; }
-        _doExport(selected);
-    });
+                window.dreamFreeGroups=[...groups.values()];
+            }},
+        {id:'_rl_period', key:'periodCareLibrary', label:'月经关怀文案', icon:ICONS.comment, section:'回复库',
+            count:()=>periodCount(period()), measure:periodCount, read:period,
+            restore:async(data,overwrite)=>{
+                const restored=Object.fromEntries(periodKeys.map(key=>[key,lists(period()[key]||[],data[key]||[],overwrite)]));
+                await localforage.setItem('periodCareMessages',restored);
+                window.periodCareMessages=restored;
+            }},
+        {id:'_rl_ann_images', key:'announcementImages', label:'公告背景图片', icon:ICONS.folderBig, section:'公告',
+            count:()=>['dg_header_bg','dg_overlay_bg'].filter(key=>localStorage.getItem(key)).length,
+            measure:data=>Object.values(data).filter(Boolean).length,
+            read:()=>({header:localStorage.getItem('dg_header_bg'),overlay:localStorage.getItem('dg_overlay_bg')}),
+            restore:(data,overwrite)=>{
+                for(const [prop,key] of [['header','dg_header_bg'],['overlay','dg_overlay_bg']]){
+                    if(!overwrite&&localStorage.getItem(key))continue;
+                    if(typeof data[prop]==='string'&&data[prop].startsWith('data:image/'))localStorage.setItem(key,data[prop]);
+                    else if(overwrite&&data[prop]===null)localStorage.removeItem(key);
+                }
+            }}
+    ];
 }
 
-function _doExport(selectedModules) {
-    if (selectedModules.some(m => m.key === 'qaQuestionLibrary') && (typeof qaData === 'undefined' || !qaData)) {
-        if (typeof showNotification === 'function') showNotification('Q&A 数据尚未加载，请稍后再试', 'warning');
-        return;
+function _showExportUI() {
+    const getAnnouncement=()=>{
+        let customData={},statusPool=[];
+        try{customData=JSON.parse(localStorage.getItem('dg_custom_data')||'{}')||{};}catch(e){}
+        try{statusPool=JSON.parse(localStorage.getItem('dg_status_pool')||'[]')||[];}catch(e){}
+        return {customData,statusPool};
+    };
+    const ann=getAnnouncement();
+    const assets=_libraryAssetModules();
+    const modules = [
+        {key:'customReplies', label:'主字卡', icon:ICONS.comment, section:'回复库', read:()=>customReplies},
+        {key:'customReplyGroups', label:'主字卡分组', icon:ICONS.folderBig, section:'回复库', read:()=>window.customReplyGroups||[]},
+        ...assets.filter(m=>m.section==='回复库'),
+        {key:'customEmojis', label:'Emoji 库', icon:ICONS.smile, section:'表情与语音', read:()=>customEmojis},
+        ...assets.filter(m=>m.section==='表情与语音'),
+        {key:'customPokes', label:'拍一拍', icon:ICONS.hand, section:'氛围感', read:()=>customPokes},
+        {key:'customPokeGroups', label:'拍一拍分组', icon:ICONS.folderBig, section:'氛围感', read:()=>window.customPokeGroups||[]},
+        {key:'customStatuses', label:'对方状态', icon:ICONS.dot, section:'氛围感', read:()=>customStatuses},
+        {key:'customStatusGroups', label:'对方状态分组', icon:ICONS.folderBig, section:'氛围感', read:()=>window.customStatusGroups||[]},
+        {key:'customMottos', label:'顶部格言', icon:ICONS.quote, section:'氛围感', read:()=>customMottos},
+        {key:'customIntros', label:'开场动画', icon:ICONS.play, section:'氛围感', read:()=>customIntros},
+        ...assets.filter(m=>m.section==='形象库'),
+        {key:'announcementConfig', label:'公告文案和状态库', icon:ICONS.folderBig, section:'公告',
+            count:()=>(ann.customData.titles||[]).length+(ann.customData.notes||[]).length+ann.statusPool.length, read:getAnnouncement},
+        ...assets.filter(m=>m.section==='公告')
+    ].map(m=>({...m,id:'_re_'+m.key,count:m.count?m.count():m.read().length}));
+
+    let groupPicker=null;
+    if(currentMajorTab==='announcement')groupPicker=_showAnnouncementExportPicker;
+    else {
+        const type=currentMajorTab==='atmosphere'&&currentSubTab==='pokes'?'pokes':
+            currentMajorTab==='atmosphere'&&currentSubTab==='statuses'?'statuses':'replies';
+        const groups={pokes:window.customPokeGroups,statuses:window.customStatusGroups,replies:window.customReplyGroups};
+        if(groups[type]?.length)groupPicker=()=>_showGroupExportPicker(type);
     }
-    const libraryData = { exportDate: new Date().toISOString(), modules: [] };
-    selectedModules.forEach(m => {
-        if (m.key === 'customReplies')         { libraryData.customReplies      = customReplies;                  libraryData.modules.push('replies'); }
-        else if (m.key === 'customPokes')      { libraryData.customPokes        = customPokes;                    libraryData.modules.push('pokes'); }
-        else if (m.key === 'customStatuses')   { libraryData.customStatuses     = customStatuses;                 libraryData.modules.push('statuses'); }
-        else if (m.key === 'customMottos')     { libraryData.customMottos       = customMottos;                   libraryData.modules.push('mottos'); }
-        else if (m.key === 'customIntros')     { libraryData.customIntros       = customIntros;                   libraryData.modules.push('intros'); }
-        else if (m.key === 'customEmojis')     { libraryData.customEmojis       = customEmojis;                   libraryData.modules.push('emojis'); }
-        else if (m.key === 'customReplyGroups')  { libraryData.customReplyGroups  = window.customReplyGroups  || []; libraryData.modules.push('groups'); }
-        else if (m.key === 'customPokeGroups')   { libraryData.customPokeGroups   = window.customPokeGroups   || []; libraryData.modules.push('pokeGroups'); }
-        else if (m.key === 'customStatusGroups') { libraryData.customStatusGroups = window.customStatusGroups || []; libraryData.modules.push('statusGroups'); }
-        else if (m.key === 'announcementConfig') {
-            let _acd = {}; let _asp = [];
-            try { _acd = JSON.parse(localStorage.getItem('dg_custom_data') || '{}'); } catch(e) {}
-            try { _asp = JSON.parse(localStorage.getItem('dg_status_pool') || '[]'); } catch(e) {}
-            libraryData.announcementConfig = { customData: _acd, statusPool: _asp };
-            libraryData.modules.push('announcementConfig');
-        }
-        else if (m.key === 'qaQuestionLibrary') {
-            if (typeof qaData !== 'undefined' && qaData && Array.isArray(qaData.questionLibrary)) {
-                libraryData.qaQuestionLibrary = qaData.questionLibrary;
-                libraryData.modules.push('qaQuestionLibrary');
-            }
-        }
-    });
-    const fileName = `reply-library-${libraryData.modules.join('+')}-${new Date().toISOString().slice(0,10)}.json`;
-    exportDataToMobileOrPC(JSON.stringify(libraryData, null, 2), fileName);
-    showNotification('✓ 字卡导出成功', 'success');
+    _showIOSheet('导出自定义回复','勾选要打包的内容',modules,ICONS.export,_doExport,false,groupPicker);
 }
+
+async function _doExport(selected) {
+    if(!selected.length){showNotification('请至少选择一项','error');return;}
+    const exportDate=new Date().toISOString();
+    const fileName='reply-library-'+exportDate.slice(0,10);
+    try {
+        const data={exportDate,modules:selected.map(m=>m.key)};
+        const includeVoice=selected.some(m=>m.key==='voiceLibrary'&&m.count>0);
+        const zip=includeVoice?new JSZip():null;
+        if(zip)showNotification('正在打包自定义回复和语音…','info');
+        await Promise.all(selected.map(async module=>{
+            if(module.key==='voiceLibrary'){
+                if(zip)data.voiceLibrary=await window.VoiceLibrary.writeVoiceArchive(zip);
+            }else data[module.key]=structuredClone(await module.read());
+        }));
+        if(zip){
+            zip.file('library.json',JSON.stringify(data));
+            const file=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:4}});
+            downloadFileFallback(file,fileName+'.zip');
+        }else{
+            exportDataToMobileOrPC(JSON.stringify(data),fileName+'.json');
+        }
+        showNotification('自定义回复已打包','success');
+    }catch(error){
+        console.error('自定义回复导出失败:',error);
+        showNotification('导出失败，请检查语音或图片是否仍可读取','error');
+    }
+}
+
 
 function _showGroupExportPicker(type) {
     // type: 'replies' | 'pokes' | 'statuses'
@@ -1786,7 +1753,7 @@ function _normalizeImportData(data) {
     if (!data || typeof data !== 'object') return data;
     const knownKeys = ['customReplies','customPokes','customStatuses','customMottos','customIntros','customEmojis',
                        'customReplyGroups','customPokeGroups','customStatusGroups','disabledDefaultReplies',
-                       'announcementConfig','announcementText','announcementStatusPool','qaQuestionLibrary'];
+                       'announcementConfig','announcementText','announcementStatusPool','qaQuestionLibrary', 'stickerLibrary','myStickerLibrary','partnerImageLibrary','myImageLibrary','voiceLibrary','dreamFreeLibrary','periodCareLibrary','announcementImages'];
     const hasNewFormat = knownKeys.some(k => data[k] !== undefined && data[k] !== null);
     if (hasNewFormat) return data;
     if (Array.isArray(data)) {
@@ -1795,11 +1762,11 @@ function _normalizeImportData(data) {
     return data;
 }
 
-function _showImportUI(data) {
+function _showImportUI(data, voiceZip = null) {
     const knownFields = ['customReplies','customPokes','customStatuses','customMottos','customIntros','customEmojis',
                          'customReplyGroups','customPokeGroups','customStatusGroups',
-                         'announcementConfig','announcementText','announcementStatusPool','qaQuestionLibrary'];
-    const hasValid = knownFields.some(f => data[f] !== undefined && data[f] !== null);
+                         'announcementConfig','announcementText','announcementStatusPool','qaQuestionLibrary', 'stickerLibrary','myStickerLibrary','partnerImageLibrary','myImageLibrary','voiceLibrary','dreamFreeLibrary','periodCareLibrary','announcementImages'];
+    const hasValid = data && knownFields.some(f => data[f] !== undefined && data[f] !== null);
     if (!hasValid) { showNotification('无效的字卡备份文件', 'error'); return; }
 
     // 计算公告模块的 displayCount
@@ -1825,14 +1792,18 @@ function _showImportUI(data) {
         { id: '_ri_groups',   icon: ICONS.folderBig, label: '字卡分组',      data: data.customReplyGroups,   key: 'customReplyGroups',  extra: true },
         { id: '_ri_pokg',     icon: ICONS.folderBig, label: '拍一拍分组',    data: data.customPokeGroups,    key: 'customPokeGroups',   extra: true },
         { id: '_ri_statg',    icon: ICONS.folderBig, label: '对方状态分组',  data: data.customStatusGroups,  key: 'customStatusGroups', extra: true },
-        { id: '_ri_qa', icon: ICONS.comment, label: 'Q&A 问题库', data: data.qaQuestionLibrary, key: 'qaQuestionLibrary' },
+        { id: '_ri_qa', icon: ICONS.comment, label: '旧版 Q&A 题库', data: data.qaQuestionLibrary, key: 'qaQuestionLibrary' },
+        ..._libraryAssetModules().filter(m => m.key !== 'voiceLibrary' || voiceZip).map(m => ({...m, data: data[m.key], displayCount: data[m.key] == null ? undefined : m.measure(data[m.key])})),
     ].filter(m => m.data !== undefined && m.data !== null && (Array.isArray(m.data) ? m.data.length > 0 && m.data[0] !== undefined : true));
 
-    _showIOSheet(`导入字卡`, `文件中包含 ${modules.length} 个模块`, modules, ICONS.import, (selected, mode) => {
+    _showIOSheet('导入自定义回复', `文件中包含 ${modules.length} 个模块`, modules, ICONS.import, async (selected, mode) => {
         if (!selected.length) { showNotification('请至少选择一项', 'error'); return; }
         try {
             const overwrite = mode === 'overwrite';
             let totalAdded = 0;
+            for(const module of selected) {
+                if(module.restore) totalAdded += await module.restore(module.data, overwrite, voiceZip) || 0;
+            }
             if (overwrite) {
                 selected.forEach(m => {
                     if (m.key === 'customReplies')         { customReplies               = data.customReplies;       totalAdded += data.customReplies.length; }
@@ -1948,17 +1919,16 @@ function _showImportUI(data) {
             if (typeof window.renderAnnStatusPool === 'function') window.renderAnnStatusPool();
             showNotification(`✓ 导入成功（${overwrite ? '覆盖' : '追加'}）${totalAdded > 0 ? `，共 ${totalAdded} 条` : ''}`, 'success', 3000);
         } catch (err) {
-            console.error('字卡导入失败:', err);
-            showNotification('导入过程中发生错误：' + err.message, 'error');
+            console.error('自定义回复导入失败:', err);
+            showNotification('导入未完成，请检查文件或可用存储空间', 'error');
         }
     }, true);
 }
 
-function _showIOSheet(title, subtitle, modules, icon, onConfirm, showMode = false) {
+function _showIOSheet(title, subtitle, modules, icon, onConfirm, showMode = false, onGroup = null) {
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.6);backdrop-filter:blur(10px);display:flex;align-items:flex-end;justify-content:center;animation:fadeIn 0.2s ease;';
 
-    let modeVal = 'merge';
 
     overlay.innerHTML = `
         <style>
@@ -1984,8 +1954,11 @@ function _showIOSheet(title, subtitle, modules, icon, onConfirm, showMode = fals
                 border-radius:50%;background:#fff;transition:transform 0.2s;
                 transform:translateX(18px);box-shadow:0 1px 3px rgba(0,0,0,.2);
             }
-            .io-toggle.off { background:var(--border-color); }
-            .io-toggle.off .knob { transform:translateX(0); }
+            .io-section{padding:6px 2px 2px;color:var(--text-secondary);font-size:12px;font-weight:600}
+            .io-checkbox{position:absolute;opacity:0;width:1px;height:1px}
+            .io-checkbox:not(:checked)+.io-toggle{background:var(--border-color)}
+            .io-checkbox:not(:checked)+.io-toggle .knob{transform:translateX(0)}
+            .io-checkbox:focus-visible+.io-toggle{outline:2px solid var(--accent-color);outline-offset:3px}
         </style>
         <div style="
             background:var(--secondary-bg);border-radius:24px 24px 0 0;
@@ -2007,18 +1980,21 @@ function _showIOSheet(title, subtitle, modules, icon, onConfirm, showMode = fals
                 </button>
             </div>
             <div style="overflow-y:auto;padding:8px 22px;display:flex;flex-direction:column;gap:7px;flex:1;">
-                ${modules.map(m => `
-                    <div class="io-module-row">
+                ${modules.map((m,i) => `
+                    ${m.section && m.section!==modules[i-1]?.section?`<div class="io-section">${m.section}</div>`:''}
+                    <label class="io-module-row">
                         <div class="io-icon-box">${m.icon}</div>
                         <div style="flex:1;">
                             <div style="font-size:13px;font-weight:600;color:var(--text-primary);">${m.label}</div>
                             <div style="font-size:11px;color:var(--text-secondary);">${m.displayCount !== undefined ? m.displayCount : (m.data ? m.data.length : m.count)} 条${m.extra ? ' · 含分组结构' : ''}</div>
                         </div>
-                        <div class="io-toggle" data-id="${m.id}"><div class="knob"></div></div>
-                        <input type="checkbox" id="${m.id}" checked style="display:none;">
-                    </div>
+                        <input class="io-checkbox" type="checkbox" id="${m.id}" checked>
+                        <span class="io-toggle" aria-hidden="true"><span class="knob"></span></span>
+                    </label>
                 `).join('')}
             </div>
+            ${!showMode ? '<div style="display:flex;gap:8px;padding:4px 22px"><button type="button" id="_io_select_all" class="modal-btn modal-btn-secondary">全选</button><button type="button" id="_io_select_none" class="modal-btn modal-btn-secondary">清空选择</button></div>' : ''}
+            ${onGroup ? '<button type="button" id="_io_groups" class="modal-btn modal-btn-secondary" style="margin:8px 22px">按现有分组导出</button>' : ''}
             ${showMode ? `
             <div style="padding:8px 22px;flex-shrink:0;">
                 <div style="display:flex;align-items:center;gap:8px;padding:11px 14px;border-radius:13px;background:var(--primary-bg);border:1.5px solid var(--border-color);">
@@ -2044,21 +2020,17 @@ function _showIOSheet(title, subtitle, modules, icon, onConfirm, showMode = fals
     `;
     document.body.appendChild(overlay);
 
-    overlay.querySelectorAll('.io-toggle').forEach(sw => {
-        sw.onclick = () => {
-            const cb = document.getElementById(sw.dataset.id);
-            cb.checked = !cb.checked;
-            sw.classList.toggle('off', !cb.checked);
-        };
-    });
-
+    const selectAll=checked=>overlay.querySelectorAll('.io-checkbox').forEach(input=>{input.checked=checked;});
+    overlay.querySelector('#_io_select_all')?.addEventListener('click',()=>selectAll(true));
+    overlay.querySelector('#_io_select_none')?.addEventListener('click',()=>selectAll(false));
     const close = () => { overlay.style.animation = 'fadeOut 0.15s ease forwards'; setTimeout(() => overlay.remove(), 150); };
     overlay.querySelector('#_io_close').onclick = close;
     overlay.querySelector('#_io_cancel').onclick = close;
+    if(onGroup)overlay.querySelector('#_io_groups').onclick=()=>{overlay.remove();onGroup();};
     overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
 
     overlay.querySelector('#_io_confirm').onclick = () => {
-        const selected = modules.filter(m => document.getElementById(m.id)?.checked);
+        const selected = modules.filter(m => overlay.querySelector('#'+m.id)?.checked);
         const mode = showMode ? (document.getElementById('_io_overwrite')?.checked ? 'overwrite' : 'merge') : 'export';
         close();
         onConfirm(selected, mode);
@@ -2351,27 +2323,29 @@ function initReplyLibraryListeners() {
     const importInput = document.getElementById('import-replies-input');
     if (importInput && !importInput._bound) {
         importInput._bound = true;
-        importInput.addEventListener('change', e => {
+        importInput.addEventListener('change', async e => {
             const file = e.target.files[0];
-            if (!file) return;
             e.target.value = '';
-            if (file.size > 50 * 1024 * 1024) { showNotification('文件过大', 'error'); return; }
-            const reader = new FileReader();
-            reader.onload = ev => {
-                let data;
-                try {
-                    data = _parseFlexibleJSON(ev.target.result);
-                } catch {
-                    showNotification('文件解析失败，请检查文件格式', 'error');
-                    return;
+            if (!file) return;
+            try {
+                if (/\.zip$/i.test(file.name)) {
+                    const zip = await JSZip.loadAsync(file);
+                    const library=zip.file('library.json');
+                    if(library)_showImportUI(_normalizeImportData(_parseFlexibleJSON(await library.async('string'))),zip);
+                    else {
+                        await window.VoiceLibrary.importVoiceLibrary(file);
+                        renderReplyLibrary();
+                    }
+                } else {
+                    _showImportUI(_normalizeImportData(_parseFlexibleJSON(await file.text())));
                 }
-                data = _normalizeImportData(data);
-                _showImportUI(data);
-            };
-            reader.onerror = () => showNotification('文件读取失败', 'error');
-            reader.readAsText(file, 'UTF-8');
+            } catch (error) {
+                console.error('无法读取自定义回复备份:',error);
+                showNotification('文件读取失败，请检查备份格式','error');
+            }
         });
     }
+
 
     const addBtn = document.getElementById('add-custom-reply');
     if (addBtn) {

@@ -70,6 +70,11 @@
         if(!pool(s).some(q=>q.id===s.next.question.id)){arm(s,now);return null;}
         const r=issue(s,s.next.question,s.next.at);s.dailyCount++;return r;
     }
+    async function legacyQuestionTexts(){
+        const legacy=await localforage.getItem(getStorageKey('qaData'));
+        const old=legacy?.questionLibrary;
+        return Array.isArray(old)?[...new Set(old.filter(q=>typeof q==='string').map(q=>q.trim()).filter(Boolean))]:[];
+    }
     function transaction(change) {
         const task=serial.then(async()=>{
             const nextKey=getStorageKey('qaLiveData');
@@ -80,9 +85,10 @@
             }
             const next=copy(base);
             if(!next.migrated){
-                const legacy=await localforage.getItem(getStorageKey('qaData'));
-                const old=legacy?.questionLibrary||[];
-                [...new Set(old.filter(q=>typeof q==='string'&&q.trim()))].forEach(q=>next.questions.push(text(uid(),'daily',q.trim())));
+                const known=new Set([...PRESETS,...next.questions].map(q=>q.text));
+                for(const question of await legacyQuestionTexts()){
+                    if(!known.has(question))next.questions.push(text(uid(),'daily',question));
+                }
                 next.migrated=true;
             }
             const result=change?change(next):null;
@@ -258,7 +264,7 @@
         const button=document.createElement('button');button.id='qa-live-home';button.type='button';button.textContent='💭 主动问答 · 问题库与记录';
         button.onclick=()=>openManager().catch(safeError);content.querySelector('.qa-home-grid')?.before(button);
     }
-    async function openManager(){mount();await transaction();editing=null;renderManager();showModal($('qa-live-modal'));}
+    async function openManager(view=tab){mount();await transaction();tab=view;editing=null;renderManager();showModal($('qa-live-modal'));}
     function renderEditor(){
         const q=editing==='new'?text('','daily',''):state.questions.find(q=>q.id===editing);if(!q){editing=null;return renderManager();}
         $('qa-live-body').innerHTML=`<button data-ql="editor-back">← 返回问题库</button><label>问题内容<input id="ql-edit-text" type="text" maxlength="300" value="${esc(q.text)}"></label><label>分类<select id="ql-edit-cat">${Object.entries(CATEGORIES).map(([k,v])=>`<option value="${k}" ${q.cat===k?'selected':''}>${v}</option>`).join('')}</select></label><label>题型<select id="ql-edit-type"><option value="text" ${q.type==='text'?'selected':''}>自由文字回答</option><option value="choice" ${q.type==='choice'?'selected':''}>单选 · 2～4 项</option></select></label><label>选择题选项（文字题可留空）<textarea id="ql-edit-options" maxlength="4000" placeholder="每行：选项 | Ta 的回应（回应可不填）">${esc((q.options||[]).map(o=>o.text+' | '+(o.reply||'')).join('\n'))}</textarea></label><div class="ql-muted">例如：一起发呆 | 那就一起安静待着。<br>文字题继续从现有字卡库抽回应。</div><div class="ql-actions"><button data-ql="save-question">保存问题</button></div>`;
@@ -275,7 +281,7 @@
             html+='<div class="ql-muted">保留最近 25 次互动；收藏的是问题，保存在问题库中。</div><div class="ql-actions"><button data-ql="legacy">查看早期问答与未完成回应</button></div>';
             html+=s.history.length?s.history.map(r=>`<div class="ql-item">${cardHTML(r)}</div>`).join(''):'<p class="ql-muted">还没有互动记录。等 Ta 来找你，或挑一道喜欢的问题开始。</p>';
         }else{
-            if(tab==='custom')html+='<div class="ql-actions"><button data-ql="new">＋ 添加问题</button><button data-ql="import">批量导入文字题</button></div><div class="ql-muted">已有 Q&A 问题已复制到这里，旧问题库仍保留。</div>';
+            if(tab==='custom')html+='<div class="ql-actions"><button data-ql="new">＋ 添加问题</button><button data-ql="import">批量导入文字题</button></div>';
             const all=tab==='system'?PRESETS:tab==='custom'?s.questions:[...PRESETS,...s.questions].filter(q=>s.favorites.includes(q.id));
             html+=all.length?all.map(q=>`<div class="ql-item"><div class="ql-muted">${esc(CATEGORIES[q.cat]||'日常')} · ${q.type==='choice'?'单选':'文字题'}${s.disabled.includes(q.id)?' · 已停用':''}${!s.settings.categories.includes(q.cat)?' · 分类未开启':''}</div><p>${esc(q.text)}</p>${q.type==='choice'?`<div class="ql-muted">${q.options.map(o=>esc(o.text)).join(' / ')}</div>`:''}<div class="ql-actions"><button data-ql="ask" data-question="${q.id}">聊这题</button><button data-ql="favorite" data-question="${q.id}">${s.favorites.includes(q.id)?'★ 已收藏':'☆ 收藏'}</button><button data-ql="toggle" data-question="${q.id}">${s.disabled.includes(q.id)?'启用':'停用'}</button>${s.questions.some(x=>x.id===q.id)?`<button data-ql="edit" data-question="${q.id}">编辑</button><button data-ql="delete" data-question="${q.id}">删除</button>`:''}</div></div>`).join(''):'<p class="ql-muted">这里还没有问题。</p>';
         }
@@ -324,7 +330,18 @@
         if(a==='new'||a==='edit'){editing=a==='new'?'new':qid;renderManager();return;}
         if(a==='editor-back'){editing=null;renderManager();return;}
         if(a==='import'){
-            $('qa-live-body').innerHTML='<button data-ql="editor-back">← 返回</button><label>每行一道文字题<textarea id="ql-import" maxlength="50000" placeholder="今天有什么开心的小事？\n最近想去哪走走？"></textarea></label><button data-ql="save-import">导入</button>';return;
+            $('qa-live-body').innerHTML='<button data-ql="editor-back">← 返回</button><label>每行一道文字题<textarea id="ql-import" maxlength="50000" placeholder="今天有什么开心的小事？\n最近想去哪走走？"></textarea></label><div class="ql-actions"><button data-ql="save-import">导入</button><button data-ql="prefill-legacy">带入旧题库</button></div>';return;
+        }
+        if(a==='prefill-legacy'){
+            const input=$('ql-import');
+            const legacy=await legacyQuestionTexts();
+            if(!input.isConnected)return;
+            const known=new Set([...PRESETS,...state.questions].map(q=>q.text));
+            for(const line of input.value.split(/\r?\n/))known.add(line.trim());
+            const missing=legacy.filter(q=>!known.has(q));
+            if(!missing.length){say('没有尚未列出的旧题目。');return;}
+            input.value=[input.value.trimEnd(),...missing].filter(Boolean).join('\n');
+            input.focus();return;
         }
         if(a==='save-import'){
             const lines=$('ql-import').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);if(!lines.length)throw Error('每行写一道问题。');
@@ -373,7 +390,7 @@
             });refresh();locate();return;
         }
     }
-    window.QALive={attachHome,open:()=>openManager().catch(safeError),handlesAuto:()=>!!state};
+    window.QALive={attachHome,open:view=>openManager(view).catch(safeError),handlesAuto:()=>!!state};
     const timer=setInterval(async()=>{
         if(started)return;
         try{getStorageKey('qaLiveData');if(!homeReady())return;started=true;mount();await transaction();await tick();refresh();clearInterval(timer);

@@ -3,7 +3,7 @@
  'use strict';
  const $=id=>document.getElementById(id);
  const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
- let ready=false,page='home',config={},storageKey='',unread=[],appPage=0,apps=[],activeNote=null,noteTimer=null,writing=Promise.resolve();
+ let ready=false,page='home',config={},storageKey='',unread=[],activeNote=null,noteTimer=null,writing=Promise.resolve();
  const earlyMessages=[];
  const noteQueue=[];
  const noteEnterMs=280,noteHoldMs=5000,noteExitMs=240;
@@ -149,7 +149,40 @@
   const now=new Date();$('hs-clock').textContent=now.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false});$('hs-date').textContent=now.toLocaleDateString('zh-CN',{month:'long',day:'numeric',weekday:'long'});
   if($('theme-toggle'))$('theme-toggle').setAttribute('aria-pressed',String(!!s.isDarkMode));
  }
- function showApps(){apps.forEach((a,i)=>a.hidden=Math.floor(i/8)!==appPage);$('hs-app-pages').innerHTML=Array.from({length:Math.ceil(apps.length/8)},(_,i)=>`<button data-hs-app-page="${i}" aria-label="第 ${i+1} 页功能" aria-pressed="${i===appPage}"></button>`).join('');}
+ function setupAppPages(apps){
+  const viewport=$('hs-apps'),indicators=$('hs-app-pages');
+  const pageSize=8,pages=[],dots=[];
+  for(let offset=0;offset<apps.length;offset+=pageSize){
+   const grid=document.createElement('div');
+   grid.className='hs-app-grid';
+   grid.append(...apps.slice(offset,offset+pageSize));
+   viewport.append(grid);
+   pages.push(grid);
+
+   const dot=document.createElement('button');
+   dot.type='button';
+   dot.setAttribute('aria-label','第 '+pages.length+' 页功能');
+   dot.addEventListener('click',()=>{
+    const reduceMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    viewport.scrollTo({left:grid.offsetLeft,behavior:reduceMotion?'instant':'smooth'});
+   });
+   indicators.append(dot);
+   dots.push(dot);
+  }
+  let current=-1;
+  function syncPage(){
+   if(!viewport.clientWidth&&current>=0)return;
+   const index=Math.min(pages.length-1,Math.max(0,Math.round(viewport.scrollLeft/(viewport.clientWidth||1))));
+   if(current===index)return;
+   current=index;
+   dots.forEach((dot,i)=>{
+    dot.setAttribute('aria-pressed',String(i===index));
+    pages[i].inert=i!==index;
+   });
+  }
+  viewport.addEventListener('scroll',syncPage,{passive:true});
+  syncPage();
+ }
  function onMessage(m,atBottom=bottom()){
   if(!ready){if(incoming(m))earlyMessages.push(m);return;}update();if(!incoming(m))return;
   const wasVisible=page==='chat'&&atBottom&&!document.hidden&&!modalOpen();
@@ -256,12 +289,15 @@
   #hs-settings .settings-grid>.settings-card{flex:0 0 64px;height:64px;min-height:64px;max-height:64px;aspect-ratio:auto;padding:16px 4px!important}#hs-settings .settings-grid>.settings-card>span{text-align:left;flex:1}#hs-settings .settings-grid>.settings-card::after{flex:0 0 auto}
   #data-modal.hs-settings-detail{position:fixed!important;inset:0!important;align-items:stretch!important;justify-content:stretch!important;height:100vh!important;height:100dvh!important;width:100%!important;padding:0!important}#data-modal.hs-settings-detail>.modal-content{position:relative!important;display:flex!important;flex-direction:column!important;height:100%!important;max-height:100%!important;min-height:0!important;width:100%!important;max-width:none!important;margin:0!important;border:0!important;border-radius:0!important;box-shadow:none!important;padding:0!important;animation:none!important;transform:none!important;overflow:hidden!important}#data-modal.hs-settings-detail .dm-topbar{padding:env(safe-area-inset-top) 12px 0;min-height:52px;box-sizing:content-box;flex:0 0 auto;position:relative;top:auto;background:var(--primary-bg)}#data-modal.hs-settings-detail .dm-topbar-back{border:0;border-radius:0;background:transparent;color:var(--accent-color);height:42px;width:38px}#data-modal.hs-settings-detail .dm-body{flex:1 1 0;min-height:0;overflow-y:auto}#data-modal.hs-settings-detail .dm-topbar-close{display:none!important}#chat-modal.hs-settings-detail>.modal-content>.hs-setting-top{padding-left:12px;padding-right:12px;margin-bottom:0}
   .hs-page{position:absolute;inset:0 0 var(--hs-nav-height);overflow-y:auto;overscroll-behavior:contain;background:var(--primary-bg);color:var(--text-primary);padding:26px 20px 24px;box-sizing:border-box;z-index:10}.hs-page[hidden]{display:none!important}.hs-content{max-width:650px;margin:0 auto}
-  #hs-relation{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:10px;width:100%;padding:20px 16px;border-radius:24px;border:1px solid rgba(var(--accent-color-rgb),.1);background:linear-gradient(155deg,rgba(var(--accent-color-rgb),.08),var(--secondary-bg));background-size:cover;background-position:center;text-align:center;color:var(--text-primary);box-shadow:0 15px 35px rgba(var(--accent-color-rgb),.07);cursor:pointer;font:inherit;min-height:210px}
+  #hs-relation{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:10px;width:100%;padding:20px 16px;border-radius:24px;border:1px solid rgba(var(--accent-color-rgb),.1);background:linear-gradient(155deg,rgba(var(--accent-color-rgb),.08),var(--secondary-bg));background-size:cover;background-position:center;background-origin:border-box;background-clip:border-box;background-repeat:no-repeat;text-align:center;color:var(--text-primary);box-shadow:0 15px 35px rgba(var(--accent-color-rgb),.07);cursor:pointer;font:inherit;min-height:210px}
   .hs-avatars{display:flex;justify-content:center}.hs-avatar{height:54px;width:54px;display:grid;place-items:center;border-radius:50%;background:var(--secondary-bg);border:4px solid var(--secondary-bg);overflow:hidden;box-shadow:0 5px 15px #0001}.hs-avatar+ .hs-avatar{margin-left:-10px}.hs-avatar img{width:100%;height:100%;object-fit:cover}.hs-avatar i{font-size:25px;color:var(--accent-color)}#hs-names{display:block;font-size:15px;font-weight:500;letter-spacing:1px}#hs-days{display:block;font-size:20px;line-height:1.6;font-weight:600;margin:2px 0 5px}#hs-countdown,#hs-motto{display:block;font-size:11px;line-height:1.8;color:var(--text-secondary)}#hs-motto{margin-top:8px} #hs-relation.hs-relation-simple .hs-avatar{width:70px;height:70px} #hs-relation.hs-relation-simple .hs-avatar i{font-size:30px}
   .hs-time{text-align:center;margin:22px 0 18px}#hs-clock{font-size:34px;letter-spacing:3px;line-height:1.3}#hs-date{font-size:12px;color:var(--text-secondary)}#hs-preview{width:100%;display:flex;gap:12px;align-items:center;border:1px solid var(--border-color);border-radius:20px;background:var(--secondary-bg);color:var(--text-primary);padding:15px;text-align:left;font:inherit;cursor:pointer}.hs-preview-copy{flex:1;min-width:0}#hs-preview-name{display:block;font-size:14px}#hs-preview-text{display:block;color:var(--text-secondary);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px}#hs-preview-time{font-size:11px;color:var(--text-secondary)}.hs-badge{background:#e66b7c;color:#fff;border-radius:12px;padding:1px 6px;font-size:10px}.hs-badge[hidden]{display:none!important}
   body.hs-enabled .header .header-actions{display:none!important}
-  #hs-apps .hs-shortcut-icon{width:52px;height:52px;display:grid;place-items:center;padding:0;border:0;border-radius:18px;background:var(--secondary-bg);color:var(--accent-color);font-size:21px;margin:0;box-shadow:0 5px 18px rgba(var(--accent-color-rgb),.05);cursor:pointer}#hs-apps .hs-shortcut-icon i{font-size:21px;margin:0}#hs-settings .hs-shortcut-icon{border:0;background:transparent;color:var(--accent-color);padding:0;font:inherit;cursor:pointer}#hs-settings .hs-shortcut-icon i{font-size:24px}#hs-settings #hs-shortcut-session-manager-btn{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:0;cursor:pointer}
-  #hs-apps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px 7px;margin-top:24px}#hs-apps>.settings-item{border:0;background:none;display:flex;flex-direction:column;text-align:center;gap:8px;margin:0;padding:8px 1px;min-width:0;position:relative;box-shadow:none}#hs-apps>.settings-item>i{width:52px;height:52px;display:grid;place-items:center;border-radius:18px;background:var(--secondary-bg);color:var(--accent-color);font-size:21px;margin:0;box-shadow:0 5px 18px rgba(var(--accent-color-rgb),.05)}#hs-apps>.settings-item>span:not(.env-badge){font-size:11px;line-height:1.5;color:var(--text-secondary)}#hs-apps>[hidden]{display:none!important}#hs-apps .env-badge{right:8px!important;top:3px!important}#hs-app-pages{display:flex;justify-content:center;gap:8px;margin:20px 0}#hs-app-pages button{width:7px;height:7px;border:0;border-radius:6px;padding:0;background:var(--border-color)}#hs-app-pages button[aria-pressed=true]{width:24px;background:var(--accent-color)}
+  #hs-apps .hs-shortcut-icon{width:52px;height:52px;display:grid;place-items:center;padding:0;border:0;border-radius:18px;background:var(--secondary-bg);color:var(--accent-color);font-size:21px;margin:0;box-shadow:0 5px 18px rgba(var(--accent-color-rgb),.05);cursor:pointer}#hs-apps .hs-shortcut-icon i{width:auto;height:auto;border-radius:0;background:transparent;color:inherit;transform:none;font-size:21px;margin:0}#hs-settings .hs-shortcut-icon{border:0;background:transparent;color:var(--accent-color);padding:0;font:inherit;cursor:pointer}#hs-settings .hs-shortcut-icon i{font-size:24px}#hs-settings #hs-shortcut-session-manager-btn{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:0;cursor:pointer}
+  #hs-apps{display:flex;position:relative;margin-top:24px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;overscroll-behavior-x:contain;scrollbar-width:none}
+  #hs-apps::-webkit-scrollbar{display:none}
+  .hs-app-grid{display:grid;flex:0 0 100%;min-width:0;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px 7px;align-content:start;scroll-snap-align:start;scroll-snap-stop:always}
+  .hs-app-grid>.settings-item{border:0;background:none;display:flex;flex-direction:column;text-align:center;gap:8px;margin:0;padding:8px 1px;min-width:0;position:relative;box-shadow:none}.hs-app-grid>.settings-item>i{width:52px;height:52px;display:grid;place-items:center;border-radius:18px;background:var(--secondary-bg);color:var(--accent-color);font-size:21px;margin:0;box-shadow:0 5px 18px rgba(var(--accent-color-rgb),.05)}.hs-app-grid>.settings-item>span:not(.env-badge){font-size:11px;line-height:1.5;color:var(--text-secondary)}#hs-apps .env-badge{right:8px!important;top:3px!important}#hs-app-pages{display:flex;justify-content:center;gap:8px;margin:20px 0}#hs-app-pages button{width:7px;height:7px;border:0;border-radius:6px;padding:0;background:var(--border-color)}#hs-app-pages button[aria-pressed=true]{width:24px;background:var(--accent-color)}
   #hs-nav{position:fixed;bottom:0;left:0;right:0;z-index:1200;height:var(--hs-nav-height);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box;background:var(--secondary-bg);border-top:1px solid var(--border-color);display:flex;justify-content:center}#hs-nav button{flex:1;max-width:230px;border:0;background:none;font:inherit;color:var(--text-secondary);display:flex;flex-direction:column;justify-content:center;align-items:center;gap:4px;font-size:10px;position:relative;cursor:pointer}#hs-nav i{font-size:21px}#hs-nav [aria-current=page]{color:var(--accent-color)}#hs-nav .hs-badge{position:absolute;top:4px;left:calc(50% + 9px)}
   #hs-settings>.modal-content{max-width:650px;width:100%;margin:0 auto;max-height:none;padding:0;border:0;box-shadow:none;background:none;overflow:visible;opacity:1!important;transform:none!important}#hs-settings .modal-title{margin:12px 0 25px}#hs-settings #cancel-settings{display:none}#hs-settings .settings-grid{gap:14px}#hs-settings .settings-card{border-radius:20px;padding:22px 12px}.hs-page button:focus-visible,#hs-nav button:focus-visible{outline:2px solid var(--accent-color);outline-offset:3px}
   #hs-banner{position:fixed;top:max(14px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:92%;max-width:430px;z-index:8200;display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--secondary-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:20px;box-shadow:0 8px 28px #0002;text-align:left;font:inherit;cursor:pointer}
@@ -284,8 +320,8 @@
   const settingPage=document.createElement('section');settingPage.id='hs-settings';settingPage.className='hs-page';settingPage.hidden=true;settingPage.setAttribute('aria-label','设置');
   document.body.append(home,settingPage);
   const content=$('settings-modal')?.querySelector('.modal-content');if(content)settingPage.appendChild(content);
-  apps=[...document.querySelectorAll('#advanced-modal .settings-item-list > .settings-item')];
-  for(const a of apps){a.setAttribute('role','button');a.tabIndex=0;a.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();a.click();}});$('hs-apps').appendChild(a);}
+  let apps=[...document.querySelectorAll('#advanced-modal .settings-item-list > .settings-item')];
+  for(const a of apps){a.setAttribute('role','button');a.tabIndex=0;a.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();a.click();}});}
   const moments=document.createElement('div');moments.id='hs-moments-entry';moments.className='settings-item';moments.tabIndex=0;moments.setAttribute('role','button');moments.innerHTML='<i class="fas fa-images"></i><span>朋友圈</span>';moments.onclick=()=>$('moments-entry-btn')?.click();moments.onkeydown=e=>{if(e.key==='Enter')moments.click();};apps.unshift(moments);
   const library=$('custom-replies-function');if(library){library.className='settings-card';settingPage.querySelector('.settings-grid')?.appendChild(library);apps=apps.filter(a=>a!==library);}
   // 直接移动原按钮，保留原监听器及其他模块缓存的 DOM 引用。
@@ -298,12 +334,12 @@
    if(target==='settings')settingPage.querySelector('.settings-grid')?.appendChild(tile);else apps.push(tile);
    return tile;
   }
-  moveShortcut('theme-toggle','深夜模式','home');
+  moveShortcut('theme-toggle','昼夜模式','home');
   moveShortcut('what-are-you-doing-btn','你在干嘛','home');
   moveShortcut('daily-greeting-btn','今日公告','home');
   moveShortcut('session-manager-btn','会话管理','settings');
   const order=['hs-shortcut-theme-toggle','hs-shortcut-daily-greeting-btn','hs-shortcut-what-are-you-doing-btn','anniversary-function','mood-function','qa-function','envelope-function','incoming-letter-function','decision-helper-function','message-cards-function','hs-moments-entry'];
-  apps.sort((a,b)=>(order.includes(a.id)?order.indexOf(a.id):100)-(order.includes(b.id)?order.indexOf(b.id):100));apps.forEach(a=>$('hs-apps').appendChild(a));
+  apps.sort((a,b)=>(order.includes(a.id)?order.indexOf(a.id):100)-(order.includes(b.id)?order.indexOf(b.id):100));setupAppPages(apps);
   const nav=document.createElement('nav');nav.id='hs-nav';nav.setAttribute('aria-label','主导航');nav.innerHTML=`<button data-hs-page="home"><i class="fas fa-home"></i><span>首页</span></button><button data-hs-page="chat"><i class="far fa-comment-dots"></i><span>聊天</span><span class="hs-badge" id="hs-chat-badge" hidden></span></button><button data-hs-page="settings"><i class="fas fa-cog"></i><span>设置</span></button>`;document.body.appendChild(nav);
   const toolbar=document.createElement('div');toolbar.id='hs-chat-toolbar';toolbar.hidden=true;
   toolbar.innerHTML='<button id="hs-chat-back" type="button" aria-label="返回首页" title="返回首页"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14.5 5-7 7 7 7"/></svg></button>';
@@ -312,7 +348,6 @@
   const newer=document.createElement('button');newer.id='hs-new-messages';newer.textContent='↓ 有新消息';newer.hidden=true;newer.onclick=jumpLatest;document.body.appendChild(newer);
   const edit=document.createElement('div');edit.id='hs-edit-modal';edit.className='modal';edit.innerHTML='<div class="modal-content"><div class="modal-title">我们的关系卡</div><div id="hs-edit-body"></div><div class="modal-buttons"><button class="modal-btn modal-btn-secondary" id="hs-edit-close">关闭</button></div></div>';document.body.appendChild(edit);$('hs-edit-close').onclick=()=>hideModal(edit);
   nav.onclick=e=>{const b=e.target.closest('[data-hs-page]');if(b)navigate(b.dataset.hsPage);};$('hs-relation').onclick=editor;
-  $('hs-app-pages').onclick=e=>{if(e.target.dataset.hsAppPage!==undefined){appPage=Number(e.target.dataset.hsAppPage);showApps();}};
   $('chat-container')?.addEventListener('scroll',()=>{if(page==='chat'&&bottom()&&unread.length&&!modalOpen())read();},{passive:true});
   document.addEventListener('visibilitychange',()=>{if(!document.hidden){if(page==='chat'&&bottom()&&!modalOpen())read();showNote();}});
   const chatRoot=document.querySelector('.main-chat-area');
@@ -330,7 +365,7 @@
    });
   });
   setupSettingsPages();
-  ready=true;document.body.classList.add('hs-enabled');showApps();navigate('home');
+  ready=true;document.body.classList.add('hs-enabled');navigate('home');
   document.documentElement.removeAttribute('data-hs-boot');
  }
  window.HomeShell={navigate,routeModal,onMessage,isChat:()=>!ready||page==='chat'};

@@ -882,7 +882,7 @@
             flex-direction: column;
             overflow: hidden;
             overflow-x: hidden;
-            padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+            padding-bottom: var(--chat-input-area-height, calc(52px + env(safe-area-inset-bottom, 0px)));
         }
 
         .chat-container {
@@ -1117,9 +1117,6 @@
             left: 0;
             right: 0;
         }
-        body.immersive-mode .main-chat-area {
-            padding-bottom: 80px;
-        }
         .input-area {
             display: flex;
             padding: 12px 15px;
@@ -1322,9 +1319,15 @@
             60%  { box-shadow: 0 0 0 7px rgba(var(--accent-color-rgb),0); }
             100% { box-shadow: none; }
         }
+        html[data-theme="dark"] .message .reply-indicator,
         html[data-theme="dark"] .message-wrapper.sent .reply-indicator {
-            background-color: rgba(0, 0, 0, 0.18);
-            border-left-color: rgba(255,255,255,0.35);
+            background-color: #29262d;
+            border-left-color: #cab7d8;
+        }
+        html[data-theme="dark"] .message .reply-indicator-sender,
+        html[data-theme="dark"] .message .reply-indicator-text {
+            color: #f2edf4;
+            opacity: 1;
         }
         .time-fmt-opt.active {
             border: 1.5px solid var(--accent-color) !important;
@@ -11081,12 +11084,12 @@ html[data-theme="dark"] .period-stat-value { color: var(--accent-color-dark); }
     margin: 0;
     border: 0;
     background: transparent !important;
-    color: var(--toolbar-btn-color, var(--text-secondary));
+    color: var(--composer-icon-color, var(--toolbar-btn-color, var(--text-secondary)));
     font-size: 21px;
     box-shadow: none;
 }
 .chat-composer .composer-line-btn:hover,
-.chat-composer #chat-media-toggle[aria-expanded="true"] { color: var(--accent-color); }
+.chat-composer #chat-media-toggle[aria-expanded="true"] { color: var(--composer-icon-active-color, var(--accent-color)); }
 .chat-composer .composer-line-btn:focus-visible { outline: 2px solid var(--accent-color); outline-offset: -2px; }
 .chat-composer #continue-btn-wrapper { margin: 0 !important; flex-shrink: 0; }
 .chat-composer .continue-sub-btns { left: 0; transform: none; }
@@ -11137,34 +11140,16 @@ html[data-theme="dark"] .period-stat-value { color: var(--accent-color-dark); }
 }
 #chat-media-panel > .input-btn i { font-size: 16px; }
 body.bottom-collapse-mode #chat-media-panel { display: none; }
-body:not(.bottom-collapse-mode) .main-chat-area:has(#chat-media-panel:not([hidden])) {
-    padding-bottom: calc(80px + var(--chat-media-panel-height, 0px) + env(safe-area-inset-bottom, 0px));
-}
 
-/* 夜间模式下的聊天背景变暗 */
-[data-theme="dark"] #chat-container::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 0;
-    background: rgba(0, 0, 0, 0.55); /* 调整透明度控制暗度 */
-    transition: background 0.3s ease;
+/* 夜间在聊天壁纸上均匀压暗。 */
+html[data-theme="dark"] body::before { background-image: none; }
+html[data-theme="dark"] body.with-background::before {
+    background-image: linear-gradient(#0009, #0009), var(--chat-bg-image);
 }
-
-/* 确保聊天内容在蒙层之上 */
-[data-theme="dark"] .message-wrapper,
-[data-theme="dark"] .system-message,
-[data-theme="dark"] .date-divider,
-[data-theme="dark"] .call-event-message {
-    position: relative;
-    z-index: 1;
-}
-
-/* 如果背景是渐变或纯色，也可以同时降低亮度 */
-[data-theme="dark"] #chat-container {
-    background-blend-mode: multiply;
-    background-color: rgba(0, 0, 0, 0.3);
+html[data-theme="dark"] body.with-background #chat-container .message-meta {
+    color: #e9e9e9;
+    opacity: 1;
+    text-shadow: 0 1px 3px #000;
 }
 
 
@@ -11715,6 +11700,37 @@ html[data-theme="light"] .message-input {
     background: rgba(255, 255, 255, 0.95) !important;
     color: #333333 !important;
 }
+
+/* 壁纸上的日间输入栏，以及不透底的夜间聊天栏。 */
+html[data-theme="light"] body.with-background .input-area-wrapper {
+    background: rgba(255, 255, 255, .72) !important;
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+}
+html[data-theme="light"] body.with-background .chat-composer {
+    --composer-icon-color: #303035;
+    --composer-icon-active-color: color-mix(in srgb, var(--accent-color) 55%, #18181b);
+}
+html[data-theme="dark"] body:not(.immersive-mode) > .header {
+    background: #000 !important;
+    opacity: 1 !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+html[data-theme="dark"] .input-area-wrapper,
+html[data-theme="dark"] #chat-media-panel {
+    background: #000 !important;
+}
+html[data-theme="dark"] .chat-composer {
+    --composer-icon-color: #e6e6e6;
+    --composer-icon-active-color: #fff;
+}
+html[data-theme="dark"] .chat-composer #message-input {
+    background: #202020 !important;
+    border-color: #4c4c4c !important;
+}
+html[data-theme="dark"] .chat-composer #message-input:focus { border-color: #a0a0a0 !important; }
+html[data-theme="dark"] #chat-media-panel { --toolbar-btn-color: #e6e6e6; }
 
 /* 4. 如果底部依然有亮色残留，说明你的背景图只加在了聊天区，没有延伸到最底部 */
 /* 这段代码强制让整个页面底层（body）的颜色与聊天区保持一致，透明后才能露出正确的底色 */

@@ -858,7 +858,45 @@ else boot();
 setTimeout(boot, 1500);
 setTimeout(boot, 3500);
 
+async function exportLibrary(owner) {
+  const prefix=owner==='partner'?'partner':'my';
+  const pool=getPool();
+  const names=pool[prefix+'NamePool'].slice();
+  const avatars=await Promise.all(pool[prefix+'AvatarHashes'].map(hash=>localforage.getItem(avatarKey(hash))));
+  if(avatars.some(value=>typeof value!=='string'||!value))throw Error('有头像素材无法读取');
+  return {names,avatars};
+}
+
+async function restoreLibrary(owner, data, overwrite) {
+  if(!Array.isArray(data?.names)||!Array.isArray(data?.avatars))throw Error('形象库格式不正确');
+  const prefix=owner==='partner'?'partner':'my';
+  const pool=getPool();
+  const namesKey=prefix+'NamePool', avatarsKey=prefix+'AvatarHashes';
+  const avatars=data.avatars.map(value=>{
+    if(typeof value!=='string'||!/^data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=\s]+$/i.test(value))throw Error('头像格式不正确');
+    return value;
+  });
+  const names=new Set(overwrite?[]:pool[namesKey]);
+  const hashes=new Set(overwrite?[]:pool[avatarsKey]);
+  for(const name of data.names){
+    const cleaned=typeof name==='string'?cleanName(name):'';
+    if(cleaned)names.add(cleaned);
+  }
+  for(const value of avatars){
+    const hash=await computeHash(value);
+    await localforage.setItem(avatarKey(hash),value);
+    hashes.add(hash);
+  }
+  const oldCount=overwrite?0:pool[namesKey].length+pool[avatarsKey].length;
+  pool[namesKey]=[...names];
+  pool[avatarsKey]=[...hashes];
+  savePool();
+  return Math.max(0,names.size+hashes.size-oldCount);
+}
+
+
 window.ImagePool = {
+  exportLibrary, restoreLibrary,
   switchToPanel: switchToImagePoolPanel,
   getPool, save: savePool, render,
   requestChange,

@@ -307,84 +307,77 @@
         if (name && /\.([a-z0-9]+)$/i.test(name)) return name.split('.').pop().toLowerCase();
         return 'webm';
     }
-    async function exportVoiceLibrary(ids) {
-        if (typeof JSZip === 'undefined') { if (typeof showNotification === 'function') showNotification('JSZip 未加载', 'error'); return; }
-        const lib = ensureVoiceLibrary(); if (!lib) return;
-        const list = ids && ids.length ? lib.filter(v => ids.includes(v.id)) : lib.slice();
-        if (!list.length) { if (typeof showNotification === 'function') showNotification('没有可导出的语音', 'warning'); return; }
-        if (typeof showNotification === 'function') showNotification(`正在打包 ${list.length} 条语音…`, 'info');
-        const zip = new JSZip();
-        const manifest = [];
+    async function writeVoiceArchive(zip, ids) {
+        const library = ensureVoiceLibrary() || [];
+        const list = ids && ids.length ? library.filter(meta => ids.includes(meta.id)) : library.slice();
+        const voices = [];
         for (const meta of list) {
-            const blob = await getVoiceBlob(meta.id); if (!blob) continue;
-            const ext = guessExt(blob, meta.name);
-            const path = `voices/${meta.id}.${ext}`;
-            zip.file(path, blob, { binary: true });
-            manifest.push({
-                id: meta.id, name: meta.name, duration: meta.duration,
-                size: meta.size, createdAt: meta.createdAt, file: path,
-                text: meta.text || ''
-            });
+            const blob = await getVoiceBlob(meta.id);
+            if (!blob) throw Error('有语音素材无法读取');
+            const file = 'voices/' + meta.id + '.' + guessExt(blob, meta.name);
+            zip.file(file, blob, { binary: true });
+            voices.push({...meta,file,mime:blob.type});
         }
         zip.file('manifest.json', JSON.stringify({
-            type: 'xavier-voice-library-v1', version: 1,
-            exportedAt: new Date().toISOString(),
-            count: manifest.length, voices: manifest
-        }, null, 2));
-        const out = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
-        const fileName = `voice-library-${new Date().toISOString().slice(0,10)}.zip`;
-        const url = URL.createObjectURL(out);
-        const a = document.createElement('a');
-        a.href = url; a.download = fileName;
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 2000);
-        if (typeof showNotification === 'function') showNotification(`✓ 已导出 ${manifest.length} 条语音`, 'success');
+            type:'xavier-voice-library-v1',version:1,exportedAt:new Date().toISOString(),count:voices.length,voices
+        }));
+        return voices;
     }
 
-    // ─── ZIP 导入 ───
-    async function importVoiceLibrary(file) {
-        if (!file) return 0;
-        if (typeof JSZip === 'undefined') { if (typeof showNotification === 'function') showNotification('JSZip 未加载', 'error'); return 0; }
+    async function exportVoiceLibrary(ids) {
         try {
-            const zip = await JSZip.loadAsync(file);
-            const mf = zip.file('manifest.json');
-            if (!mf) { if (typeof showNotification === 'function') showNotification('无效的语音库文件', 'error'); return 0; }
-            const manifest = JSON.parse(await mf.async('string'));
-            if (!manifest.voices || !Array.isArray(manifest.voices)) { if (typeof showNotification === 'function') showNotification('manifest 格式不正确', 'error'); return 0; }
-            const lib = ensureVoiceLibrary(); if (!lib) return 0;
-            const existing = new Set(lib.map(v => v.id));
-            let added = 0;
-            for (const m of manifest.voices) {
-                if (!m.id || !m.file || existing.has(m.id)) continue;
-                const zf = zip.file(m.file); if (!zf) continue;
-                const raw = await zf.async('blob');
-                let mime = raw.type || '';
-                if (!mime || !mime.startsWith('audio/')) {
-                    if (/\.mp3$/i.test(m.file)) mime = 'audio/mpeg';
-                    else if (/\.m4a$/i.test(m.file)) mime = 'audio/mp4';
-                    else if (/\.wav$/i.test(m.file)) mime = 'audio/wav';
-                    else if (/\.ogg$/i.test(m.file)) mime = 'audio/ogg';
-                    else mime = 'audio/webm';
-                }
-                const typedBlob = new Blob([raw], { type: mime });
-                await saveVoiceBlob(m.id, typedBlob);
-                lib.push({
-                    id: m.id, name: m.name || '未命名',
-                    duration: m.duration || 0, size: typedBlob.size,
-                    createdAt: m.createdAt || Date.now(),
-                    text: m.text || ''
-                });
-                added++;
-            }
-            if (typeof throttledSaveData === 'function') throttledSaveData();
-            if (typeof showNotification === 'function') showNotification(`✓ 导入成功，新增 ${added} 条语音`, 'success');
-            return added;
-        } catch (e) {
-            console.error(e);
-            if (typeof showNotification === 'function') showNotification('导入失败：' + e.message, 'error');
+            const zip=new JSZip();
+            const voices=await writeVoiceArchive(zip,ids);
+            if(!voices.length){showNotification('没有可导出的语音','warning');return;}
+            const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE'});
+            downloadFileFallback(blob,'voice-library-'+new Date().toISOString().slice(0,10)+'.zip');
+            showNotification('已打包 '+voices.length+' 条语音','success');
+        }catch(error){
+            console.error(error);
+            showNotification('语音导出失败','error');
+        }
+    }
+
+    async function restoreVoiceArchive(zip, overwrite = false) {
+        const file=zip.file('manifest.json');
+        if(!file)throw Error('缺少语音清单');
+        const manifest=JSON.parse(await file.async('string'));
+        if(!Array.isArray(manifest.voices))throw Error('语音清单格式不正确');
+        const current=ensureVoiceLibrary()||[];
+        const library=overwrite?[]:current.slice();
+        const existing=new Set(library.map(v=>v.id));
+        const types={mp3:'audio/mpeg',m4a:'audio/mp4',wav:'audio/wav',ogg:'audio/ogg',webm:'audio/webm'};
+        for(const entry of manifest.voices){
+            if(typeof entry.id!=='string'||!entry.id||typeof entry.file!=='string')throw Error('语音清单格式不正确');
+            if(existing.has(entry.id))continue;
+            const audio=zip.file(entry.file);
+            if(!audio)throw Error('缺少语音文件');
+            const ext=entry.file.split('.').pop().toLowerCase();
+            const mime=typeof entry.mime==='string'&&entry.mime.startsWith('audio/')?entry.mime:(types[ext]||'audio/webm');
+            const blob=new Blob([await audio.async('blob')],{type:mime});
+            await saveVoiceBlob(entry.id,blob);
+            library.push({id:entry.id,name:entry.name||'未命名',duration:entry.duration||0,size:blob.size,createdAt:entry.createdAt||Date.now(),text:entry.text||''});
+            existing.add(entry.id);
+        }
+        settings.voiceLibrary=library;
+        window.__voiceMetaMap=null;
+        if(typeof throttledSaveData==='function')throttledSaveData();
+        return library.length-(overwrite?0:current.length);
+    }
+
+    async function importVoiceLibrary(file) {
+        if(!file)return 0;
+        try {
+            const count=await restoreVoiceArchive(await JSZip.loadAsync(file));
+            showNotification('已导入 '+count+' 条语音','success');
+            return count;
+        }catch(error){
+            console.error(error);
+            showNotification('语音导入失败，请检查备份文件','error');
             return 0;
         }
     }
+
 
     // ─── 工具 ───
     function _fmtSize(bytes) {
@@ -707,20 +700,6 @@
         if (!onVoice) return;
         const addBtn = e.target.closest('#add-custom-reply');
         if (addBtn) { e.stopImmediatePropagation(); e.preventDefault(); openAddMenu(); return; }
-        const expBtn = e.target.closest('#tb-export-btn');
-        if (expBtn) { e.stopImmediatePropagation(); e.preventDefault(); exportVoiceLibrary(); return; }
-        const impBtn = e.target.closest('#tb-import-btn');
-        if (impBtn) {
-            e.stopImmediatePropagation(); e.preventDefault();
-            const inp = document.createElement('input');
-            inp.type = 'file'; inp.accept = '.zip,application/zip';
-            inp.onchange = async () => {
-                if (!inp.files || !inp.files[0]) return;
-                await importVoiceLibrary(inp.files[0]);
-                if (typeof renderReplyLibrary === 'function') renderReplyLibrary();
-            };
-            inp.click(); return;
-        }
     }, true);
 
     // ══════════════════════════════════════════════════════════════
@@ -818,7 +797,7 @@
     window.VoiceLibrary = {
         playVoice, addVoiceFromFile, saveRecordedBlob,
         startRecording, stopRecording, deleteVoices,
-        exportVoiceLibrary, importVoiceLibrary,
+        exportVoiceLibrary, importVoiceLibrary, writeVoiceArchive, restoreVoiceArchive,
         getVoiceBlob, openAddMenu, buildVoiceBubbleHTML,
         editVoiceText: _showVoiceTextEditor,
         toggleTranscript: toggleTranscript

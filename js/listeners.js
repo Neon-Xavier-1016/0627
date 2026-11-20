@@ -3056,23 +3056,25 @@ playlist.style.top = (rect.top + (player.classList.contains('collapsed') ? 65 : 
 
             const mediaToggle = document.getElementById('chat-media-toggle');
             const mediaPanel = document.getElementById('chat-media-panel');
-            const mediaChatArea = mediaPanel.closest('.main-chat-area');
-            const panelHeightProperty = '--chat-media-panel-height';
+            const inputArea = mediaPanel.closest('.input-area-wrapper');
+            const chatArea = inputArea.closest('.main-chat-area');
             const chat = DOMElements.chatContainer;
-            const nearBottom = () => chat.clientHeight && chat.scrollHeight - chat.scrollTop - chat.clientHeight < 90;
-            function updateMediaPanelHeight(keepBottom = nearBottom()) {
-                const height = mediaPanel.offsetHeight + 'px';
-                if (mediaChatArea.style.getPropertyValue(panelHeightProperty) === height) return;
-                mediaChatArea.style.setProperty(panelHeightProperty, height);
-                if (keepBottom) chat.scrollTo({top: chat.scrollHeight, behavior: 'instant'});
+            const heightProperty = '--chat-input-area-height';
+            function syncInputAreaHeight() {
+                const height = inputArea.getBoundingClientRect().height;
+                if (!height || chatArea.style.getPropertyValue(heightProperty) === height + 'px') return;
+                const atBottom = chat.clientHeight && chat.scrollHeight - chat.scrollTop - chat.clientHeight < 90;
+                chatArea.style.setProperty(heightProperty, height + 'px');
+                if (atBottom) chat.scrollTo({top: chat.scrollHeight, behavior: 'instant'});
             }
-            if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => updateMediaPanelHeight()).observe(mediaPanel);
+            if (typeof ResizeObserver !== 'undefined') new ResizeObserver(syncInputAreaHeight).observe(inputArea);
+            else window.addEventListener('resize', syncInputAreaHeight);
+            syncInputAreaHeight();
             function setMediaOpen(open) {
                 if (mediaPanel.hidden === !open) return;
-                const keepBottom = nearBottom();
                 mediaPanel.hidden = !open;
                 mediaToggle.setAttribute('aria-expanded', String(open));
-                updateMediaPanelHeight(keepBottom);
+                syncInputAreaHeight();
             }
             mediaToggle.addEventListener('click', () => {
                 if (!mediaPanel.hidden) {
