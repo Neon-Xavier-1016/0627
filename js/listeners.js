@@ -327,6 +327,17 @@ if (target.classList.contains('delete-btn')) {
                 };
             };
 
+            document.querySelectorAll('#cs-panel-names [data-rename]').forEach(button => {
+                button.addEventListener('click', () => openNameModal(button.dataset.rename === 'partner'));
+            });
+            DOMElements.editModal.cancel.addEventListener('click', () => hideModal(DOMElements.editModal.modal));
+            DOMElements.editModal.input.addEventListener('keydown', event => {
+                if (event.key === 'Enter' && !event.isComposing && !DOMElements.editModal.save.disabled) {
+                    event.preventDefault();
+                    DOMElements.editModal.save.click();
+                }
+            });
+
             const openAvatarModal = (isPartner) => {
                 const modal = DOMElements.avatarModal;
 
@@ -1540,26 +1551,13 @@ if (_cancelEnvEl) _cancelEnvEl.addEventListener('click', () => {
                     handleCoinToss();
                 });
             }
-           const musicToggle = document.getElementById('music-player-toggle');
-               musicToggle.addEventListener('click', () => {
-                   settings.musicPlayerEnabled = !settings.musicPlayerEnabled;
-                   throttledSaveData();
+            document.getElementById('music-player-toggle').addEventListener('click', () => {
+                const enabled = !settings.musicPlayerEnabled;
+                setFloatingMusicPlayer(enabled);
+                showNotification(enabled ? '音乐播放器已开启' : '音乐播放器已关闭', enabled ? 'success' : 'info');
+                hideModal(DOMElements.advancedModal.modal);
+            });
 
-                   const player = document.getElementById('player');
-                   if (settings.musicPlayerEnabled) {
-                       player.classList.add('visible');
-                       showNotification('音乐播放器已开启', 'success');
-                   } else {
-                       player.classList.remove('visible');
-                       document.getElementById('playlist').classList.remove('active');
-                       const audio = document.getElementById('audio');
-                       if (audio) audio.pause();
-                       showNotification('音乐播放器已关闭', 'info');
-                   }
-                   hideModal(DOMElements.advancedModal.modal);
-               });   // ← 这里不要多写花括号，直接分号结束
-
-               // ✅ 继续在函数内定义其他代码
                const annToggleBtn = document.getElementById('ann-toggle-btn');
                const annFormWrapper = document.getElementById('ann-form-wrapper');
 
@@ -1685,6 +1683,21 @@ if (sessionId === currentSessionId) {
                 }
             }
         });
+
+        function setFloatingMusicPlayer(enabled, expand = false) {
+            if (Boolean(settings.musicPlayerEnabled) !== enabled) {
+                settings.musicPlayerEnabled = enabled;
+                throttledSaveData();
+            }
+
+            const player = document.getElementById('player');
+            player.classList.toggle('visible', enabled);
+            if (enabled && expand) player.classList.remove('collapsed');
+            if (!enabled) {
+                document.getElementById('playlist').classList.remove('active');
+                document.getElementById('audio').pause();
+            }
+        }
 
         const initMusicPlayer = async () => {
     const latestSystemSongs = [

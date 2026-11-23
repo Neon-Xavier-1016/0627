@@ -263,6 +263,8 @@ function cardHTML(track, fromMe, state, tagText, fixedCid) {
       + '</div>';
   } else if (state === 'pending') {
     footer = '<div class="mi-pending"><span class="mi-pending-dot"></span>等待 ' + esc(partnerName()) + ' 回应…</div>';
+  } else if (state === 'expired-ta') {
+    footer = '<div class="mi-state-tag">邀请已过时</div>';
   } else if (state === 'done-ta') {
     footer = '<div class="mi-state-tag mi-state-done">🎧 ' + esc(partnerName()) + ' 接受了</div>';
   } else if (state === 'later-ta') {
@@ -280,7 +282,7 @@ function cardHTML(track, fromMe, state, tagText, fixedCid) {
                  : (state === 'later-ta' || state === 'later-me') ? ' mi-skip'
                  : (state === 'reject-ta' || state === 'reject-me') ? ' mi-rejected'
                  : '';
-  const doneAttr = (state === 'reply') ? '' : ' data-mi-done="1"';
+  const doneAttr = (state === 'reply' || state === 'pending') ? '' : ' data-mi-done="1"';
   return '<div class="mi-card' + extraCls + '"'
     + ' data-mi-id="' + cid + '"'
     + ' data-mi-url="' + esc(track.url) + '"'
@@ -348,13 +350,21 @@ function updateCardDom(card, state) {
 
 const inviteResponseMs = 5 * 60 * 1000;
 let expiryTimer;
+function pendingDirection(message) {
+  if (message.type !== 'system' || typeof message.text !== 'string') return '';
+  const text = message.text;
+  if (text.includes('data-mi-from="me"') && text.includes('class="mi-pending"')) return 'me';
+  if (text.includes('data-mi-from="ta"') && text.includes('class="mi-btns"')) return 'ta';
+  return '';
+}
+
 function syncExpiry() {
   clearTimeout(expiryTimer);
   const now = Date.now();
   let next = Infinity, changed = false;
   for (const message of getMessages() || []) {
-    if (message.type !== 'system' || typeof message.text !== 'string'
-        || !message.text.includes('data-mi-from="ta"') || !message.text.includes('class="mi-btns"')) continue;
+    const direction = pendingDirection(message);
+    if (!direction) continue;
     const sentAt = new Date(message.timestamp).getTime();
     if (!Number.isFinite(sentAt)) continue;
     const deadline = sentAt + inviteResponseMs;
@@ -364,10 +374,12 @@ function syncExpiry() {
     }
     const template = document.createElement('template');
     template.innerHTML = message.text;
-    const card = template.content.querySelector('.mi-card[data-mi-id][data-mi-from="ta"]:not([data-mi-done])');
+    const card = template.content.querySelector('.mi-card[data-mi-id][data-mi-from="' + direction + '"]');
     if (!card) continue;
     const {miId, miUrl, miName} = card.dataset;
-    message.text = cardHTML({url: miUrl, name: miName}, false, 'reject-me', '超时未回应', miId);
+    const fromMe = direction === 'me';
+    message.text = cardHTML({url: miUrl, name: miName}, fromMe,
+      fromMe ? 'expired-ta' : 'reject-me', fromMe ? '' : '超时未回应', miId);
     const visibleCard = document.querySelector('.mi-card[data-mi-id="' + CSS.escape(miId) + '"]');
     if (visibleCard) visibleCard.outerHTML = message.text;
     changed = true;
@@ -430,12 +442,20 @@ function meInviteTa() {
   const track = { url: a.src, name };
   const cid = 'mi_' + Date.now().toString(36) + (++cardSeq);
   sysMsg(cardHTML(track, true, 'pending', '', cid));
+  syncExpiry();
 
   const delay = randRange(5 * 1000, 60 * 1000);
   setTimeout(() => taRespondToInvite(track, cid), delay);
 }
 
 function taRespondToInvite(track, cid, forceState) {
+  const message = (getMessages() || []).find(item => pendingDirection(item) === 'me'
+    && item.text.includes('data-mi-id="' + cid + '"'));
+  if (!message) return;
+  if (Date.now() >= new Date(message.timestamp).getTime() + inviteResponseMs) {
+    syncExpiry();
+    return;
+  }
   const s = S();
   const pA = (s.musicAcceptProb ?? 70) / 100;
   const pL = (s.musicLaterProb  ?? 20) / 100;
@@ -451,6 +471,7 @@ function taRespondToInvite(track, cid, forceState) {
   const card = document.querySelector('.mi-card[data-mi-id="' + cid + '"]');
   if (card) updateCardDom(card, finalState);
   persistCardState(cid, true, track, finalState);
+  syncExpiry();
 
   const pools = {
     accept: ['好呀，一起听。', '嗯，我陪你听。', '好啊，正想听这首。'],

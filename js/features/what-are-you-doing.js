@@ -193,8 +193,9 @@
     const STORE_KEY      = 'wyd_data';
     const MOOD_STORE_KEY = 'wyd_mood_data';
 
-    function todayStr() {
+    function todayStr(offset = 0) {
         const d = new Date();
+        d.setDate(d.getDate() + offset);
         return d.getFullYear() + '-' +
             String(d.getMonth() + 1).padStart(2, '0') + '-' +
             String(d.getDate()).padStart(2, '0');
@@ -368,10 +369,29 @@
         };
     }
 
+    function readDay(key) {
+        try { return JSON.parse(localStorage.getItem(key) || 'null'); }
+        catch { return null; }
+    }
+
+    function yesterday(key) {
+        const date = todayStr(-1), current = readDay(key);
+        if (current?.date === date) return current;
+        const saved = readDay(key + '_previous');
+        return saved?.date === date ? saved : null;
+    }
+
+    function archiveDay(key, data) {
+        try {
+            if (data?.date === todayStr(-1)) localStorage.setItem(key + '_previous', JSON.stringify(data));
+            else if (!yesterday(key)) localStorage.removeItem(key + '_previous');
+        } catch {}
+    }
+
     function loadToday() {
-        let data = null;
-        try { data = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch (e) {}
+        let data = readDay(STORE_KEY);
         if (!data || data.date !== todayStr()) {
+            archiveDay(STORE_KEY, data);
             data = initToday();
             try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) {}
 
@@ -380,7 +400,7 @@
                 data.meals[k] && data.meals[k].eat && data.meals[k].special === 'hotpot'
             );
             if (hasHotpot) {
-                try { localStorage.removeItem('wyd_where_plan'); } catch (e) {}
+                window.WydWhere?.invalidateToday?.();
             }
         }
         return data;
@@ -461,9 +481,19 @@
         return cardFull(type, meal);
     }
 
-    function renderEat() {
+    function renderEat(history = false) {
         const box = document.getElementById('wyd-meals-container');
         if (!box) return;
+        if (history) {
+            const previous = yesterday(STORE_KEY);
+            box.innerHTML = previous?.meals
+                ? Object.keys(WINDOWS).map(type => {
+                    const meal = previous.meals[type];
+                    return !meal ? '' : meal.eat ? cardFull(type, meal) : cardEmpty(type, meal, 'missed');
+                }).join('')
+                : cardSleeping('昨天没有用餐记录');
+            return;
+        }
 
         if (isPartnerSleeping()) {
             box.innerHTML = cardSleeping('Ta 还没醒，今天还没开始呢');
@@ -485,9 +515,9 @@
      * ============================================================ */
 
     function loadMoodData() {
-        let data = null;
-        try { data = JSON.parse(localStorage.getItem(MOOD_STORE_KEY) || 'null'); } catch (e) {}
+        let data = readDay(MOOD_STORE_KEY);
         if (!data || data.date !== todayStr()) {
+            archiveDay(MOOD_STORE_KEY, data);
             data = { date: todayStr(), moods: {} };
             try { localStorage.setItem(MOOD_STORE_KEY, JSON.stringify(data)); } catch (e) {}
         }
@@ -518,11 +548,11 @@
      *   generate = true  → 记录当前小时的心情（如果是新的一小时），然后渲染
      *   generate = false → 只渲染已记录的心情
      */
-    function renderMood(generate) {
+    function renderMood(generate, history = false) {
         const box = document.getElementById('wyd-meals-container');
         if (!box) return;
 
-        if (isPartnerSleeping()) {
+        if (!history && isPartnerSleeping()) {
             box.innerHTML = cardSleeping('Ta 还没醒，今天的心情还没开始呢');
             return;
         }
@@ -531,11 +561,11 @@
             ensureMoodForHour(nowHour());
         }
 
-        const data  = loadMoodData();
-        const hours = Object.keys(data.moods).map(Number).sort((a, b) => a - b);
+        const data = history ? yesterday(MOOD_STORE_KEY) : loadMoodData();
+        const hours = Object.keys(data?.moods || {}).map(Number).sort((a, b) => a - b);
 
         if (hours.length === 0) {
-            box.innerHTML = renderAskPlaceholder('mood');
+            box.innerHTML = history ? cardSleeping('昨天没有心情记录') : renderAskPlaceholder('mood');
             return;
         }
 
@@ -584,6 +614,7 @@
     };
 
     let currentTab = 'eat';
+    let showYesterday = false;
 
     function updateBottomBtn() {
         const btn = document.getElementById('wyd-ask-btn');
@@ -596,6 +627,17 @@
     function render() {
         const box = document.getElementById('wyd-meals-container');
         if (!box) return;
+
+        document.querySelectorAll('[data-wyd-day]').forEach(button => {
+            button.setAttribute('aria-pressed', String((button.dataset.wydDay === 'yesterday') === showYesterday));
+        });
+        document.getElementById('wyd-ask-btn').hidden = showYesterday;
+        if (showYesterday) {
+            if (currentTab === 'eat') renderEat(true);
+            else if (currentTab === 'mood') renderMood(false, true);
+            else window.WydWhere?.renderYesterday?.();
+            return;
+        }
 
         if (!isRevealed(currentTab)) {
             box.innerHTML = renderAskPlaceholder(currentTab);
@@ -612,6 +654,7 @@
 
     /** 点击底部按钮：揭晓 + 生成当前数据 */
     function handleAsk() {
+        if (showYesterday) return;
         const pname = getPartnerName();
         const meta  = TAB_META[currentTab];
 
@@ -658,6 +701,7 @@
      * ============================================================ */
 
     window.openWYD = function () {
+        showYesterday = false;
         render();
         showModal(document.getElementById('wyd-modal'));
     };
@@ -666,6 +710,23 @@
      * ============================================================ */
     window.WydMeal = {
         ensureToday: function () { return loadToday(); },
+        currentMeal: function () {
+            if (isPartnerSleeping()) return null;
+            const now = nowMin();
+            const type = Object.keys(WINDOWS).find(key => now >= WINDOWS[key].start && now <= WINDOWS[key].end);
+            if (!type) return null;
+            const meal = loadToday().meals[type];
+            if (!meal?.eat || now < meal.eatTime) return null;
+            return { key: type, dishes: meal.dishes.join(' · ') };
+        },
+        revealMeal: function () { markRevealed('eat'); },
+        currentMood: function () {
+            if (isPartnerSleeping()) return null;
+            const entry = ensureMoodForHour(nowHour());
+            markRevealed('mood');
+            return { label: entry.mood, emoji: entry.emoji };
+        },
+        revealLocation: function () { markRevealed('where'); },
         getToday: function () {
             try { return JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); }
             catch (e) { return null; }
@@ -684,6 +745,12 @@
             });
         });
 
+        document.querySelectorAll('[data-wyd-day]').forEach(button => {
+            button.addEventListener('click', () => {
+                showYesterday = button.dataset.wydDay === 'yesterday';
+                render();
+            });
+        });
         const btn = document.getElementById('wyd-ask-btn');
         if (btn) btn.addEventListener('click', handleAsk);
 

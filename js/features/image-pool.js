@@ -31,8 +31,9 @@ const NAME_MAX_LEN = 30;
 const NAME_POOL_MAX = 20;
 const AVATAR_POOL_MAX = 20;
 const AVATAR_POOL_TOTAL_MAX = 30;
-const SWAP_MIN_H = 12;
-const SWAP_MAX_H = 24;
+const SWAP_MIN_H = 4;
+const SWAP_MAX_H = 8;
+const HOUR_MS = 3600 * 1000;
 const REJECT_PROB = 0.2;
 const KW_TRIGGER_PROB = 0.6;
 const KW_COOLDOWN_MS = 30000;
@@ -41,6 +42,7 @@ let currentMainTab = 'avatar';
 let currentOwnerTab = 'partner';
 const _bootTime = Date.now();
 let _intervalTimer = null;
+let pendingUserAvatar = false;
 
 /* ============================================================
  * 一、数据
@@ -63,6 +65,7 @@ function getPool() {
   if (typeof p.allowAvatarChange !== 'boolean') p.allowAvatarChange = true;
   if (typeof p.nextSwapAt !== 'number') p.nextSwapAt = 0;
   if (typeof p.lastSwapAt !== 'number') p.lastSwapAt = 0;
+  if (typeof p.nextUserAvatarAt !== 'number') p.nextUserAvatarAt = 0;
   return p;
 }
 function savePool() { try { if (typeof throttledSaveData === 'function') throttledSaveData(); } catch(e) {} }
@@ -186,7 +189,7 @@ function render() {
 function renderAvatarPool(container, target, list) {
   const counter = document.createElement('div');
   counter.style.cssText = 'text-align:right;font-size:11px;color:var(--text-secondary);margin-bottom:8px;';
-  counter.textContent = list.length + '/' + AVATAR_POOL_MAX;
+  counter.textContent = (list.length ? '双击头像即可换上 · ' : '') + list.length + '/' + AVATAR_POOL_MAX;
   container.appendChild(counter);
   if (!list.length) {
     const empty = document.createElement('div');
@@ -199,11 +202,34 @@ function renderAvatarPool(container, target, list) {
     list.forEach((hash, idx) => {
       const cell = document.createElement('div');
       cell.style.cssText = 'position:relative;padding-bottom:100%;border-radius:10px;background:var(--secondary-bg);overflow:hidden;';
+      const select = document.createElement('button');
+      select.type = 'button';
+      select.className = 'ip-avatar-select';
+      select.setAttribute('aria-label', (target === 'partner' ? '应用梦角头像 ' : '应用我的头像 ') + (idx + 1));
       const img = document.createElement('img');
       img.dataset.ipHash = hash;
-      img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;';
       img.alt = '';
-      cell.appendChild(img);
+      select.appendChild(img);
+      let lastTap = null;
+      const apply = () => {
+        if (!img.hasAttribute('src')) return;
+        const value = img.getAttribute('src');
+        const current = target === 'partner' ? S().partnerAvatar : S().myAvatar;
+        if (value === current) return;
+        applyChange('avatar', target === 'partner' ? 'partner' : 'me', value);
+        toast('头像已更换');
+      };
+      select.addEventListener('dblclick', apply);
+      select.addEventListener('click', event => {
+        if (event.detail === 0) { apply(); return; }
+        if (event.pointerType !== 'touch' && !event.sourceCapabilities?.firesTouchEvents) return;
+        const { clientX: x, clientY: y, timeStamp: time } = event;
+        if (lastTap && time - lastTap.time < 350 && Math.hypot(x - lastTap.x, y - lastTap.y) < 28) {
+          lastTap = null;
+          apply();
+        } else lastTap = { x, y, time };
+      });
+      cell.appendChild(select);
       const del = document.createElement('button');
       del.type = 'button'; del.textContent = '×';
       del.style.cssText = 'position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;border:none;font-size:12px;line-height:1;cursor:pointer;padding:0;';
@@ -430,6 +456,9 @@ function injectIpcStyles() {
     .ip-avatar-card-head{font-size:13px;font-weight:600;color:var(--text-primary);text-align:center;line-height:1.5}
     .ip-avatar-card-img{width:96px;height:96px;margin:0 auto;border-radius:50%;overflow:hidden;background:var(--primary-bg);border:2px solid rgba(var(--accent-color-rgb),0.2)}
     .ip-avatar-card-img img{width:100%;height:100%;object-fit:cover;display:block}
+    .ip-avatar-select{position:absolute;inset:0;width:100%;height:100%;padding:0;border:0;background:none;cursor:pointer;touch-action:manipulation}
+    .ip-avatar-select img{width:100%;height:100%;object-fit:cover;display:block}
+    .ip-avatar-select:focus-visible{outline:2px solid var(--accent-color);outline-offset:-3px}
     .ip-avatar-card-foot{font-size:11px;color:var(--text-secondary);text-align:center;opacity:.7}
   `;
   document.head.appendChild(st);
@@ -781,14 +810,16 @@ function askConsent(kind, value) {
     ov.addEventListener('click', e => { if (e.target === ov) cleanup(false); });
   });
 }
-async function performSwap(reason) {
+async function performSwap(reason, skipUserAvatar = false) {
   const p = getPool();
   const allowName = p.allowNameChange, allowAvatar = p.allowAvatarChange;
   if (!allowName && !allowAvatar) return;
   let kind = (allowName && allowAvatar) ? (Math.random() < 0.5 ? 'name' : 'avatar') : (allowName ? 'name' : 'avatar');
-  let owner = Math.random() < 0.5 ? 'partner' : 'me';
+  const partnerAvatarOnly = skipUserAvatar && kind === 'avatar';
+  let owner = partnerAvatarOnly || Math.random() < 0.5 ? 'partner' : 'me';
   let value = await pickFromPool(owner, kind);
   if (!value) {
+    if (partnerAvatarOnly) return;
     const altOwner = owner === 'partner' ? 'me' : 'partner';
     value = await pickFromPool(altOwner, kind);
     if (!value) return;
@@ -807,17 +838,64 @@ async function performSwap(reason) {
     else addSystemMessage(pickMsg(kind, owner));
   }
 }
+function nextSwapTime() {
+  return Date.now() + (SWAP_MIN_H + Math.random() * (SWAP_MAX_H - SWAP_MIN_H)) * HOUR_MS;
+}
+
+function startUserAvatarOffer(pool) {
+  if (!pool.allowAvatarChange || !pool.myAvatarHashes.length) return false;
+  if (!pool.nextUserAvatarAt) {
+    pool.nextUserAvatarAt = pool.nextSwapAt || nextSwapTime();
+    savePool();
+  }
+  if (Date.now() < pool.nextUserAvatarAt || !isUserPresent('interval')
+    || [...document.querySelectorAll('.modal')].some(modal => getComputedStyle(modal).display !== 'none')) return false;
+
+  const activeSession = SESSION_ID;
+  pendingUserAvatar = true;
+  (async () => {
+    const current = S().myAvatar || $('my-avatar')?.querySelector('img')?.getAttribute('src');
+    const hashes = pool.myAvatarHashes.slice();
+    let candidate;
+    while (hashes.length && !candidate) {
+      const [hash] = hashes.splice(Math.floor(Math.random() * hashes.length), 1);
+      const value = await localforage.getItem(avatarKey(hash));
+      if (value && value !== current) candidate = value;
+    }
+    if (SESSION_ID !== activeSession || !pool.allowAvatarChange || !isUserPresent('interval')) return;
+    if ([...document.querySelectorAll('.modal')].some(modal => getComputedStyle(modal).display !== 'none')) return;
+    pool.nextUserAvatarAt = nextSwapTime();
+    savePool();
+    if (!candidate) return;
+
+    const agreed = await askConsent('avatar', candidate);
+    if (!agreed || SESSION_ID !== activeSession || !pool.allowAvatarChange) return;
+    applyChange('avatar', 'me', candidate);
+    pushAvatarCard('me', candidate);
+  })().catch(error => console.warn('[ImagePool]', error)).finally(() => { pendingUserAvatar = false; });
+  return true;
+}
+
 function checkAndSwap(reason) {
+  if (!SESSION_ID || !document.body.classList.contains('hs-enabled') || pendingUserAvatar) return;
   const p = getPool();
   if (!p.allowNameChange && !p.allowAvatarChange) return;
+  let rescheduled = false;
+  for (const deadline of ['nextSwapAt', 'nextUserAvatarAt']) {
+    if (p[deadline] <= Date.now() + SWAP_MAX_H * HOUR_MS) continue;
+    p[deadline] = nextSwapTime();
+    rescheduled = true;
+  }
+  if (rescheduled) savePool();
+  if (startUserAvatarOffer(p)) return;
   if (!p.nextSwapAt) {
-    p.nextSwapAt = Date.now() + (SWAP_MIN_H + Math.random() * (SWAP_MAX_H - SWAP_MIN_H)) * 3600 * 1000;
+    p.nextSwapAt = nextSwapTime();
     p.lastSwapAt = Date.now(); savePool(); return;
   }
   if (Date.now() < p.nextSwapAt) return;
-  p.nextSwapAt = Date.now() + (SWAP_MIN_H + Math.random() * (SWAP_MAX_H - SWAP_MIN_H)) * 3600 * 1000;
+  p.nextSwapAt = nextSwapTime();
   p.lastSwapAt = Date.now(); savePool();
-  performSwap(reason).catch(e => console.warn('[ImagePool]', e));
+  performSwap(reason, true).catch(e => console.warn('[ImagePool]', e));
 }
 
 /* ============================================================
@@ -847,10 +925,12 @@ function boot() {
   setTimeout(injectChangeTab, 3500);
 
   setTimeout(() => checkAndSwap('boot'), 3000);
-  if (!_intervalTimer) _intervalTimer = setInterval(() => checkAndSwap('interval'), 60000);
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') setTimeout(() => checkAndSwap('visible'), 500);
-  });
+  if (!_intervalTimer) {
+    _intervalTimer = setInterval(() => checkAndSwap('interval'), 60000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') setTimeout(() => checkAndSwap('visible'), 500);
+    });
+  }
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

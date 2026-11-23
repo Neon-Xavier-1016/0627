@@ -231,11 +231,11 @@ const CUSTOM_MOOD_COLORS = ['#FFD93D','#FF6B6B','#6BCB77','#4D96FF','#8D9EFF','#
 
 async function initMoodData() {
     const savedMoods = await localforage.getItem(getStorageKey('moodCalendar'));
-    if (savedMoods) { moodData = savedMoods; }
+    moodData = savedMoods || {};
     const savedCustomMoods = await localforage.getItem(getStorageKey('customMoodOptions'));
-    if (savedCustomMoods) { customMoodOptions = savedCustomMoods; }
+    customMoodOptions = Array.isArray(savedCustomMoods) ? savedCustomMoods : [];
     const savedTrash = await localforage.getItem(getStorageKey('moodTrash'));
-    if (savedTrash && Array.isArray(savedTrash)) { moodTrash = savedTrash; }
+    moodTrash = Array.isArray(savedTrash) ? savedTrash : [];
     window.moodData = moodData;
     window.moodTrash = moodTrash;
     checkPartnerDailyMood();
@@ -272,6 +272,18 @@ function checkPartnerDailyMood() {
         saveMoodData();
     }
 }
+function recordSharedMood(timestamp, moodKey, note) {
+    const date = formatDateStr(new Date(timestamp));
+    const entry = moodData[date] || (moodData[date] = {});
+    if (entry.userMoodManual || (!entry.sharedMoodCount && ('user' in entry || 'note' in entry || 'myWeather' in entry))) return;
+    entry.sharedMoodCount = (entry.sharedMoodCount || 0) + 1;
+    if (entry.sharedMoodCount === 1 || Math.random() < 1 / entry.sharedMoodCount) {
+        entry.user = moodKey;
+        entry.note = note;
+    }
+    saveMoodData();
+}
+
 function saveMoodData() {
     localforage.setItem(getStorageKey('moodCalendar'), moodData);
     window.moodData = moodData;
@@ -572,6 +584,7 @@ window.deleteDailyMood = function(dateStr, who) {
         delete moodData[dateStr].user;
         delete moodData[dateStr].note;
         delete moodData[dateStr].myWeather;
+        delete moodData[dateStr].sharedMoodCount;
     } else {
         trashItem.payload = {
             partner: src.partner || null,
@@ -661,6 +674,7 @@ window.restoreMoodTrashItem = function(trashId) {
 
     if (!moodData[item.dateStr]) moodData[item.dateStr] = {};
     if (item.who === 'me') {
+        moodData[item.dateStr].userMoodManual = true;
         moodData[item.dateStr].user = item.payload.user;
         moodData[item.dateStr].note = item.payload.note || '';
         moodData[item.dateStr].myWeather = item.payload.myWeather || '';
@@ -979,6 +993,7 @@ document.getElementById('confirm-mood-save').addEventListener('click', () => {
     if (!moodData[selectedDateStr]) moodData[selectedDateStr] = {};
     const weatherVal = (document.getElementById('mood-weather-input') || {}).value || '';
     if (currentMoodEditTarget === 'me') {
+        moodData[selectedDateStr].userMoodManual = true;
         if (currentMoodSelection) moodData[selectedDateStr].user = currentMoodSelection;
         moodData[selectedDateStr].note = document.getElementById('mood-note-input').value.trim();
         moodData[selectedDateStr].myWeather = weatherVal.trim();
@@ -1107,13 +1122,18 @@ window.selectCustomColor = function(color, el) {
 window.closeCustomMoodDialog = function() {
     document.getElementById('custom-mood-dialog').style.display = 'none';
 };
+function createCustomMoodOption(label, emoji, color = CUSTOM_MOOD_COLORS[0]) {
+    const option = { key: 'custom_' + Date.now() + '_' + customMoodOptions.length, kaomoji: emoji, label, color };
+    customMoodOptions.push(option);
+    saveCustomMoodOptions();
+    return option;
+}
+
 window.saveCustomMood = function() {
     const emoji = document.getElementById('custom-mood-emoji').value.trim();
     const label = document.getElementById('custom-mood-label').value.trim();
     if (!emoji || !label) { showNotification('请填写表情和名称', 'warning'); return; }
-    const key = 'custom_' + Date.now();
-    customMoodOptions.push({ key, kaomoji: emoji, label, color: customMoodSelectedColor });
-    saveCustomMoodOptions();
+    createCustomMoodOption(label, emoji, customMoodSelectedColor);
     closeCustomMoodDialog();
     renderMoodOptionsGrid(currentMoodSelection);
     showNotification('自定义心情已添加 ✦', 'success');

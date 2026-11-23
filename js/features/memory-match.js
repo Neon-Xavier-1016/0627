@@ -3,6 +3,7 @@
     'use strict';
 
     const minute = 60000;
+    const outgoingExpiry = 5 * minute;
     const storageName = 'memoryMatchInvites';
     const modes = {
         memory: {name:'记忆牌', columns:4, pairs:8, chances:3, previewMs:4000, hint:'先看牌 4 秒，有 3 次试错机会。'},
@@ -23,6 +24,7 @@
     let sessionKey = '', invites, modal, body, mode = '', game = null;
     let selectedMode = 'memory', incomingMode = 'memory', completedRounds = 0;
     const stepTimers = new Map();
+    let outgoingDeadline = 0;
 
     function saveInvites() {
         try { localStorage.setItem(sessionKey, JSON.stringify(invites)); } catch (_) {}
@@ -227,6 +229,7 @@
     }
 
     function clearSteps() {
+        outgoingDeadline = 0;
         stepTimers.forEach(timer => clearTimeout(timer));
         stepTimers.clear();
     }
@@ -247,6 +250,14 @@
         saveInvites();
     }
 
+    function expireOutgoingInvite() {
+        if (mode !== 'waiting' || !outgoingDeadline || Date.now() < outgoingDeadline) return false;
+        clearSteps();
+        mode = 'reply';
+        showPrompt('邀请已过时，' + label() + ' 没有回应。', [actionButton('close', '好')]);
+        return true;
+    }
+
     function invitePartner() {
         if (mode === 'waiting' || mode === 'incoming') return;
         const replay = mode === 'result';
@@ -255,10 +266,16 @@
         invites.retry = invites.retryUntil = 0;
         deferRegularInvite();
         mode = 'waiting';
+        outgoingDeadline = Date.now() + outgoingExpiry;
         showPrompt('在等 ' + label() + ' 回应…', []);
+        runLater(expireOutgoingInvite, outgoingExpiry, 'invite-expiry');
         runLater(() => {
+            if (expireOutgoingInvite() || mode !== 'waiting') return;
             const response = Math.random();
-            if (partnerUnavailable() || response < .13) {
+            const unavailable = partnerUnavailable();
+            if (!unavailable && response >= .95) return;
+            clearSteps();
+            if (unavailable || response < .13) {
                 mode = 'reply';
                 const reply = replay ? '刚才玩得很开心，不过我想先歇一下。' : '今天状态不太好，这次就先不玩啦。';
                 showPrompt(label() + '：' + reply, [actionButton('close', '好')]);
@@ -279,7 +296,9 @@
     }
 
     function checkInvite() {
-        if (!useSession() || document.hidden || document.body.dataset.hsPage !== 'chat') return;
+        if (!useSession() || document.hidden) return;
+        if (isOpen() && expireOutgoingInvite()) return;
+        if (document.body.dataset.hsPage !== 'chat') return;
         const now = Date.now();
         if (invites.retryUntil && now > invites.retryUntil) {
             invites.retry = invites.retryUntil = 0;
@@ -591,6 +610,7 @@
     }
 
     function finish(won) {
+        if (mode !== 'game') return;
         clearSteps();
         completedRounds++;
         const partner = label();
@@ -600,6 +620,20 @@
         saveInvites();
         game.offer = offer;
         mode = 'result';
+        if (!game.solo) {
+            const user = settings.myName || '我';
+            const outcome = game.key === 'race' ? (won ? user : partner) + '赢了'
+                : won ? user + '和' + partner + '赢了' : '这局没能配对成功';
+            const summary = { mode: game.rules.name, outcome, partner, reply, won };
+            addMessage({
+                id: Date.now() + Math.random(),
+                sender: 'system',
+                type: 'memory-match-result',
+                timestamp: new Date(),
+                text: [summary.mode, outcome, partner + '：' + reply].join('\n'),
+                memoryMatchResult: summary
+            });
+        }
 
         const result = document.createElement('div');
         result.className = 'memory-match-result';

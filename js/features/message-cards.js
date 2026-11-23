@@ -71,10 +71,14 @@
     function randInt(min, max) {
         return min + Math.floor(Math.random() * (max - min + 1));
     }
-    function generatePartnerText(minC, maxC) {
+    function generatePartnerText(minC, maxC, separator = '\n') {
         const n = randInt(minC, maxC);
         const parts = pickCards(n);
-        return parts.join('\n');
+        return parts.join(separator);
+    }
+
+    function generateScheduleNote() {
+        return Math.random() < 0.5 ? generatePartnerText(CARD_COUNT_MIN, CARD_COUNT_MAX, ' ') : '';
     }
 
     // ─── 每日计划 ────────────────────────────────────
@@ -789,6 +793,7 @@
         close: close,
         render: render,
         createMyCard: createMyCard,
+        generateScheduleNote: generateScheduleNote,
         ensureDailyPlan: ensureDailyPlan,
         processScheduledCards: processScheduledCards,
         // 用于备份引擎引用

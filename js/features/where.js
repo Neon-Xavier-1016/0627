@@ -417,8 +417,9 @@
   /* ---------- 3. 行程生成 ---------- */
   const STORE_KEY = 'wyd_where_plan';
 
-  function todayStr() {
+  function todayStr(offset = 0) {
     const d = new Date();
+    d.setDate(d.getDate() + offset);
     return d.getFullYear() + '-' +
       String(d.getMonth() + 1).padStart(2, '0') + '-' +
       String(d.getDate()).padStart(2, '0');
@@ -845,10 +846,18 @@
     };
   }
 
+  function readPlan(key) {
+    try { return JSON.parse(localStorage.getItem(key) || 'null'); }
+    catch { return null; }
+  }
+
   function loadPlan() {
-    let plan = null;
-    try { plan = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch (e) {}
+    let plan = readPlan(STORE_KEY);
     if (!plan || plan.date !== todayStr()) {
+      try {
+        if (plan?.date === todayStr(-1)) localStorage.setItem(STORE_KEY + '_previous', JSON.stringify(plan));
+        else if (readPlan(STORE_KEY + '_previous')?.date !== todayStr(-1)) localStorage.removeItem(STORE_KEY + '_previous');
+      } catch {}
       plan = generatePlan();
       try { localStorage.setItem(STORE_KEY, JSON.stringify(plan)); } catch (e) {}
     }
@@ -876,6 +885,36 @@
   function getPlace(id) {
     if (!id) return null;
     return PLACES.find(p => p.id === id);
+  }
+
+  function placeNameFor(visit) {
+    return visit?.placeId ? (getPlace(visit.placeId)?.name || '未知') : '在路上';
+  }
+
+  function renderYesterday() {
+    const box = document.getElementById('wyd-meals-container');
+    if (!box) return;
+    const current = readPlan(STORE_KEY);
+    const prior = current?.date === todayStr(-1) ? current : readPlan(STORE_KEY + '_previous');
+    box.replaceChildren();
+    if (prior?.date !== todayStr(-1) || !prior.visits?.length) {
+      box.textContent = '昨天没有地点记录';
+      return;
+    }
+    [...prior.visits].reverse().forEach(visit => {
+      const card = document.createElement('div'), title = document.createElement('div');
+      card.className = 'wyd-where-past-card';
+      title.className = 'wyd-card-title';
+      title.textContent = '📍 ' + placeNameFor(visit) + ' · ' + fmtHM(visit.start) + '–' + fmtHM(visit.end);
+      card.append(title);
+      for (const part of visit.segments?.length ? visit.segments : [visit]) {
+        const line = document.createElement('div');
+        line.className = 'wyd-seg-row';
+        line.textContent = [part.category, (part.text || '').replace(/\{user\}/g, () => getUserName())].filter(Boolean).join(' · ');
+        if (line.textContent) card.append(line);
+      }
+      box.append(card);
+    });
   }
 
   function getCurrentSegment(v) {
@@ -1101,7 +1140,7 @@
     let html = buildMapHTML();
 
     /* ========== 当前卡片 ========== */
-    const placeName = cur.placeId ? (getPlace(cur.placeId)?.name || '未知') : '在路上';
+    const placeName = placeNameFor(cur);
     const curSeg    = getCurrentSegment(cur);
     const prevSegs  = getPrevSegments(cur);
     const cat       = curSeg.category || cur.category || '——';
@@ -1207,6 +1246,16 @@
     render: renderWhere,
     PLACES,
     loadPlan,
+    renderYesterday,
+    invalidateToday() {
+      if (readPlan(STORE_KEY)?.date === todayStr()) localStorage.removeItem(STORE_KEY);
+    },
+    currentLocation() {
+      window.WydMeal?.ensureToday?.();
+      const visit = currentVisit(loadPlan());
+      if (!visit) return null;
+      return { label: placeNameFor(visit) };
+    },
     centerOnPlace
   };
 

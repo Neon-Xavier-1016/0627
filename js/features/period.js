@@ -262,12 +262,12 @@
         }
 
         if (elements['period-days-until-next']) {
-            const nextDate = getNextPeriodDate();
-            if (nextDate) {
-                elements['period-days-until-next'].textContent = formatDate(nextDate);
-            } else {
-                elements['period-days-until-next'].textContent = '-';
-            }
+            const value = elements['period-days-until-next'];
+            const label = value.parentElement.querySelector('.period-stat-label');
+            const isDuring = getCurrentCycleStatus().status === 'during';
+            const nextDate = isDuring ? null : getNextPeriodDate();
+            value.textContent = isDuring ? '经期中' : (nextDate ? formatDate(nextDate) : '-');
+            if (label) label.textContent = isDuring ? '当前状态' : '距离下次';
         }
 
         if (elements['period-duration']) {

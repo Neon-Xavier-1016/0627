@@ -10,7 +10,7 @@
  const noteEnterMs=280,noteHoldMs=5000,noteExitMs=240;
  const defaults=()=>({label:'我们在一起',date:'',annId:'',motto:'两颗缠绕的心，会走同一条路。',background:'',homeBackground:'',homeBackgrounds:[],homeGlassTransparency:37,showRelation:true,showCountdown:true,showMotto:true,unread:[],lastRead:null});
  const list=()=>typeof messages!=='undefined'?messages:[];
- const incoming=m=>!!m.sender&&m.sender!=='user'&&m.sender!=='system'&&!['system','recall','call-event','qa-live'].includes(m.type);
+ const incoming=m=>!!m.sender&&m.sender!=='user'&&m.sender!=='system'&&!['system','recall','call-event','qa-live','status-moment-question'].includes(m.type);
  const profile=()=>typeof settings!=='undefined'?settings:{};
  const validWallpaper=value=>/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(value);
  const glassTransparency=()=>Math.max(0,Math.min(100,Number(config.homeGlassTransparency)||0));
@@ -21,14 +21,14 @@
   const [y,m,d]=date.split('-').map(Number);let year=now.getFullYear();
   const yearly=year=>Date.UTC(year,m-1,Math.min(d,new Date(Date.UTC(year,m,0)).getUTCDate()))/86400000;
   let next=yearly(year);if(next<today||year<=y)next=yearly(Math.max(year+1,y+1));
-  return {days:today-start+1,until:next-today,future:start>today};
+  return {days:today-start,until:next-today,future:start>today};
  }
  function anniversariesList(){const all=[...(window.anniversaries||[]),...(typeof anniversaries!=='undefined'?anniversaries:[])];return all.filter((a,i)=>all.findIndex(b=>String(b.id)===String(a.id))===i);}
  function relationDate(){return anniversariesList().find(a=>String(a.id)===config.annId)?.date||config.date;}
  async function load(){
   const key=getStorageKey('homeShellData');if(key===storageKey)return;
   const saved=await localforage.getItem(key);config={...defaults(),...saved};storageKey=key;
-  const ids=new Set(list().map(m=>String(m.id)));unread=[...new Set([...(config.unread||[]),...list().filter(m=>incoming(m)&&saved?.lastRead&&new Date(m.timestamp).getTime()>saved.lastRead).map(m=>String(m.id)),...earlyMessages.map(m=>String(m.id))])].filter(id=>ids.has(id));
+  const ids=new Set(list().filter(m=>m.type!=='status-moment-question').map(m=>String(m.id)));unread=[...new Set([...(config.unread||[]),...list().filter(m=>incoming(m)&&saved?.lastRead&&new Date(m.timestamp).getTime()>saved.lastRead).map(m=>String(m.id)),...earlyMessages.map(m=>String(m.id))])].filter(id=>ids.has(id));
   if(!config.lastRead)config.lastRead=Date.now();
   clearNotes();
   noteQueue.push(...earlyMessages.filter(m=>ids.has(String(m.id))));
@@ -63,6 +63,7 @@
   if($('hs-chat-toolbar'))$('hs-chat-toolbar').hidden=next!=='chat';
   if($('hs-chat-more'))$('hs-chat-more').hidden=next!=='chat';
   $('hs-home').hidden=next!=='home';$('hs-settings').hidden=next!=='settings';
+  if(next==='home')window.HomeSchedule.showHome();
   document.querySelectorAll('[data-hs-page]').forEach(b=>b.setAttribute('aria-current',b.dataset.hsPage===next?'page':'false'));
   update();badges();showNote();
   if(next==='chat'){
@@ -152,7 +153,7 @@
   $('hs-countdown').hidden=!config.showCountdown;
   syncMotto();
   const info=relation(relationDate());
-  $('hs-days').textContent=info?(info.future?'等待故事开始':`${config.label}的第 ${info.days} 天`):'把我们的第一天记在这里';
+  $('hs-days').textContent=info?(info.future?'等待故事开始':`${config.label}已 ${info.days} 天`):'把我们的第一天记在这里';
   $('hs-countdown').textContent=info&&!info.future?`从 ${relationDate().replaceAll('-','.')} 到今天 · ${info.until===0?'今天是我们的周年纪念日':`距下一次周年还有 ${info.until} 天`}`:'点击卡片，设置起始日与专属背景';
   $('hs-relation').classList.toggle('hs-has-relation-image',!!config.background);
   $('hs-relation').style.backgroundImage=config.background?`linear-gradient(0deg,rgba(var(--secondary-bg-rgb),calc(.3 + .6 * var(--hs-glass-opacity))),rgba(var(--secondary-bg-rgb),calc(.45 * var(--hs-glass-opacity)))),url("${config.background}")`:'';
@@ -181,7 +182,7 @@
    const focusTarget=document.body.classList.contains('immersive-mode')?$('immersive-exit-btn'):trigger;
    focusTarget?.focus();
   };
-  trigger.onclick=()=>{syncSwitches();showModal(modal,close);};
+  trigger.onclick=()=>{syncSwitches();window.MomentStatus?.syncEmotionSetting?.();showModal(modal,close);};
   close.onclick=dismiss;
   modal.addEventListener('click',event=>{if(event.target===modal)dismiss();});
   document.addEventListener('keydown',event=>{
@@ -201,7 +202,12 @@
   const play=$('hs-music-play'),disc=$('hs-music-disc');
   const controls=[[$('hs-music-prev'),$('prev-btn')],[play,$('play-btn')],[$('hs-music-next'),$('next-btn')]];
   if(!audio||!title||!subtitle||!cover||controls.some(([from,to])=>!from||!to))return;
-  controls.forEach(([from,to])=>{from.onclick=()=>to.click();});
+  controls.forEach(([from,to])=>{
+   from.onclick=()=>{
+    if(from===play&&typeof setFloatingMusicPlayer==='function')setFloatingMusicPlayer(true,true);
+    to.click();
+   };
+  });
   const sync=()=>{
    const hasTrack=!!audio.getAttribute('src');
    const playing=hasTrack&&!audio.paused&&!audio.ended;
@@ -307,7 +313,7 @@
      <label><input id="hs-show-motto" type="checkbox" ${config.showMotto?'checked':''}> 显示卡片标语</label>
     </fieldset>
    </fieldset>
-   <label>关系名称<input id="hs-label-input" maxlength="16" value="${esc(config.label)}" placeholder="我们在一起 / 我们相识"></label><label>绑定已有重要日<select id="hs-ann-input"><option value="">单独设置起始日</option>${options.map(a=>`<option value="${esc(a.id)}" ${String(a.id)===config.annId?'selected':''}>${esc(a.name)} · ${esc(a.date)}</option>`).join('')}</select></label><label>起始日期<input id="hs-date-input" type="date" value="${esc(config.date||relationDate()||'')}"></label><p class="hs-hint">起始日计为第 1 天，按当地自然日更新；2 月 29 日在平年以 2 月 28 日纪念。</p><p class="hs-hint">卡片标语与聊天顶部同步，可在「字卡库 → 氛围感 → 顶部格言」中管理。</p><label>专属背景<input id="hs-bg-input" type="file" accept="image/*"></label><label><input id="hs-clear-bg" type="checkbox"> 恢复主题色背景</label><button id="hs-save" type="button">保存这张关系卡</button>`;
+   <label>关系名称<input id="hs-label-input" maxlength="16" value="${esc(config.label)}" placeholder="我们在一起 / 我们相识"></label><label>绑定已有重要日<select id="hs-ann-input"><option value="">单独设置起始日</option>${options.map(a=>`<option value="${esc(a.id)}" ${String(a.id)===config.annId?'selected':''}>${esc(a.name)} · ${esc(a.date)}</option>`).join('')}</select></label><label>起始日期<input id="hs-date-input" type="date" value="${esc(config.date||relationDate()||'')}"></label><p class="hs-hint">从起始日起计算已经过去的自然日，起始日为 0 天；2 月 29 日在平年以 2 月 28 日纪念。</p><p class="hs-hint">卡片标语与聊天顶部同步，可在「字卡库 → 氛围感 → 顶部格言」中管理。</p><label>专属背景<input id="hs-bg-input" type="file" accept="image/*"></label><label><input id="hs-clear-bg" type="checkbox"> 恢复主题色背景</label><button id="hs-save" type="button">保存这张关系卡</button>`;
   const showRelation=$('hs-show-relation');
   const syncOptions=()=>{$('hs-relation-options').disabled=!showRelation.checked;};
   showRelation.onchange=syncOptions;
@@ -468,7 +474,7 @@
   #data-modal.hs-settings-detail{position:fixed!important;inset:0!important;align-items:stretch!important;justify-content:stretch!important;height:100vh!important;height:100dvh!important;width:100%!important;padding:0!important}#data-modal.hs-settings-detail>.modal-content{position:relative!important;display:flex!important;flex-direction:column!important;height:100%!important;max-height:100%!important;min-height:0!important;width:100%!important;max-width:none!important;margin:0!important;border:0!important;border-radius:0!important;box-shadow:none!important;padding:0!important;animation:none!important;transform:none!important;overflow:hidden!important}#data-modal.hs-settings-detail .dm-topbar{padding:env(safe-area-inset-top) 12px 0;min-height:52px;box-sizing:content-box;flex:0 0 auto;position:relative;top:auto;background:var(--primary-bg)}#data-modal.hs-settings-detail .dm-topbar-back{border:0;border-radius:0;background:transparent;color:var(--accent-color);height:42px;width:38px}#data-modal.hs-settings-detail .dm-body{flex:1 1 0;min-height:0;overflow-y:auto}#data-modal.hs-settings-detail .dm-topbar-close{display:none!important}#chat-modal.hs-settings-detail>.modal-content>.hs-setting-top{padding-left:12px;padding-right:12px;margin-bottom:0}
   .hs-page{position:absolute;inset:0 0 var(--hs-nav-height);overflow-y:auto;overscroll-behavior:contain;background:var(--primary-bg);color:var(--text-primary);padding:26px 20px 24px;box-sizing:border-box;z-index:10}.hs-page[hidden]{display:none!important}.hs-content{max-width:650px;margin:0 auto}
   #hs-relation{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:10px;width:100%;padding:20px 16px;border-radius:24px;border:1px solid rgba(var(--accent-color-rgb),.1);background:linear-gradient(155deg,rgba(var(--accent-color-rgb),.08),var(--secondary-bg));background-size:cover;background-position:center;background-origin:border-box;background-clip:border-box;background-repeat:no-repeat;text-align:center;color:var(--text-primary);box-shadow:0 15px 35px rgba(var(--accent-color-rgb),.07);cursor:pointer;font:inherit;min-height:210px}
-  .hs-avatars{display:flex;justify-content:center}.hs-avatar{height:54px;width:54px;display:grid;place-items:center;border-radius:50%;background:var(--secondary-bg);border:4px solid var(--secondary-bg);overflow:hidden;box-shadow:0 5px 15px #0001}.hs-avatar+ .hs-avatar{margin-left:-10px}.hs-avatar img{width:100%;height:100%;object-fit:cover}.hs-avatar i{font-size:25px;color:var(--accent-color)}#hs-names{display:block;font-size:15px;font-weight:500;letter-spacing:1px}#hs-days{display:block;font-size:20px;line-height:1.6;font-weight:600;margin:2px 0 5px}#hs-countdown,#hs-motto{display:block;font-size:11px;line-height:1.8;color:var(--text-secondary)}#hs-motto{margin-top:8px} #hs-relation.hs-relation-simple .hs-avatar{width:70px;height:70px} #hs-relation.hs-relation-simple .hs-avatar i{font-size:30px}
+  .hs-avatars{display:flex;justify-content:center}.hs-avatar{height:54px;width:54px;display:grid;place-items:center;border-radius:50%;background:var(--secondary-bg);border:2px solid #fff;overflow:hidden;box-shadow:0 5px 15px #0001}.hs-avatar:has(>img){background:transparent}.hs-avatar+ .hs-avatar{margin-left:-10px}.hs-avatar img{width:100%;height:100%;object-fit:cover}.hs-avatar i{font-size:25px;color:var(--accent-color)}#hs-names{display:block;font-size:15px;font-weight:500;letter-spacing:1px}#hs-days{display:block;font-size:20px;line-height:1.6;font-weight:600;margin:2px 0 5px}#hs-countdown,#hs-motto{display:block;font-size:11px;line-height:1.8;color:var(--text-secondary)}#hs-motto{margin-top:8px} #hs-relation.hs-relation-simple .hs-avatar{width:70px;height:70px} #hs-relation.hs-relation-simple .hs-avatar i{font-size:30px}
   :is(#hs-home,#hs-home-glass-preview,body.hs-enabled[data-hs-page=home] #hs-nav){
    --hs-glass-strength:var(--hs-glass-opacity,.63);
    --hs-glass:rgba(var(--secondary-bg-rgb),var(--hs-glass-strength));
@@ -484,7 +490,7 @@
   #hs-home{
    bottom:0;padding-top:calc(24px + env(safe-area-inset-top,0px));
    padding-bottom:calc(var(--hs-nav-height) + 32px);
-   touch-action:manipulation;
+   touch-action:pan-y pinch-zoom;
    background:
     linear-gradient(var(--hs-wallpaper-wash),var(--hs-wallpaper-wash)) center / cover no-repeat,
     var(--hs-wallpaper, radial-gradient(ellipse at 6% 7%,rgba(var(--accent-color-rgb),.31),transparent 56%),
@@ -544,7 +550,6 @@
   .hs-music-controls #hs-music-play{background:rgba(var(--accent-color-rgb),.16)}
   .hs-music-controls button:hover:not(:disabled){background:rgba(var(--accent-color-rgb),.24)}
   .hs-music-controls button:disabled{opacity:.45;cursor:default}
-  body.hs-enabled[data-hs-page=home] #player,body.hs-enabled[data-hs-page=home] #playlist{display:none!important}
   .hs-home-functions{padding:6px 4px 0}
   #hs-preview{width:100%;display:flex;gap:12px;align-items:center;border:1px solid var(--border-color);border-radius:20px;background:var(--secondary-bg);color:var(--text-primary);padding:15px;text-align:left;font:inherit;cursor:pointer}.hs-preview-copy{flex:1;min-width:0}#hs-preview-name{display:block;font-size:14px}#hs-preview-text{display:block;color:var(--text-secondary);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px}#hs-preview-time{font-size:11px;color:var(--text-secondary)}.hs-badge{background:#e66b7c;color:#fff;border-radius:12px;padding:1px 6px;font-size:10px}.hs-badge[hidden]{display:none!important}
   body.hs-enabled .header .header-actions{display:none!important}
@@ -599,12 +604,14 @@
   </div>`;
   const settingPage=document.createElement('section');settingPage.id='hs-settings';settingPage.className='hs-page';settingPage.hidden=true;settingPage.setAttribute('aria-label','设置');
   document.body.append(home,settingPage);
+  const scheduleEntry=window.HomeSchedule.mount(home);
   setupHomeMusic();
   setupHomeBackground(home);
   setupChatDisplay();
   const content=$('settings-modal')?.querySelector('.modal-content');if(content)settingPage.appendChild(content);
   let apps=[...document.querySelectorAll('#advanced-modal .settings-item-list > .settings-item')];
   for(const a of apps){a.setAttribute('role','button');a.tabIndex=0;a.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();a.click();}});}
+  apps.push(scheduleEntry);
   const moments=document.createElement('div');moments.id='hs-moments-entry';moments.className='settings-item';moments.tabIndex=0;moments.setAttribute('role','button');moments.innerHTML='<i class="fas fa-images"></i><span>朋友圈</span>';moments.onclick=()=>$('moments-entry-btn')?.click();moments.onkeydown=e=>{if(e.key==='Enter')moments.click();};apps.unshift(moments);
   const library=$('custom-replies-function');if(library){library.className='settings-card';settingPage.querySelector('.settings-grid')?.appendChild(library);apps=apps.filter(a=>a!==library);}
   // 直接移动原按钮，保留原监听器及其他模块缓存的 DOM 引用。
@@ -621,7 +628,7 @@
   moveShortcut('what-are-you-doing-btn','你在干嘛','home');
   moveShortcut('daily-greeting-btn','今日公告','home');
   moveShortcut('session-manager-btn','会话管理','settings');
-  const order=['hs-shortcut-theme-toggle','hs-shortcut-daily-greeting-btn','hs-shortcut-what-are-you-doing-btn','anniversary-function','mood-function','qa-function','envelope-function','incoming-letter-function','decision-helper-function','message-cards-function','hs-moments-entry'];
+  const order=['hs-shortcut-theme-toggle','hs-shortcut-daily-greeting-btn','hs-shortcut-what-are-you-doing-btn','anniversary-function','mood-function','qa-function','envelope-function','incoming-letter-function','hs-schedule-entry','decision-helper-function','message-cards-function','hs-moments-entry'];
   apps.sort((a,b)=>(order.includes(a.id)?order.indexOf(a.id):100)-(order.includes(b.id)?order.indexOf(b.id):100));setupAppPages(apps);
   const nav=document.createElement('nav');nav.id='hs-nav';nav.setAttribute('aria-label','主导航');nav.innerHTML=`<button data-hs-page="home"><i class="fas fa-home"></i><span>首页</span></button><button data-hs-page="chat"><i class="far fa-comment-dots"></i><span>聊天</span><span class="hs-badge" id="hs-chat-badge" hidden></span></button><button data-hs-page="settings"><i class="fas fa-cog"></i><span>设置</span></button>`;document.body.appendChild(nav);
   const toolbar=document.createElement('div');toolbar.id='hs-chat-toolbar';toolbar.hidden=true;

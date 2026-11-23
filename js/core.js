@@ -72,10 +72,14 @@
     };
 }
 
+function isVisibleChatMessage(message) {
+    return message.type !== 'qa-live' && message.type !== 'status-moment-question';
+}
+
 function loadMoreHistory() {
     const historyLoader = document.getElementById('history-loader');
     const container = DOMElements && DOMElements.chatContainer;
-    const visibleCount = messages.reduce((count, msg) => count + Number(msg.type !== 'qa-live'), 0);
+    const visibleCount = messages.reduce((count, msg) => count + Number(isVisibleChatMessage(msg)), 0);
     const currentOldestMsgIndex = visibleCount - displayedMessageCount;
 
     if (!container) return;
@@ -1038,6 +1042,7 @@ function attachChatEntryActions(entry, id) {
 
 function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
     const fragment = new DocumentFragment();
+    if (msg.type === 'status-moment-question') return fragment;
     const messageDate = new Date(msg.timestamp).toDateString();
     const prevDate = prevMsg ? new Date(prevMsg.timestamp).toDateString() : null;
 
@@ -1098,6 +1103,31 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
         systemMsgDiv.innerHTML = msg.text;
         attachChatEntryActions(systemMsgDiv, msg.id);
         fragment.appendChild(systemMsgDiv);
+        lastSenderRef.current = 'system';
+        return fragment;
+    }
+
+    if (msg.type === 'memory-match-result' && msg.memoryMatchResult) {
+        const result = msg.memoryMatchResult;
+        const wrapper = document.createElement('div');
+        wrapper.className = 'memory-chat-result';
+        wrapper.dataset.id = msg.id;
+        const card = document.createElement('div');
+        card.className = 'memory-chat-result-card';
+        const mode = document.createElement('div');
+        mode.className = 'memory-chat-result-mode';
+        mode.textContent = result.mode;
+        const outcome = document.createElement('strong');
+        outcome.className = 'memory-chat-result-outcome';
+        outcome.dataset.winner = result.won === true ? 'user' : result.mode === '记忆竞速' && result.won === false ? 'partner' : 'none';
+        outcome.textContent = result.outcome;
+        const line = document.createElement('p');
+        line.className = 'memory-chat-result-reply';
+        line.textContent = result.partner + '：' + result.reply;
+        card.append(mode, outcome, line);
+        wrapper.appendChild(card);
+        attachChatEntryActions(wrapper, msg.id);
+        fragment.appendChild(wrapper);
         lastSenderRef.current = 'system';
         return fragment;
     }
@@ -1200,6 +1230,7 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
         }
     }
 
+        const statusCard = window.MomentStatus?.renderMessage(msg);
         const isImageOnly = !msg.text && !!msg.image;
         let content = '';
         const __isVoiceMsg = (msg.type === 'voice' && msg.voiceId);
@@ -1207,7 +1238,7 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
             content = (window.VoiceLibrary && window.VoiceLibrary.buildVoiceBubbleHTML)
                 ? window.VoiceLibrary.buildVoiceBubbleHTML(msg)
                 : '<span style="opacity:0.6;">[语音]</span>';
-        } else {
+        } else if (!statusCard) {
             if (msg.text) {
                 let textHtml = msg.text.replace(/\n/g, '<br>');
                 content = `<div>${textHtml}</div>`;
@@ -1225,7 +1256,9 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
     } else {
         messageDiv.className = `message message-${msg.sender === 'user' ? 'sent' : 'received'} ${settings.bubbleStyle}`;
     }
-    messageDiv.innerHTML = content;
+    if (statusCard) messageDiv.appendChild(statusCard);
+    else messageDiv.innerHTML = content;
+    if (msg.partnerEmotion) window.MomentStatus?.appendEmotion?.(messageDiv, msg.partnerEmotion);
     if (msg.replyTo) {
         const quote = document.createElement('div');
         quote.className = 'reply-indicator';
@@ -1251,7 +1284,7 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
    if (msg.type === 'voice' && msg.voiceId) {
        // 语音消息：显示/收起下方文字（不弹编辑）
        actionsHTML += `<button class="meta-action-btn voice-text-btn" title="转文字" onclick="window.VoiceLibrary && window.VoiceLibrary.toggleTranscript && window.VoiceLibrary.toggleTranscript(this)"><span style="font-family:'Noto Serif SC',serif;font-size:13px;font-weight:700;line-height:1;">文</span></button>`;
-   } else if (msg.sender === 'user') {
+   } else if (msg.sender === 'user' && !statusCard) {
        actionsHTML += `<button class="meta-action-btn edit-btn" title="编辑消息" onclick="editMessage('${msg.id}')"><i class="fas fa-pen"></i></button>`;
    }
    actionsHTML += `<button class="meta-action-btn delete-btn" title="删除"><i class="fas fa-trash-alt"></i></button>`;
@@ -1340,7 +1373,7 @@ function _updateReadReceiptsDOM() {
 function renderMessages(preserveScroll = false) {
     const container = DOMElements.chatContainer;
     window.MusicInvite?.syncExpiry?.();
-    const visibleMessages = messages.filter(msg => msg.type !== 'qa-live');
+    const visibleMessages = messages.filter(isVisibleChatMessage);
     const totalMessages = visibleMessages.length;
     const startIndex = Math.max(0, totalMessages - displayedMessageCount);
     const msgsToRender = visibleMessages.slice(startIndex);
@@ -1365,7 +1398,7 @@ function renderMessages(preserveScroll = false) {
 
     let lastSenderRef = { current: null };
     msgsToRender.forEach((msg, i) => {
-        const prevMsg = i > 0 ? msgsToRender[i - 1] : (startIndex > 0 ? messages[startIndex - 1] : null);
+        const prevMsg = i > 0 ? msgsToRender[i - 1] : (startIndex > 0 ? visibleMessages[startIndex - 1] : null);
         const nextMsg = i < msgsToRender.length - 1 ? msgsToRender[i + 1] : null;
         const msgFragment = createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef);
         fragment.appendChild(msgFragment);
@@ -1401,7 +1434,7 @@ const addMessage = (message) => {
     if (!(message.timestamp instanceof Date)) message.timestamp = new Date(message.timestamp);
     
     const container = DOMElements.chatContainer;
-    const prevMsg = messages.findLast(msg => msg.type !== 'qa-live');
+    const prevMsg = messages.findLast(isVisibleChatMessage);
     const wasEmpty = !prevMsg;
     messages.push(message);
     
@@ -1623,51 +1656,8 @@ const addMessage = (message) => {
                 currentReplyTo = null;
                 updateReplyPreview();
 
-if (!isBatchMode && type === 'normal') {
-    const delayRange = settings.replyDelayMax - settings.replyDelayMin;
-    const randomDelay = settings.replyDelayMin + Math.random() * delayRange;
-
-    const chance = Math.max(0, Math.min(1, Number(settings.readNoReplyChance) || 0));
-    const shouldIgnore = settings.allowReadNoReply && (Math.random() < chance);
-
-    const readDelay = 1500 + Math.random() * 2500;
-                setTimeout(() => {
-        let changed = false;
-        messages.forEach(msg => {
-            if (msg.sender === 'user' && msg.status !== 'read') {
-                msg.status = 'read';
-                changed = true;
-            }
-        });
-        if (changed) { _updateReadReceiptsDOM(); throttledSaveData(); }
-    }, readDelay);
-
-    if (window._pendingReplyTimer) clearTimeout(window._pendingReplyTimer);
-    window._pendingReplyTimer = null;
-
-            if (!shouldIgnore) {
-        if (settings.typingIndicatorEnabled) {
-            const tiWrapper = document.getElementById('typing-indicator-wrapper');
-            const tiLabel = document.getElementById('typing-indicator-label');
-            const tiAvatar = document.getElementById('typing-indicator-avatar');
-            if (tiLabel) tiLabel.textContent = (settings.partnerName || '对方') + ' 正在输入';
-            if (tiWrapper) { 
-                positionTypingIndicator(); 
-                tiWrapper.style.display = 'block'; 
-            }
-            if (tiAvatar) {
-                const partnerImg = DOMElements.partner.avatar.querySelector('img');
-                tiAvatar.innerHTML = partnerImg ? `<img src="${partnerImg.src}">` : '<i class="fas fa-user"></i>';
-            }
-            if (DOMElements.chatContainer) DOMElements.chatContainer.scrollTop = DOMElements.chatContainer.scrollHeight;
-        }
-        window._pendingReplyTimer = setTimeout(() => {
-            window._pendingReplyTimer = null;
-            simulateReply();
-        }, randomDelay);
-    }
-}
-};
+                if (!isBatchMode && type === 'normal') scheduleChatReply(messageData);
+            };
 
             if (imageFile) {
                 showNotification('正在优化图片...', 'info', 1500);
@@ -1676,6 +1666,47 @@ if (!isBatchMode && type === 'normal') {
                 createMessage();
             }
             DOMElements.imageInput.value = '';
+        }
+
+        function scheduleChatReply(message, preferredReply = '') {
+            const activeSession = SESSION_ID;
+            const delayRange = settings.replyDelayMax - settings.replyDelayMin;
+            const delay = settings.replyDelayMin + Math.random() * delayRange;
+            const ignoreChance = Math.max(0, Math.min(1, Number(settings.readNoReplyChance) || 0));
+            const shouldIgnore = message.type !== 'status-moment' && settings.allowReadNoReply && Math.random() < ignoreChance;
+
+            setTimeout(() => {
+                if (SESSION_ID !== activeSession) return;
+                let changed = false;
+                for (const item of messages) {
+                    if (item.sender !== 'user' || item.status === 'read') continue;
+                    item.status = 'read';
+                    changed = true;
+                }
+                if (changed) { _updateReadReceiptsDOM(); throttledSaveData(); }
+            }, 1500 + Math.random() * 2500);
+
+            clearTimeout(window._pendingReplyTimer);
+            window._pendingReplyTimer = null;
+            if (shouldIgnore) return;
+
+            if (settings.typingIndicatorEnabled) {
+                const wrapper = document.getElementById('typing-indicator-wrapper');
+                const label = document.getElementById('typing-indicator-label');
+                const avatar = document.getElementById('typing-indicator-avatar');
+                if (label) label.textContent = (settings.partnerName || '对方') + ' 正在输入';
+                if (wrapper) { positionTypingIndicator(); wrapper.style.display = 'block'; }
+                if (avatar) {
+                    const image = DOMElements.partner.avatar.querySelector('img');
+                    avatar.replaceChildren(...(image ? [image.cloneNode()] : []));
+                }
+                if (DOMElements.chatContainer) DOMElements.chatContainer.scrollTop = DOMElements.chatContainer.scrollHeight;
+            }
+            window._pendingReplyTimer = setTimeout(() => {
+                window._pendingReplyTimer = null;
+                if (SESSION_ID !== activeSession || !messages.some(item => item.id === message.id)) return;
+                window.simulateReply(preferredReply);
+            }, delay);
         }
 
         function toggleBatchMode() {
@@ -1785,7 +1816,9 @@ if (!isBatchMode && type === 'normal') {
             ro.observe(inputArea);
         })();
 
-        window.simulateReply = function() {
+        window.simulateReply = function(preferredReply) {
+            const contextual = typeof preferredReply === 'string' && preferredReply.trim();
+            const activeSession = SESSION_ID;
             function showTypingIndicator() {
                 if (!settings.typingIndicatorEnabled) return;
                 const tiWrapper = document.getElementById('typing-indicator-wrapper');
@@ -1830,14 +1863,14 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                      throttledSaveData();
                 }
             }
-            if (Math.random() < 0.03) {
+            if (!contextual && Math.random() < 0.03) {
                 // ── 对方拍一拍：调用提取的通用函数（同时供 /测试拍一拍 指令使用）──
                 if (typeof window._triggerPartnerPoke === 'function') window._triggerPartnerPoke();
                 return;
             }
 
-            const replyCount = Math.random() < 0.75 ? 1: (Math.random() < 0.95 ? 2: 3);
-            if (!customReplies || customReplies.length === 0) {
+            const replyCount = contextual ? 1 : Math.random() < 0.75 ? 1 : Math.random() < 0.95 ? 2 : 3;
+            if (!contextual && (!customReplies || customReplies.length === 0)) {
                 showNotification('回复库为空，请先到「自定义回复」中添加内容', 'info', 3500);
                 return;
             }
@@ -1851,7 +1884,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
             (window.customReplyGroups || []).forEach(g => {
                 if (g.disabled && Array.isArray(g.items)) g.items.forEach(item => disabledGroupItemsOnce.add(item));
             });
-            const replyPoolOnce = customReplies
+            const replyPoolOnce = contextual ? [contextual] : customReplies
                 .filter(r => !disabledItemsOnce.has(r) && !disabledGroupItemsOnce.has(r))
                 .map(r => String(r || '').trim())
                 .filter(Boolean);
@@ -1866,10 +1899,12 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
             const recentUserMsgs = settings.replyEnabled
                 ? messages.filter(m => m.sender === 'user' && m.text).slice(-10)
                 : [];
+            let checkedEmotion = false;
             for (let i = 0; i < replyCount; i++) {
                 const delayRange = settings.replyDelayMax - settings.replyDelayMin;
                 delay += settings.replyDelayMin + Math.random() * delayRange;
                 setTimeout(() => {
+                    if (SESSION_ID !== activeSession) return;
                     try {
                     const replyPool = replyPoolOnce;
                     // 被屏蔽或无效项直接换下一个，尽量保证每次都产出可用回复
@@ -1884,7 +1919,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
 
                     // ===== 梦角自由造句：随机替换为造句结果 =====
                     try {
-                        if (window.DreamFree) {
+                        if (!contextual && window.DreamFree) {
                             const made = window.DreamFree.build();
                             if (made) {
                                 replyText = made;
@@ -1923,7 +1958,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                     const _voiceEnabled = settings.voiceMessageEnabled !== false;
                     const _voiceChance = (typeof settings.voiceMessageChance === 'number' ? settings.voiceMessageChance : 15) / 100;
                     const _voiceLib = (typeof settings !== 'undefined' && Array.isArray(settings.voiceLibrary)) ? settings.voiceLibrary : [];
-                    if (_voiceEnabled && _voiceChance > 0 && _voiceLib.length > 0 && Math.random() < _voiceChance) {
+                    if (!contextual && _voiceEnabled && _voiceChance > 0 && _voiceLib.length > 0 && Math.random() < _voiceChance) {
                         const _meta = _voiceLib[Math.floor(Math.random() * _voiceLib.length)];
                         addMessage({
                             id: Date.now() + i + 3000,
@@ -1952,10 +1987,13 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                         return;
                     }
 
+                    const partnerEmotion = checkedEmotion ? undefined : window.MomentStatus?.pickReplyEmotion?.();
+                    checkedEmotion = true;
                     addMessage({
                         id: Date.now() + i,
                         sender: settings.partnerName || '对方',
                         text: finalText,
+                        partnerEmotion,
                         timestamp: new Date(),
                         status: 'received',
                         favorited: false,
