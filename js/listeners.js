@@ -2555,7 +2555,16 @@ const savedCover = safeGetItem(APP_PREFIX + 'playerCover');
     let isSearchVisible = false;
 
     function loadSong(index) {
-        if (songs.length === 0) return;
+        if (songs.length === 0) {
+            audio.removeAttribute('src');
+            audio.load();
+            document.getElementById('music-title').textContent = '歌单为空';
+            document.getElementById('music-subtitle').textContent = '';
+            document.getElementById('icon-play').style.display = 'block';
+            document.getElementById('icon-pause').style.display = 'none';
+            player.classList.remove('playing');
+            return;
+        }
         if (index >= songs.length) index = 0;
         if (index < 0) index = songs.length - 1;
 
@@ -3409,70 +3418,6 @@ playlist.style.top = (rect.top + (player.classList.contains('collapsed') ? 65 : 
             DOMElements.batchBtn.addEventListener('click', toggleBatchMode);
         }
 
-
-
-function _applyCollapseState(on) {
-    document.body.classList.toggle('bottom-collapse-mode', on);
-    const csToggle = document.getElementById('bottom-collapse-cs-toggle');
-    if (csToggle) csToggle.classList.toggle('active', on);
-    if (!on) {
-        const panel = document.getElementById('collapsed-extras-panel');
-        if (panel) panel.style.display = 'none';
-        const expandBtn = document.getElementById('collapse-expand-btn');
-        if (expandBtn) expandBtn.classList.remove('open');
-    }
-}
-
-window._toggleBottomCollapse = function() {
-    const isOn = !document.body.classList.contains('bottom-collapse-mode');
-    if (typeof settings !== 'undefined') settings.bottomCollapseMode = isOn;
-    _applyCollapseState(isOn);
-    if (typeof throttledSaveData === 'function') throttledSaveData();
-    if (typeof showNotification === 'function')
-        showNotification(isOn ? '底部栏已收纳 — 点击 ⌃ 展开更多' : '已退出收纳模式', 'success', 2000);
-};
-
-window.toggleCollapsedExtras = function() {
-    const panel = document.getElementById('collapsed-extras-panel');
-    const btn = document.getElementById('collapse-expand-btn');
-    if (!panel) return;
-    const willOpen = panel.style.display === 'none' || panel.style.display === '';
-    panel.style.display = willOpen ? 'block' : 'none';
-    if (btn) btn.classList.toggle('open', willOpen);
-
-    function wireExtra(extraId, primaryId) {
-        const extra = document.getElementById(extraId);
-        const primary = document.getElementById(primaryId);
-        if (extra && primary && !extra._linked) {
-            extra._linked = true;
-            extra.addEventListener('click', (e) => { e.stopPropagation(); primary.click(); });
-        }
-    }
-    wireExtra('combo-btn-extra', 'combo-btn');
-    wireExtra('batch-btn-extra', 'batch-btn');
-};
-
-window.exitCollapseMode = function() {
-    if (typeof settings !== 'undefined') settings.bottomCollapseMode = false;
-    _applyCollapseState(false);
-    if (typeof throttledSaveData === 'function') throttledSaveData();
-    if (typeof showNotification === 'function') showNotification('已退出收纳模式', 'success', 2000);
-};
-
-(function initCollapseMode() {
-    function tryApply() {
-        if (typeof settings !== 'undefined') {
-            if (settings.bottomCollapseMode) _applyCollapseState(true);
-        } else {
-            setTimeout(tryApply, 300);
-        }
-    }
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', tryApply);
-    } else {
-        setTimeout(tryApply, 400);
-    }
-})();
 
 
 function initStickerUploadListeners() {

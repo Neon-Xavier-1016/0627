@@ -186,7 +186,6 @@ autoSendInterval: 5,
         partnerPokeSoundPreset: 'tone_low',
         partnerPokeCustomSoundUrl: '',
         soundVolume: 0.15,
-        bottomCollapseMode: false,
         emojiMixEnabled: true,
         voiceMessageEnabled: true,     // ← 新增：默认开启
         voiceMessageChance: 15,        // ← 新增：默认 15%
@@ -900,7 +899,6 @@ function manageAutoSendTimer() {
                 document.documentElement.style.setProperty('--avatar-custom-offset', settings.inChatAvatarCustomOffset + 'px');
             }
             document.body.classList.toggle('always-show-avatar', !!settings.alwaysShowAvatar);
-            if (typeof _applyCollapseState === 'function') _applyCollapseState(!!settings.bottomCollapseMode);
             document.body.classList.toggle('show-partner-name', !!(settings.showPartnerNameInChat || showPartnerNameInChat));
 
             document.querySelectorAll('.theme-color-btn').forEach(btn => {

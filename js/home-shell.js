@@ -4,13 +4,16 @@
  const $=id=>document.getElementById(id);
  const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  let ready=false,page='home',config={},storageKey='',unread=[],activeNote=null,noteTimer=null,writing=Promise.resolve();
+ let appliedWallpaper, syncHomeBackground;
  const earlyMessages=[];
  const noteQueue=[];
  const noteEnterMs=280,noteHoldMs=5000,noteExitMs=240;
- const defaults=()=>({label:'我们在一起',date:'',annId:'',motto:'两颗缠绕的心，会走同一条路。',background:'',showRelation:true,showCountdown:true,showMotto:true,unread:[],lastRead:null});
+ const defaults=()=>({label:'我们在一起',date:'',annId:'',motto:'两颗缠绕的心，会走同一条路。',background:'',homeBackground:'',homeBackgrounds:[],homeGlassTransparency:37,showRelation:true,showCountdown:true,showMotto:true,unread:[],lastRead:null});
  const list=()=>typeof messages!=='undefined'?messages:[];
  const incoming=m=>!!m.sender&&m.sender!=='user'&&m.sender!=='system'&&!['system','recall','call-event','qa-live'].includes(m.type);
  const profile=()=>typeof settings!=='undefined'?settings:{};
+ const validWallpaper=value=>/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(value);
+ const glassTransparency=()=>Math.max(0,Math.min(100,Number(config.homeGlassTransparency)||0));
  function ordinal(date){const parts=/^(\d{4})-(\d{2})-(\d{2})$/.exec(date||'');if(!parts)return null;const [y,m,d]=parts.slice(1).map(Number),v=new Date(Date.UTC(y,m-1,d));return v.getUTCFullYear()===y&&v.getUTCMonth()===m-1&&v.getUTCDate()===d?v.getTime()/86400000:null;}
  function relation(date,now=new Date()){
   const start=ordinal(date);if(start===null)return null;
@@ -58,6 +61,7 @@
   page=next;document.body.dataset.hsPage=next;
   if($('hs-nav'))$('hs-nav').hidden=next==='chat';
   if($('hs-chat-toolbar'))$('hs-chat-toolbar').hidden=next!=='chat';
+  if($('hs-chat-more'))$('hs-chat-more').hidden=next!=='chat';
   $('hs-home').hidden=next!=='home';$('hs-settings').hidden=next!=='settings';
   document.querySelectorAll('[data-hs-page]').forEach(b=>b.setAttribute('aria-current',b.dataset.hsPage===next?'page':'false'));
   update();badges();showNote();
@@ -92,7 +96,12 @@
  }
  function settingBack(modal){
   if(modal.id==='appearance-modal'){
-   const inner=$('appearance-panel-container');if(inner&&inner.style.display!=='none'&&typeof hideAppearancePanel==='function'){hideAppearancePanel();return;}
+   const inner=$('appearance-panel-container');
+   if(inner&&inner.style.display!=='none'&&typeof hideAppearancePanel==='function'){
+    const fromHome=detailReturn==='home'&&$('appearance-panel-home-background')?.style.display==='block';
+    hideAppearancePanel();
+    if(!fromHome)return;
+   }
   }
   closeSettingPage(modal);
  }
@@ -145,9 +154,74 @@
   const info=relation(relationDate());
   $('hs-days').textContent=info?(info.future?'等待故事开始':`${config.label}的第 ${info.days} 天`):'把我们的第一天记在这里';
   $('hs-countdown').textContent=info&&!info.future?`从 ${relationDate().replaceAll('-','.')} 到今天 · ${info.until===0?'今天是我们的周年纪念日':`距下一次周年还有 ${info.until} 天`}`:'点击卡片，设置起始日与专属背景';
-  $('hs-relation').style.backgroundImage=config.background?`linear-gradient(0deg,var(--secondary-bg),transparent),url("${config.background}")`:'';
+  $('hs-relation').classList.toggle('hs-has-relation-image',!!config.background);
+  $('hs-relation').style.backgroundImage=config.background?`linear-gradient(0deg,rgba(var(--secondary-bg-rgb),calc(.3 + .6 * var(--hs-glass-opacity))),rgba(var(--secondary-bg-rgb),calc(.45 * var(--hs-glass-opacity)))),url("${config.background}")`:'';
+  const home=$('hs-home'),wallpaper=config.homeBackground;
+  if(appliedWallpaper!==wallpaper){
+   appliedWallpaper=wallpaper;
+   if(validWallpaper(wallpaper))home.style.setProperty('--hs-wallpaper','url('+JSON.stringify(wallpaper)+')');
+   else home.style.removeProperty('--hs-wallpaper');
+  }
+  const opacity=1-glassTransparency()/100;
+  home.style.setProperty('--hs-glass-opacity',opacity);
+  $('hs-nav')?.style.setProperty('--hs-glass-opacity',opacity);
+  syncHomeBackground?.();
   const now=new Date();$('hs-clock').textContent=now.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false});$('hs-date').textContent=now.toLocaleDateString('zh-CN',{month:'long',day:'numeric',weekday:'long'});
   if($('theme-toggle'))$('theme-toggle').setAttribute('aria-pressed',String(!!s.isDarkMode));
+ }
+ function setupChatDisplay(){
+  const trigger=$('hs-chat-more'),modal=$('hs-chat-display'),close=$('hs-chat-display-close');
+  if(!trigger||!modal||!close)return;
+  const switches=[...modal.querySelectorAll('[role=switch]')];
+  const syncSwitches=()=>switches.forEach(button=>button.setAttribute('aria-checked',String(button.classList.contains('active'))));
+  const observer=new MutationObserver(syncSwitches);
+  switches.forEach(button=>observer.observe(button,{attributes:true,attributeFilter:['class']}));
+  const dismiss=()=>{
+   hideModal(modal);
+   const focusTarget=document.body.classList.contains('immersive-mode')?$('immersive-exit-btn'):trigger;
+   focusTarget?.focus();
+  };
+  trigger.onclick=()=>{syncSwitches();showModal(modal,close);};
+  close.onclick=dismiss;
+  modal.addEventListener('click',event=>{if(event.target===modal)dismiss();});
+  document.addEventListener('keydown',event=>{
+   if(modal.style.display!=='flex'||$('poke-sym-modal'))return;
+   if(event.key==='Escape'){event.preventDefault();dismiss();return;}
+   if(event.key!=='Tab')return;
+   const buttons=modal.querySelectorAll('button');
+   const edge=event.shiftKey?buttons[0]:buttons[buttons.length-1];
+   if(document.activeElement===edge||!modal.contains(document.activeElement)){
+    event.preventDefault();
+    (event.shiftKey?buttons[buttons.length-1]:buttons[0]).focus();
+   }
+  });
+ }
+ function setupHomeMusic(){
+  const audio=$('audio'),title=$('music-title'),subtitle=$('music-subtitle'),cover=$('vinyl-record-visual');
+  const play=$('hs-music-play'),disc=$('hs-music-disc');
+  const controls=[[$('hs-music-prev'),$('prev-btn')],[play,$('play-btn')],[$('hs-music-next'),$('next-btn')]];
+  if(!audio||!title||!subtitle||!cover||controls.some(([from,to])=>!from||!to))return;
+  controls.forEach(([from,to])=>{from.onclick=()=>to.click();});
+  const sync=()=>{
+   const hasTrack=!!audio.getAttribute('src');
+   const playing=hasTrack&&!audio.paused&&!audio.ended;
+   $('hs-music-title').textContent=hasTrack?title.textContent:'暂无歌曲';
+   const detail=subtitle.textContent.trim();
+   $('hs-music-sub').textContent=hasTrack?detail:'';
+   $('hs-music-sub').hidden=!hasTrack||!detail;
+   play.setAttribute('aria-label',playing?'暂停':'播放');
+   play.querySelector('i').className=playing?'fas fa-pause':'fas fa-play';
+   disc.classList.toggle('is-playing',playing);
+   disc.firstElementChild.style.backgroundImage=cover.style.backgroundImage;
+   disc.classList.toggle('has-cover',!!cover.style.backgroundImage);
+   controls.forEach(([from])=>{from.disabled=!hasTrack;});
+  };
+  const observer=new MutationObserver(sync);
+  [title,subtitle].forEach(node=>observer.observe(node,{childList:true,characterData:true,subtree:true}));
+  observer.observe(cover,{attributes:true,attributeFilter:['style']});
+  observer.observe(audio,{attributes:true,attributeFilter:['src']});
+  ['play','pause','ended','emptied','error'].forEach(event=>audio.addEventListener(event,sync));
+  sync();
  }
  function setupAppPages(apps){
   const viewport=$('hs-apps'),indicators=$('hs-app-pages');
@@ -262,6 +336,93 @@
    throw Error('图片压缩后仍过大，请换一张。');
   }finally{URL.revokeObjectURL(url);}
  }
+ function setupHomeBackground(home){
+  const entry=$('hs-home-background-entry'),panel=$('appearance-panel-home-background');
+  const input=$('hs-home-wallpaper-file'),status=$('hs-home-wallpaper-status');
+  const gallery=$('hs-home-background-gallery'),add=$('hs-home-background-add'),theme=$('hs-home-background-theme');
+  const reset=$('hs-home-wallpaper-reset'),range=$('hs-home-glass-range'),value=$('hs-home-glass-value');
+  const preview=$('hs-home-glass-preview');
+  if(!entry||!panel)return;
+  let busy=false,lastTap=null,lastImages,lastWallpaper;
+  const open=()=>{
+   if(modalOpen())return;
+   showModal($('appearance-modal'));
+   entry.click();
+  };
+  const previewGlass=()=>{
+   const transparency=Number(range.value);
+   value.textContent=transparency+'%';
+   preview.style.setProperty('--hs-glass-opacity',1-transparency/100);
+  };
+  const select=async (wallpaper,file)=>{
+   if(busy)return;
+   const activeKey=storageKey;
+   busy=true;add.disabled=theme.disabled=reset.disabled=true;
+   status.textContent='';
+   try{
+    const homeBackground=file?await compress(file):wallpaper;
+    if(activeKey!==storageKey)throw Error('会话已切换，请重新选择图片。');
+    const homeBackgrounds=new Set(Array.isArray(config.homeBackgrounds)?config.homeBackgrounds:[]);
+    if(validWallpaper(config.homeBackground))homeBackgrounds.add(config.homeBackground);
+    if(homeBackground)homeBackgrounds.add(homeBackground);
+    await save({homeBackground,homeBackgrounds:[...homeBackgrounds]});
+    update();
+   }catch(error){status.textContent=error.message||'背景保存失败，请重试。';}
+   finally{busy=false;add.disabled=theme.disabled=false;reset.disabled=!config.homeBackground;}
+  };
+  syncHomeBackground=()=>{
+   const {homeBackground,homeBackgrounds}=config;
+   if(lastImages!==homeBackgrounds||lastWallpaper!==homeBackground){
+    lastImages=homeBackgrounds;lastWallpaper=homeBackground;
+    const images=new Set(Array.isArray(homeBackgrounds)?homeBackgrounds.filter(validWallpaper):[]);
+    if(validWallpaper(homeBackground))images.add(homeBackground);
+    gallery.querySelectorAll('.hs-wallpaper-image').forEach(button=>button.remove());
+    [...images].forEach((image,index)=>{
+     const button=document.createElement('button'),thumbnail=new Image();
+     button.type='button';button.className='bg-item hs-wallpaper-image';
+     button.setAttribute('aria-label','首页背景 '+(index+1));
+     button.setAttribute('aria-pressed',String(image===homeBackground));
+     thumbnail.alt='';thumbnail.src=image;thumbnail.loading='lazy';
+     button.appendChild(thumbnail);button.onclick=()=>select(image);
+     gallery.appendChild(button);
+    });
+    theme.setAttribute('aria-pressed',String(!homeBackground));
+    reset.disabled=busy||!homeBackground;
+    if(validWallpaper(homeBackground))preview.style.setProperty('--hs-wallpaper','url('+JSON.stringify(homeBackground)+')');
+    else preview.style.removeProperty('--hs-wallpaper');
+   }
+   if(range!==document.activeElement){range.value=String(glassTransparency());previewGlass();}
+  };
+  const isBlank=event=>!event.target.closest('button,input,.hs-time,.hs-home-music,.hs-home-functions');
+  home.addEventListener('dblclick',event=>{if(isBlank(event))open();});
+  home.addEventListener('click',event=>{
+   const touch=event.pointerType==='touch'||event.sourceCapabilities?.firesTouchEvents;
+   if(!touch||!isBlank(event)){lastTap=null;return;}
+   const {clientX:x,clientY:y,timeStamp:time}=event;
+   if(lastTap&&time-lastTap.time<350&&Math.hypot(x-lastTap.x,y-lastTap.y)<32){
+    lastTap=null;open();
+   }else lastTap={x,y,time};
+  });
+  home.addEventListener('scroll',()=>{lastTap=null;},{passive:true});
+  entry.onclick=()=>{
+   status.textContent='';
+   window.showAppearancePanel('home-background');
+   syncHomeBackground();
+   panel.querySelector('[aria-labelledby]')?.scrollIntoView({block:'nearest'});
+   add.focus({preventScroll:true});
+  };
+  add.onclick=()=>input.click();
+  input.onchange=()=>{
+   const file=input.files[0];input.value='';
+   if(file)select('',file);
+  };
+  theme.onclick=reset.onclick=()=>select('');
+  range.oninput=previewGlass;
+  range.onchange=async()=>{
+   try{await save({homeGlassTransparency:Number(range.value)});update();}
+   catch{toast('透明度保存失败，请重试。');range.value=String(glassTransparency());previewGlass();}
+  };
+ }
  function liftChatPanels(){
   const chat=document.querySelector('.main-chat-area');if(!chat)return;
   const keep=new Set(['history-loader','chat-container','empty-state','typing-indicator-wrapper']);
@@ -275,8 +436,25 @@
   const style=document.createElement('style');style.textContent=`
   body.hs-enabled{--hs-nav-height:calc(65px + env(safe-area-inset-bottom,0px));padding-bottom:var(--hs-nav-height);box-sizing:border-box;height:100dvh}body.hs-enabled .input-area-wrapper{bottom:var(--hs-nav-height);padding-bottom:0}body.hs-enabled.immersive-mode .input-area-wrapper{bottom:0;padding-bottom:env(safe-area-inset-bottom,0px)}body.hs-enabled[data-hs-page=home]>.header,body.hs-enabled[data-hs-page=settings]>.header,body.hs-enabled[data-hs-page=home]>.main-chat-area,body.hs-enabled[data-hs-page=settings]>.main-chat-area{display:none!important}
   body.hs-enabled[data-hs-page=chat]{--hs-nav-height:0px;padding-bottom:0}body.hs-enabled[data-hs-page=chat] .input-area-wrapper{bottom:0;padding-bottom:env(safe-area-inset-bottom,0px)}
-  #hs-nav[hidden],#hs-chat-toolbar[hidden]{display:none!important}#hs-chat-toolbar{display:flex;align-items:center;position:relative;min-height:36px;padding:2px 12px;color:var(--text-secondary);box-sizing:border-box}#hs-chat-back{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;padding:0;border:0;border-radius:12px;background:transparent;color:var(--accent-color);cursor:pointer;touch-action:manipulation}#hs-chat-back svg{width:21px;height:21px}#hs-chat-back:hover{background:rgba(var(--accent-color-rgb),.08)}#hs-chat-back:focus-visible{outline:2px solid var(--accent-color);outline-offset:2px}
-  body.hs-enabled[data-hs-page=chat] .header .header-inner{padding:2px 12px 5px;min-height:0}body.hs-enabled[data-hs-page=chat] .header .user-info{gap:1px;min-width:40px}body.hs-enabled[data-hs-page=chat] .header .avatar-container{width:34px;height:34px}body.hs-enabled[data-hs-page=chat] .header .avatar{width:100%;height:100%}body.hs-enabled[data-hs-page=chat] .header .username{font-size:10px;line-height:1.2}body.hs-enabled[data-hs-page=chat] .header .status{font-size:9px;line-height:1.2;padding:1px 3px}body.hs-enabled[data-hs-page=chat] .header .header-motto{top:auto;padding:0 40px 3px;font-size:8.5px;line-height:1.4;letter-spacing:1.5px;min-height:0}#hs-chat-toolbar{min-height:32px;padding:0 10px}#hs-chat-back{height:32px;width:32px}#hs-settings #advanced-settings{display:none!important}#hs-relation [hidden]{display:none!important}
+  #hs-nav[hidden],#hs-chat-toolbar[hidden]{display:none!important}#hs-chat-toolbar{display:flex;align-items:center;position:relative;flex:0 0 auto;color:var(--text-secondary);box-sizing:border-box}#hs-chat-back{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;padding:0;border:0;border-radius:12px;background:transparent;color:var(--accent-color);cursor:pointer;touch-action:manipulation}#hs-chat-back svg{width:21px;height:21px}#hs-chat-back:hover{background:rgba(var(--accent-color-rgb),.08)}#hs-chat-back:focus-visible{outline:2px solid var(--accent-color);outline-offset:2px}
+  body.hs-enabled[data-hs-page=chat] .header .header-inner{justify-content:flex-start;gap:9px;padding:10px 12px;min-height:0}
+  body.hs-enabled[data-hs-page=chat] .header .user-info:has(> #my-avatar-container){display:none}
+  body.hs-enabled[data-hs-page=chat] .header .user-info:has(> #partner-avatar-container){display:grid;grid-template-columns:40px minmax(0,1fr);grid-template-rows:auto auto;align-items:center;align-content:center;column-gap:10px;row-gap:3px;min-width:0;max-width:100%;text-align:left}
+  body.hs-enabled[data-hs-page=chat] .header .user-info:has(> #partner-avatar-container)> #partner-avatar-container{grid-area:1 / 1 / 3 / 2;width:40px;height:40px}
+  body.hs-enabled[data-hs-page=chat] .header .user-info:has(> #partner-avatar-container)> #partner-name{grid-area:1 / 2;align-self:end;max-width:100%;font-size:14px;line-height:1.2;text-align:left}
+  body.hs-enabled[data-hs-page=chat] .header .user-info:has(> #partner-avatar-container)> #partner-status{grid-area:2 / 2;align-self:start;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:11px;line-height:1.2;padding:0}
+  body.hs-enabled[data-hs-page=chat] .header .user-info:has(> #partner-avatar-container)> #partner-status::before{content:"";display:inline-block;width:5px;height:5px;margin-right:5px;vertical-align:2px;border-radius:50%;background:currentColor}
+  body.hs-enabled[data-hs-page=chat] .header .header-motto{display:none!important}
+  #hs-chat-more[hidden]{display:none}
+  body.hs-enabled[data-hs-page=chat] #hs-chat-more:not([hidden]){display:grid;place-items:center;order:3;margin-left:auto;flex:0 0 42px;height:42px;padding:0;border:0;border-radius:12px;background:transparent;color:var(--text-primary);cursor:pointer;touch-action:manipulation}
+  #hs-chat-more svg{width:21px;height:21px}#hs-chat-more:hover{background:rgba(var(--accent-color-rgb),.1)}
+  #hs-chat-more:focus-visible,#hs-chat-display button:focus-visible,.hs-music-controls button:focus-visible{outline:2px solid var(--accent-color);outline-offset:2px}
+  #hs-chat-display>.modal-content{width:min(92%,420px);box-sizing:border-box}
+  #hs-chat-display .setting-pill-row{width:100%;min-height:52px;font:inherit;color:var(--text-primary);text-align:left}
+  #hs-chat-display .setting-pill-row:focus-visible{outline-offset:-3px}
+  #hs-chat-display .setting-pill-label>span{display:block;margin-top:4px;line-height:1.4}
+  #hs-chat-display .setting-pill-knob{display:block}
+  #hs-settings #advanced-settings{display:none!important}#hs-relation [hidden]{display:none!important}
   #custom-replies-modal>.modal-content{box-sizing:border-box;width:94%;max-width:600px;min-width:0;overflow:hidden;max-height:90vh;max-height:90dvh;margin:0 auto;padding:0;flex-direction:column}
   #custom-replies-modal .modal-sidebar{box-sizing:border-box;display:flex;flex-direction:row;flex-wrap:nowrap;justify-content:flex-start;width:100%;max-width:100%;min-width:0;overflow-x:auto;overflow-y:hidden;padding:10px 12px;gap:8px;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scroll-padding-inline:12px;touch-action:pan-x;scrollbar-width:thin}
   #custom-replies-modal .modal-sidebar .sidebar-btn{flex:0 0 auto;white-space:nowrap}#custom-replies-modal .modal-main-view{box-sizing:border-box;flex:1 1 0;min-height:0;min-width:0;width:100%;max-width:100%;height:auto;overflow:hidden}#custom-replies-modal #imagepool-panel{box-sizing:border-box;min-width:0;max-width:100%;overflow-x:hidden;overflow-y:auto}#custom-replies-modal #cr-sub-tabs{box-sizing:border-box;max-width:100%;justify-content:flex-start;overflow-x:auto}#custom-replies-modal #cr-sub-tabs>*{flex:0 0 auto}
@@ -291,7 +469,84 @@
   .hs-page{position:absolute;inset:0 0 var(--hs-nav-height);overflow-y:auto;overscroll-behavior:contain;background:var(--primary-bg);color:var(--text-primary);padding:26px 20px 24px;box-sizing:border-box;z-index:10}.hs-page[hidden]{display:none!important}.hs-content{max-width:650px;margin:0 auto}
   #hs-relation{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:10px;width:100%;padding:20px 16px;border-radius:24px;border:1px solid rgba(var(--accent-color-rgb),.1);background:linear-gradient(155deg,rgba(var(--accent-color-rgb),.08),var(--secondary-bg));background-size:cover;background-position:center;background-origin:border-box;background-clip:border-box;background-repeat:no-repeat;text-align:center;color:var(--text-primary);box-shadow:0 15px 35px rgba(var(--accent-color-rgb),.07);cursor:pointer;font:inherit;min-height:210px}
   .hs-avatars{display:flex;justify-content:center}.hs-avatar{height:54px;width:54px;display:grid;place-items:center;border-radius:50%;background:var(--secondary-bg);border:4px solid var(--secondary-bg);overflow:hidden;box-shadow:0 5px 15px #0001}.hs-avatar+ .hs-avatar{margin-left:-10px}.hs-avatar img{width:100%;height:100%;object-fit:cover}.hs-avatar i{font-size:25px;color:var(--accent-color)}#hs-names{display:block;font-size:15px;font-weight:500;letter-spacing:1px}#hs-days{display:block;font-size:20px;line-height:1.6;font-weight:600;margin:2px 0 5px}#hs-countdown,#hs-motto{display:block;font-size:11px;line-height:1.8;color:var(--text-secondary)}#hs-motto{margin-top:8px} #hs-relation.hs-relation-simple .hs-avatar{width:70px;height:70px} #hs-relation.hs-relation-simple .hs-avatar i{font-size:30px}
-  .hs-time{text-align:center;margin:22px 0 18px}#hs-clock{font-size:34px;letter-spacing:3px;line-height:1.3}#hs-date{font-size:12px;color:var(--text-secondary)}#hs-preview{width:100%;display:flex;gap:12px;align-items:center;border:1px solid var(--border-color);border-radius:20px;background:var(--secondary-bg);color:var(--text-primary);padding:15px;text-align:left;font:inherit;cursor:pointer}.hs-preview-copy{flex:1;min-width:0}#hs-preview-name{display:block;font-size:14px}#hs-preview-text{display:block;color:var(--text-secondary);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px}#hs-preview-time{font-size:11px;color:var(--text-secondary)}.hs-badge{background:#e66b7c;color:#fff;border-radius:12px;padding:1px 6px;font-size:10px}.hs-badge[hidden]{display:none!important}
+  :is(#hs-home,#hs-home-glass-preview,body.hs-enabled[data-hs-page=home] #hs-nav){
+   --hs-glass-strength:var(--hs-glass-opacity,.63);
+   --hs-glass:rgba(var(--secondary-bg-rgb),var(--hs-glass-strength));
+   --hs-glass-filter:blur(calc(15px * var(--hs-glass-strength))) saturate(calc(1 + .18 * var(--hs-glass-strength)));
+   --hs-glass-line:rgba(255,255,255,calc(.16 + .48 * var(--hs-glass-strength)));
+   --hs-glass-shadow:0 8px 26px rgba(32,22,52,calc(.14 * var(--hs-glass-strength)));
+   --hs-wallpaper-wash:rgba(var(--primary-bg-rgb),calc(.4 * var(--hs-glass-strength)));
+  }
+  html[data-theme=dark] :is(#hs-home,#hs-home-glass-preview,body.hs-enabled[data-hs-page=home] #hs-nav){
+   --hs-glass-line:rgba(255,255,255,calc(.12 + .14 * var(--hs-glass-strength)));
+   --hs-wallpaper-wash:rgba(var(--primary-bg-rgb),calc(.53 * var(--hs-glass-strength)));
+  }
+  #hs-home{
+   bottom:0;padding-top:calc(24px + env(safe-area-inset-top,0px));
+   padding-bottom:calc(var(--hs-nav-height) + 32px);
+   touch-action:manipulation;
+   background:
+    linear-gradient(var(--hs-wallpaper-wash),var(--hs-wallpaper-wash)) center / cover no-repeat,
+    var(--hs-wallpaper, radial-gradient(ellipse at 6% 7%,rgba(var(--accent-color-rgb),.31),transparent 56%),
+      radial-gradient(ellipse at 96% 52%,rgba(139,160,220,.35),transparent 60%)) center / cover no-repeat,
+    var(--primary-bg);
+  }
+  #hs-home .hs-content{position:relative}
+  .hs-time{text-align:center;margin:0 auto 20px}
+  #hs-home-background-entry{font:inherit;color:var(--text-primary)}
+  #hs-home-background-gallery{grid-template-columns:repeat(auto-fill,minmax(66px,74px));gap:14px}
+  #hs-home-background-gallery .bg-item{padding:0;color:var(--text-secondary);background-color:var(--message-received-bg)}
+  #hs-home-background-gallery .bg-item[aria-pressed=true]{border-color:var(--accent-color);box-shadow:0 0 0 2px rgba(var(--accent-color-rgb),.25)}
+  #hs-home-background-gallery .bg-item:not(.bg-add-btn):not([aria-pressed=true]){border-color:rgba(var(--secondary-bg-rgb),.7)}
+  #hs-home-background-theme{background-image:linear-gradient(145deg,rgba(var(--accent-color-rgb),.08),rgba(139,160,220,.48))}
+  .hs-home-background-reset{text-align:center;margin:8px 0}
+  .hs-home-background-reset .modal-btn{padding:6px 12px;font-size:12px}
+  #hs-home-wallpaper-reset:disabled{opacity:.55;cursor:default}
+  #hs-home-wallpaper-status:empty{display:none}
+  #hs-home-glass-range{min-width:0}
+  #hs-home-glass-range:focus-visible,#hs-home-background-gallery button:focus-visible{outline:2px solid var(--accent-color);outline-offset:3px}
+  #hs-home-glass-preview{
+   display:grid;place-items:center;min-height:74px;border-radius:14px;
+   background:
+    linear-gradient(var(--hs-wallpaper-wash),var(--hs-wallpaper-wash)) center / cover,
+    var(--hs-wallpaper,linear-gradient(115deg,rgba(var(--accent-color-rgb),.38),rgba(139,160,220,.43))) center / cover;
+  }
+  #hs-home-glass-preview span{
+   padding:9px 21px;border-radius:11px;color:var(--text-primary);font-size:12px;
+  }
+  #hs-clock{font-size:clamp(43px,11vw,68px);font-weight:400;font-variant-numeric:tabular-nums;letter-spacing:.06em;line-height:1.1}
+  #hs-date{margin-top:6px;font-size:13px;color:var(--text-secondary);line-height:1.4}
+  .hs-home-music,.hs-home-functions{margin-top:14px;border-radius:22px}
+  #hs-home :is(#hs-relation,.hs-home-music,.hs-home-functions),#hs-home-glass-preview span,body.hs-enabled[data-hs-page=home] #hs-nav{
+   border-color:var(--hs-glass-line);background-color:var(--hs-glass);
+   box-shadow:var(--hs-glass-shadow);
+   backdrop-filter:var(--hs-glass-filter);-webkit-backdrop-filter:var(--hs-glass-filter);
+  }
+  #hs-home :is(#hs-relation,.hs-home-music,.hs-home-functions),#hs-home-glass-preview span{border-style:solid;border-width:1px}
+  #hs-home #hs-relation:not(.hs-has-relation-image){background-image:none}
+  #hs-home #hs-apps .hs-shortcut-icon,#hs-home .hs-app-grid>.settings-item>i{
+   background:rgba(var(--secondary-bg-rgb),calc(.12 + .64 * var(--hs-glass-strength)));
+   box-shadow:none;
+  }
+  .hs-home-music{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:clamp(12px,4vw,25px);padding:12px clamp(12px,4vw,26px)}
+  #hs-music-disc{display:grid;place-items:center;width:clamp(60px,18vw,96px);aspect-ratio:1;border-radius:50%;background:repeating-radial-gradient(circle at center,#232126 0 2px,#343137 3px 4px,#201e23 5px 6px);box-shadow:0 4px 11px #0003}
+  #hs-music-disc>span{display:grid;place-items:center;width:57%;aspect-ratio:1;border-radius:50%;background:var(--accent-color) center/cover;color:#fff;font-size:13px}
+  #hs-music-disc.has-cover i{display:none}
+  #hs-music-disc.is-playing{animation:hs-disc-spin 7s linear infinite}
+  @keyframes hs-disc-spin{to{transform:rotate(360deg)}}
+  @media(prefers-reduced-motion:reduce){#hs-music-disc.is-playing{animation:none}}
+  .hs-music-copy{text-align:center;min-width:0}
+  #hs-music-title,#hs-music-sub{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #hs-music-title{font-size:15px;font-weight:600;color:var(--text-primary)}
+  #hs-music-sub{font-size:12px;color:var(--text-secondary);margin-top:4px}
+  .hs-music-controls{display:flex;justify-content:center;gap:clamp(4px,3vw,18px);margin-top:5px}
+  .hs-music-controls button{width:42px;height:42px;display:grid;place-items:center;border:0;border-radius:50%;background:transparent;color:var(--text-primary);cursor:pointer}
+  .hs-music-controls #hs-music-play{background:rgba(var(--accent-color-rgb),.16)}
+  .hs-music-controls button:hover:not(:disabled){background:rgba(var(--accent-color-rgb),.24)}
+  .hs-music-controls button:disabled{opacity:.45;cursor:default}
+  body.hs-enabled[data-hs-page=home] #player,body.hs-enabled[data-hs-page=home] #playlist{display:none!important}
+  .hs-home-functions{padding:6px 4px 0}
+  #hs-preview{width:100%;display:flex;gap:12px;align-items:center;border:1px solid var(--border-color);border-radius:20px;background:var(--secondary-bg);color:var(--text-primary);padding:15px;text-align:left;font:inherit;cursor:pointer}.hs-preview-copy{flex:1;min-width:0}#hs-preview-name{display:block;font-size:14px}#hs-preview-text{display:block;color:var(--text-secondary);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px}#hs-preview-time{font-size:11px;color:var(--text-secondary)}.hs-badge{background:#e66b7c;color:#fff;border-radius:12px;padding:1px 6px;font-size:10px}.hs-badge[hidden]{display:none!important}
   body.hs-enabled .header .header-actions{display:none!important}
   #hs-apps .hs-shortcut-icon{width:52px;height:52px;display:grid;place-items:center;padding:0;border:0;border-radius:18px;background:var(--secondary-bg);color:var(--accent-color);font-size:21px;margin:0;box-shadow:0 5px 18px rgba(var(--accent-color-rgb),.05);cursor:pointer}#hs-apps .hs-shortcut-icon i{width:auto;height:auto;border-radius:0;background:transparent;color:inherit;transform:none;font-size:21px;margin:0}#hs-settings .hs-shortcut-icon{border:0;background:transparent;color:var(--accent-color);padding:0;font:inherit;cursor:pointer}#hs-settings .hs-shortcut-icon i{font-size:24px}#hs-settings #hs-shortcut-session-manager-btn{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:0;cursor:pointer}
   #hs-apps{display:flex;position:relative;margin-top:24px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;overscroll-behavior-x:contain;scrollbar-width:none}
@@ -314,11 +569,39 @@
   #hs-relation-options:disabled{opacity:.6}
   #hs-edit-body .hs-display-options input{accent-color:var(--accent-color)}
   #hs-edit-modal{z-index:2450}#hs-edit-modal .modal-content{max-width:420px}#hs-edit-body label{display:block;font-size:13px;margin:12px 0}#hs-edit-body input:not([type=checkbox]),#hs-edit-body select{box-sizing:border-box;width:100%;font:inherit;color:var(--text-primary);border:1px solid var(--border-color);border-radius:10px;padding:10px;background:var(--primary-bg)}#hs-edit-body button{font:inherit;padding:10px 15px;border:1px solid var(--border-color);border-radius:12px;background:var(--accent-color);color:var(--secondary-bg);cursor:pointer}.hs-hint{font-size:11px;color:var(--text-secondary);line-height:1.8}body.immersive-mode #hs-nav{display:none}body.hs-enabled.immersive-mode[data-hs-page=chat]{padding-bottom:0}
+  html:not([data-theme=dark]) #hs-home :is(#hs-clock,#hs-date,#hs-names,#hs-days,#hs-countdown,#hs-motto,#hs-music-title,#hs-music-sub),
+  html:not([data-theme=dark]) #hs-home .hs-app-grid>.settings-item>span:not(.env-badge),
+  html:not([data-theme=dark]) body.hs-enabled[data-hs-page=home] #hs-nav button>span:not(.hs-badge){color:#000}
+  .hs-home-functions #hs-apps{margin-top:0}
+  .hs-home-functions #hs-app-pages{margin:10px 0 13px}
   @media(max-width:360px){.hs-page{padding:18px 13px}#hs-days{font-size:20px}#hs-relation{padding:18px 12px;min-height:190px}}
   `;document.head.appendChild(style);
-  const home=document.createElement('section');home.id='hs-home';home.className='hs-page';home.setAttribute('aria-label','首页');home.innerHTML=`<div class="hs-content"><button id="hs-relation" aria-label="编辑我们的关系卡"><span class="hs-avatars"><span class="hs-avatar" id="hs-partner-avatar"></span><span class="hs-avatar" id="hs-my-avatar"></span></span><span id="hs-names"></span><span id="hs-relation-details"><strong id="hs-days"></strong><span id="hs-countdown"></span><span id="hs-motto"></span></span></button><div class="hs-time"><div id="hs-clock"></div><div id="hs-date"></div></div><div id="hs-apps"></div><div id="hs-app-pages"></div></div>`;
+  const home=document.createElement('section');
+  home.id='hs-home';home.className='hs-page';home.setAttribute('aria-label','首页');
+  home.innerHTML=`<div class="hs-content">
+   <div class="hs-time"><div id="hs-clock"></div><div id="hs-date"></div></div>
+   <button id="hs-relation" aria-label="编辑我们的关系卡">
+    <span class="hs-avatars"><span class="hs-avatar" id="hs-partner-avatar"></span><span class="hs-avatar" id="hs-my-avatar"></span></span>
+    <span id="hs-names"></span><span id="hs-relation-details"><strong id="hs-days"></strong><span id="hs-countdown"></span><span id="hs-motto"></span></span>
+   </button>
+   <section class="hs-home-music" aria-label="首页音乐播放器">
+    <div id="hs-music-disc" aria-hidden="true"><span><i class="fas fa-music"></i></span></div>
+    <div class="hs-music-copy">
+     <div id="hs-music-title">暂无歌曲</div><div id="hs-music-sub" hidden></div>
+     <div class="hs-music-controls">
+      <button id="hs-music-prev" type="button" aria-label="上一首" disabled><i class="fas fa-step-backward" aria-hidden="true"></i></button>
+      <button id="hs-music-play" type="button" aria-label="播放" disabled><i class="fas fa-play" aria-hidden="true"></i></button>
+      <button id="hs-music-next" type="button" aria-label="下一首" disabled><i class="fas fa-step-forward" aria-hidden="true"></i></button>
+     </div>
+    </div>
+   </section>
+   <section class="hs-home-functions" aria-label="首页功能"><div id="hs-apps"></div><div id="hs-app-pages"></div></section>
+  </div>`;
   const settingPage=document.createElement('section');settingPage.id='hs-settings';settingPage.className='hs-page';settingPage.hidden=true;settingPage.setAttribute('aria-label','设置');
   document.body.append(home,settingPage);
+  setupHomeMusic();
+  setupHomeBackground(home);
+  setupChatDisplay();
   const content=$('settings-modal')?.querySelector('.modal-content');if(content)settingPage.appendChild(content);
   let apps=[...document.querySelectorAll('#advanced-modal .settings-item-list > .settings-item')];
   for(const a of apps){a.setAttribute('role','button');a.tabIndex=0;a.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();a.click();}});}
@@ -343,7 +626,7 @@
   const nav=document.createElement('nav');nav.id='hs-nav';nav.setAttribute('aria-label','主导航');nav.innerHTML=`<button data-hs-page="home"><i class="fas fa-home"></i><span>首页</span></button><button data-hs-page="chat"><i class="far fa-comment-dots"></i><span>聊天</span><span class="hs-badge" id="hs-chat-badge" hidden></span></button><button data-hs-page="settings"><i class="fas fa-cog"></i><span>设置</span></button>`;document.body.appendChild(nav);
   const toolbar=document.createElement('div');toolbar.id='hs-chat-toolbar';toolbar.hidden=true;
   toolbar.innerHTML='<button id="hs-chat-back" type="button" aria-label="返回首页" title="返回首页"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14.5 5-7 7 7 7"/></svg></button>';
-  document.querySelector('.header')?.prepend(toolbar);
+  document.querySelector('.header .header-inner')?.prepend(toolbar);
   if($('hs-chat-back'))$('hs-chat-back').onclick=()=>navigate('home');
   const newer=document.createElement('button');newer.id='hs-new-messages';newer.textContent='↓ 有新消息';newer.hidden=true;newer.onclick=jumpLatest;document.body.appendChild(newer);
   const edit=document.createElement('div');edit.id='hs-edit-modal';edit.className='modal';edit.innerHTML='<div class="modal-content"><div class="modal-title">我们的关系卡</div><div id="hs-edit-body"></div><div class="modal-buttons"><button class="modal-btn modal-btn-secondary" id="hs-edit-close">关闭</button></div></div>';document.body.appendChild(edit);$('hs-edit-close').onclick=()=>hideModal(edit);

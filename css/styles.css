@@ -9789,9 +9789,6 @@
         .cs-time-grid .settings-item:last-child {
             grid-column: 1 / -1;
         }
-        .cs-immersive-wrap {
-            padding: 4px 0;
-        }
         .cs-sound-inner {
             padding: 0 14px 12px;
         }
@@ -10448,73 +10445,6 @@
             box-shadow: 0 1px 0 rgba(0,0,0,0.04) !important;
         }
 
-        body.bottom-collapse-mode .collapse-hideable { display: none !important; }
-        body.bottom-collapse-mode #collapse-expand-btn { display: flex !important; }
-        #collapse-expand-btn.open {
-            background: var(--accent-color) !important;
-            color: #fff !important;
-        }
-        #collapse-expand-btn.open i { transform: rotate(180deg); }
-        #collapse-expand-btn i { transition: transform 0.25s; }
-
-        #collapsed-extras-panel {
-            overflow: hidden;
-        }
-        .collapsed-extras-inner {
-            animation: collapseSlideIn 0.22s cubic-bezier(0.4,0,0.2,1);
-        }
-        @keyframes collapseSlideIn {
-            from { opacity: 0; transform: translateY(-8px); }
-            to   { opacity: 1; transform: translateY(0); }
-        }
-        .collapsed-extra-btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 100%;
-            height: 48px; 
-            border: none;
-            border-radius: 12px;
-            background: rgba(var(--accent-color-rgb), 0.08);
-            color: var(--accent-color);
-            cursor: pointer;
-            font-size: 20px; 
-            transition: background 0.18s, transform 0.15s;
-        }
-        .collapsed-extra-btn span {
-            display: none; 
-        }
-        .collapsed-extra-btn:hover, .collapsed-extra-btn:active {
-            background: rgba(var(--accent-color-rgb), 0.18);
-            transform: scale(1.04);
-        }
-        .collapsed-exit-btn {
-            margin-left: auto;
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            border: 1px solid var(--border-color);
-            background: none;
-            color: var(--text-secondary);
-            cursor: pointer;
-            font-size: 13px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            transition: background 0.18s, color 0.18s;
-        }
-        .collapsed-exit-btn:hover {
-            background: rgba(255,80,80,0.1);
-            color: #ff5050;
-            border-color: rgba(255,80,80,0.3);
-        }
-
-        #bottom-collapse-cs-toggle.active .setting-pill-switch { background: var(--accent-color) !important; }
-        #bottom-collapse-cs-toggle.active .setting-pill-knob { right: 3px !important; left: auto !important; }
-        #bottom-collapse-cs-toggle .setting-pill-switch { transition: background 0.3s; }
-        #bottom-collapse-cs-toggle .setting-pill-knob { transition: right 0.25s, left 0.25s; }
-
         .msg-highlight {
             animation: msgHighlightPulse 1.5s ease !important;
         }
@@ -11139,7 +11069,6 @@ html[data-theme="dark"] .period-stat-value { color: var(--accent-color-dark); }
     font-size: 12px;
 }
 #chat-media-panel > .input-btn i { font-size: 16px; }
-body.bottom-collapse-mode #chat-media-panel { display: none; }
 
 /* 夜间在聊天壁纸上均匀压暗。 */
 html[data-theme="dark"] body::before { background-image: none; }

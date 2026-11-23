@@ -346,7 +346,6 @@
     color:var(--toolbar-btn-color, var(--text-secondary)) !important;
 }
 #call-toolbar-btn:hover{color:var(--text-primary) !important;}
-body.bottom-collapse-mode #call-toolbar-btn{display:none !important;}
 
 html[data-theme="dark"][data-color-theme="black-white"]{
     --accent-color: #c0c0c0;
@@ -478,6 +477,12 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         document.body.appendChild(root);
     }
 
+    function placeOutgoingCall() {
+        if (!S.enabled) return;
+        if (S.active) { restoreWindow(); return; }
+        startCall(false);
+    }
+
     function injectToolbarBtn() {
         if (document.getElementById('call-toolbar-btn')) return;
         const anchor = document.getElementById('attachment-btn');
@@ -487,14 +492,10 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         btn.type = 'button';
         btn.title = '视频通话';
         btn.setAttribute('aria-label', '视频通话');
-        btn.className = 'input-btn collapse-hideable';
+        btn.className = 'input-btn';
         btn.style.display = S.enabled ? '' : 'none';
         btn.innerHTML = '<i class="fas fa-video" aria-hidden="true"></i>';
-        btn.addEventListener('click', () => {
-            if (!S.enabled) return;
-            if (S.active) { restoreWindow(); return; }
-            startCall(false);
-        });
+        btn.addEventListener('click', placeOutgoingCall);
         anchor.after(btn);
     }
 
@@ -885,8 +886,6 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
             localStorage.setItem(KEY_ENABLED, S.enabled);
             const btn = document.getElementById('call-toolbar-btn');
             if (btn) btn.style.display = S.enabled ? '' : 'none';
-            const collapsedCallBtn = document.getElementById('collapsed-call-btn');
-            if (collapsedCallBtn) collapsedCallBtn.style.display = S.enabled ? '' : 'none';
             if (!S.enabled && S.active) endCall();
             S.enabled ? scheduleRandomCall() : clearTimeout(S.randomCallTimer);
         });
@@ -910,8 +909,6 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
                 if (tog) {
                     tog.checked = S.enabled;
                 }
-                const collapsedCallBtn = document.getElementById('collapsed-call-btn');
-                if (collapsedCallBtn) collapsedCallBtn.style.display = S.enabled ? '' : 'none';
             };
             syncCallToggle();
             const chatModal = document.getElementById('chat-modal');

@@ -134,6 +134,9 @@
                     <span id="my-status-text">在线</span>
                 </div>
             </div>
+            <button id="hs-chat-more" type="button" hidden title="聊天显示" aria-label="聊天显示" aria-haspopup="dialog" aria-controls="hs-chat-display">
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
+            </button>
         </div>
     </div>
 
@@ -225,35 +228,7 @@
     <div class="input-area-wrapper">
         <div class="batch-preview" id="batch-preview" style="display:none;"></div>
         <div id="reply-preview-container"></div>
-        <div id="collapsed-extras-panel" style="display:none;">
-            <div class="collapsed-extras-inner" style="padding:12px; background:var(--secondary-bg); border-top:1px solid var(--border-color);">
-                <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:12px;">
-                    <button class="collapsed-extra-btn" id="attachment-btn-extra" title="发送图片" onclick="document.getElementById('image-input').click()">
-                        <i class="fas fa-image"></i>
-                    </button>
-                    <button class="collapsed-extra-btn" id="combo-btn-extra" title="表情拍一拍">
-                        <i class="fas fa-laugh-beam"></i>
-                    </button>
-                    <button class="collapsed-extra-btn" id="batch-btn-extra" title="批量发送" style="display:none;">
-                        <i class="fas fa-layer-group"></i>
-                    </button>
-                    <button class="collapsed-extra-btn" title="字卡回复" onclick="(function(){document.getElementById('collapsed-extras-panel').style.display='none';document.getElementById('collapse-expand-btn').classList.remove('open');showModal(document.getElementById('custom-replies-modal'));})();">
-                        <i class="fas fa-comment-dots"></i>
-                    </button>
-                    <button class="collapsed-extra-btn" title="塔罗占卜" onclick="(function(){document.getElementById('collapsed-extras-panel').style.display='none';document.getElementById('collapse-expand-btn').classList.remove('open');generateFortune();})();">
-                        <i class="fas fa-star-and-crescent"></i>
-                    </button>
-                    <button class="collapsed-extra-btn" id="collapsed-call-btn" title="视频通话" onclick="(function(){document.getElementById('collapsed-extras-panel').style.display='none';document.getElementById('collapse-expand-btn').classList.remove('open');if(window.callFeature&&typeof window.callFeature.startCall==='function')window.callFeature.startCall(false);})();">
-                        <i class="fas fa-video"></i>
-                    </button>
-                    <button class="collapsed-extra-btn" title="退出收纳" onclick="window.exitCollapseMode && window.exitCollapseMode()" style="color:#ff5050; background:rgba(255,80,80,0.1);">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
         <div class="input-area chat-composer">
-    <button id="collapse-expand-btn" title="展开更多" style="display:none;width:36px;height:36px;border:none;border-radius:50%;cursor:pointer;background:rgba(var(--accent-color-rgb),0.12);color:var(--accent-color);font-size:14px;transition:all 0.25s;flex-shrink:0;align-items:center;justify-content:center;" onclick="window.toggleCollapsedExtras && window.toggleCollapsedExtras()"><i class="fas fa-chevron-up"></i></button>
                 <div class="continue-btn-wrapper" id="continue-btn-wrapper">
                     <div class="continue-sub-btns" id="continue-sub-btns">
                         <button class="continue-sub-btn input-btn" id="continue-reply-btn" title="继续回复">
@@ -272,14 +247,14 @@
 
                 <div class="input-buttons">
 
-                <button class="batch-btn input-btn collapse-hideable" id="batch-btn" title="批量发送模式" style="display:none;">
+                <button class="batch-btn input-btn" id="batch-btn" title="批量发送模式" style="display:none;">
                     <i class="fas fa-layer-group"></i>
                 </button>
 
-                <button type="button" class="combo-btn input-btn collapse-hideable composer-line-btn" id="combo-btn" title="表情和拍一拍" aria-label="表情和拍一拍">
+                <button type="button" class="combo-btn input-btn composer-line-btn" id="combo-btn" title="表情和拍一拍" aria-label="表情和拍一拍">
                     <i class="fa-regular fa-face-smile" aria-hidden="true"></i>
                 </button>
-                <button type="button" class="input-btn collapse-hideable composer-line-btn" id="chat-media-toggle" title="更多聊天工具" aria-label="更多聊天工具" aria-controls="chat-media-panel" aria-expanded="false">
+                <button type="button" class="input-btn composer-line-btn" id="chat-media-toggle" title="更多聊天工具" aria-label="更多聊天工具" aria-controls="chat-media-panel" aria-expanded="false">
                     <span class="composer-plus" aria-hidden="true"></span>
                 </button>
                 <button type="button" id="send-btn" hidden></button>
@@ -304,7 +279,7 @@
     <input type="file" id="my-sticker-quick-upload" class="file-input" accept="image/*" multiple>
 </div>
         <div id="chat-media-panel" role="group" aria-label="聊天工具" hidden>
-            <button type="button" class="attachment-btn input-btn collapse-hideable" id="attachment-btn" title="发送图片" aria-label="发送图片">
+            <button type="button" class="attachment-btn input-btn" id="attachment-btn" title="发送图片" aria-label="发送图片">
                 <i class="fas fa-image" aria-hidden="true"></i>
             </button>
             <button type="button" class="input-btn" id="chat-music-btn" title="悬浮音乐播放器" aria-label="悬浮音乐播放器">
@@ -628,6 +603,9 @@
     <div class="settings-card" onclick="showAppearancePanel('font-bg')" style="cursor:pointer;">
         <i class="fas fa-font"></i><span>背景 & 字体</span>
     </div>
+    <button type="button" class="settings-card" id="hs-home-background-entry">
+        <i class="fas fa-image"></i><span>首页背景</span>
+    </button>
     <div class="settings-card" onclick="showAppearancePanel('bubble-css')" style="cursor:pointer;">
         <i class="fas fa-comment"></i><span>气泡 & CSS</span>
     </div>
@@ -724,6 +702,31 @@
                 </button>
             </div>
         </div>
+    </div>
+
+    <div id="appearance-panel-home-background" class="appearance-sub-panel" style="display:none;">
+        <section class="settings-section" aria-labelledby="hs-home-background-title">
+            <div class="settings-section-title" id="hs-home-background-title"><i class="fas fa-image"></i>首页背景</div>
+            <p class="hs-hint">点击 ＋ 添加图片，点击缩略图切换背景。</p>
+            <input id="hs-home-wallpaper-file" type="file" accept="image/*" hidden>
+            <div class="bg-gallery" id="hs-home-background-gallery">
+                <button type="button" class="bg-item bg-add-btn" id="hs-home-background-add" aria-label="添加首页背景"><i class="fas fa-plus" aria-hidden="true"></i></button>
+                <button type="button" class="bg-item" id="hs-home-background-theme" aria-label="使用默认背景" aria-pressed="false"></button>
+            </div>
+            <div class="hs-home-background-reset">
+                <button type="button" class="modal-btn modal-btn-secondary" id="hs-home-wallpaper-reset"><i class="fas fa-undo" aria-hidden="true"></i> 恢复默认背景</button>
+            </div>
+            <p class="hs-hint" id="hs-home-wallpaper-status" role="status"></p>
+        </section>
+        <section class="settings-section" aria-labelledby="hs-home-glass-title">
+            <div class="settings-section-title" id="hs-home-glass-title"><i class="fas fa-adjust"></i>毛玻璃透明度</div>
+            <div class="font-size-control">
+                <label class="font-size-label" for="hs-home-glass-range">透明度</label>
+                <input type="range" min="0" max="100" class="font-size-slider" id="hs-home-glass-range" value="37">
+                <output class="font-size-value" for="hs-home-glass-range" id="hs-home-glass-value">37%</output>
+            </div>
+            <div id="hs-home-glass-preview"><span>毛玻璃预览</span></div>
+        </section>
     </div>
 
     <div id="appearance-panel-bubble" class="appearance-sub-panel" style="display:none;">
@@ -1017,9 +1020,6 @@
                     <button class="cs-tab" data-panel="cs-panel-sound" onclick="switchCsTab(this)">
                         <i class="fas fa-volume-up"></i> 音效
                     </button>
-                    <button class="cs-tab" data-panel="cs-panel-display" onclick="switchCsTab(this)">
-                        <i class="fas fa-eye"></i> 显示
-                    </button>
                     <button class="cs-tab" data-panel="cs-panel-names" onclick="switchCsTab(this)">
                         <i class="fas fa-user-edit"></i> 昵称
                     </button>
@@ -1257,32 +1257,6 @@
                         </div>
                     </div>
                 </div>
-                <div class="cs-panel" id="cs-panel-display">
-                    <p class="cs-group-label">界面模式</p>
-                    <div class="cs-card cs-immersive-wrap">
-                        <div class="setting-pill-row" id="immersive-toggle" onclick="toggleImmersiveMode()">
-                            <span class="setting-pill-icon"><i class="fas fa-expand-arrows-alt"></i></span>
-                            <span class="setting-pill-label">沉浸式模式 <span style="font-size:11px;color:var(--text-secondary);font-weight:400;">隐藏顶部栏，专注聊天</span></span>
-                            <div class="setting-pill-switch"><div class="setting-pill-knob"></div></div>
-                        </div>
-                        <div class="setting-pill-row" id="bottom-collapse-cs-toggle" onclick="window._toggleBottomCollapse && window._toggleBottomCollapse()" style="border-top:1px solid var(--border-color);">
-                            <span class="setting-pill-icon"><i class="fas fa-compress-alt"></i></span>
-                            <span class="setting-pill-label">底部栏收纳 <span style="font-size:11px;color:var(--text-secondary);font-weight:400;" id="bottom-collapse-cs-desc">收起次要按钮，保持输入区整洁</span></span>
-                            <div class="setting-pill-switch" id="bottom-collapse-cs-switch"><div class="setting-pill-knob" id="bottom-collapse-cs-knob"></div></div>
-                        </div>
-                        <div class="setting-pill-row" id="header-opacity-toggle" onclick="window._toggleHeaderOpacity && window._toggleHeaderOpacity()" style="border-top:1px solid var(--border-color);">
-                            <span class="setting-pill-icon"><i class="fas fa-eye"></i></span>
-                            <span class="setting-pill-label">顶部栏常驻清晰 <span style="font-size:11px;color:var(--text-secondary);font-weight:400;">关闭后顶部栏悬停才清晰</span></span>
-                            <div class="setting-pill-switch" id="header-opacity-switch"><div class="setting-pill-knob" id="header-opacity-knob"></div></div>
-                        </div>
-                        <div class="setting-pill-row" id="poke-symbol-toggle" onclick="window._openPokeSymSettings && window._openPokeSymSettings()" style="border-top:1px solid var(--border-color);">
-                            <span class="setting-pill-icon"><i class="fas fa-asterisk"></i></span>
-                            <span class="setting-pill-label">戳一戳装饰符号 <span style="font-size:11px;color:var(--text-secondary);font-weight:400;" id="poke-symbol-desc">点击设置符号样式</span></span>
-                            <i class="fas fa-chevron-right" style="color:var(--text-secondary);font-size:12px;flex-shrink:0;"></i>
-                        </div>
-                    </div>
-                </div>
-
                 <div class="cs-panel" id="cs-panel-names">
                     <p class="cs-group-label">聊天昵称</p>
                     <div class="cs-name-row">
@@ -1304,6 +1278,32 @@
                     <i class="fas fa-arrow-left"></i> 返回
                 </button>
                 <button class="modal-btn modal-btn-secondary" id="close-chat" style="margin-left:auto;">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="hs-chat-display" role="dialog" aria-modal="true" aria-labelledby="hs-chat-display-title">
+        <div class="modal-content">
+            <div class="modal-title" id="hs-chat-display-title">聊天显示</div>
+            <div class="cs-card">
+                <button type="button" class="setting-pill-row" id="immersive-toggle" role="switch" aria-checked="false" onclick="toggleImmersiveMode()">
+                    <span class="setting-pill-icon"><i class="fas fa-expand-arrows-alt"></i></span>
+                    <span class="setting-pill-label">沉浸式模式 <span style="font-size:11px;color:var(--text-secondary);font-weight:400;">隐藏顶部栏，专注聊天</span></span>
+                    <span class="setting-pill-switch"><span class="setting-pill-knob"></span></span>
+                </button>
+                <button type="button" class="setting-pill-row" id="header-opacity-toggle" role="switch" aria-checked="false" onclick="window._toggleHeaderOpacity && window._toggleHeaderOpacity()">
+                    <span class="setting-pill-icon"><i class="fas fa-eye"></i></span>
+                    <span class="setting-pill-label">顶部栏常驻清晰 <span style="font-size:11px;color:var(--text-secondary);font-weight:400;">关闭后顶部栏悬停才清晰</span></span>
+                    <span class="setting-pill-switch" id="header-opacity-switch"><span class="setting-pill-knob" id="header-opacity-knob"></span></span>
+                </button>
+                <button type="button" class="setting-pill-row" id="poke-symbol-toggle" onclick="window._openPokeSymSettings && window._openPokeSymSettings()">
+                    <span class="setting-pill-icon"><i class="fas fa-asterisk"></i></span>
+                    <span class="setting-pill-label">戳一戳装饰符号 <span style="font-size:11px;color:var(--text-secondary);font-weight:400;" id="poke-symbol-desc">点击设置符号样式</span></span>
+                    <i class="fas fa-chevron-right" style="color:var(--text-secondary);font-size:12px;flex-shrink:0;"></i>
+                </button>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="modal-btn modal-btn-secondary" id="hs-chat-display-close">关闭</button>
             </div>
         </div>
     </div>
