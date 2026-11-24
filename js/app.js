@@ -363,21 +363,6 @@
     }
 
     // ===== 备份恢复 =====
-    function emergencyBackup() {
-        try {
-            if (typeof _backupCriticalData === 'function') {
-                _backupCriticalData();
-            } else {
-                const data = {
-                    messages: typeof messages !== 'undefined' ? messages : [],
-                    settings: typeof settings !== 'undefined' ? settings : {},
-                    timestamp: Date.now()
-                };
-                localStorage.setItem('BACKUP_V1_critical', JSON.stringify(data));
-            }
-        } catch (e) { console.warn('紧急备份失败:', e); }
-    }
-
     function tryRecoverFromBackup() {
         try {
             if (typeof _tryRecoverFromBackup === 'function') {
@@ -448,7 +433,6 @@
     // ===== 页面事件 =====
     document.addEventListener('visibilitychange', function() {
         if (document.visibilityState === 'hidden') {
-            emergencyBackup();
             try {
                 if (typeof saveData === 'function') {
                     const p = saveData();
@@ -459,9 +443,6 @@
             tryRecoverFromBackup();
         }
     });
-
-    window.addEventListener('pagehide', emergencyBackup);
-    window.addEventListener('beforeunload', emergencyBackup);
 
     // ===== 启动 =====
     if (document.readyState === 'loading') {

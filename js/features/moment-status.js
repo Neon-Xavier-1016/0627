@@ -220,7 +220,7 @@
         returnFocus = question ? document.activeElement : byId('chat-media-toggle');
         ui.modal.inert = false;
         ui.modal.classList.toggle('is-answering', Boolean(question));
-        ui.title.textContent = question ? ({ mood: '回心情', place: '回地点', both: '回此刻状态' })[question.ask] : '此刻状态';
+        ui.title.textContent = question ? ({ mood: '心情怎么样', place: '此刻在哪里', both: '回此刻状态' })[question.ask] : '此刻状态';
         draft = { mood: null, place: null, note: '' };
         tab = question?.ask === 'place' ? 'place' : 'mood';
         render();

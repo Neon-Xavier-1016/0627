@@ -813,12 +813,13 @@ function injectStyles() {
 .mi-state-done{color:var(--accent-color,#7c5cff);font-weight:600}
 
 .mi-card.mi-reserve{
-  background:linear-gradient(135deg,rgba(var(--accent-color-rgb,124,92,255),.05),transparent);
+  background:rgba(var(--secondary-bg-rgb,255,255,255),.83);
   border-style:dashed;cursor:pointer;transition:transform .15s;
 }
 .mi-card.mi-reserve:active{transform:scale(.98)}
-.mi-card.mi-reserve .mi-reserve-tip{font-size:11.5px;color:var(--accent-color,#7c5cff);opacity:.85;letter-spacing:.3px;}
-.mi-card.mi-reserve[data-mi-done="1"]{opacity:.6;cursor:default;}
+.mi-card.mi-reserve :is(.mi-title,.mi-track-name,.mi-q,.mi-reserve-tip){color:var(--text-primary,#222);opacity:1}
+.mi-card.mi-reserve .mi-reserve-tip{font-size:11.5px;letter-spacing:.3px}
+.mi-card.mi-reserve[data-mi-done="1"]{cursor:default}
 
 .mi-listening-badge{
   display:flex;align-items:center;justify-content:center;gap:5px;

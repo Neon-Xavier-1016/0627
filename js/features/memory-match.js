@@ -30,6 +30,22 @@
         try { localStorage.setItem(sessionKey, JSON.stringify(invites)); } catch (_) {}
     }
 
+    function nextInvite(stage, timing = window.GameInvites.timing()) {
+        return timing ? Date.now() + minutes(...timing[stage]) : 0;
+    }
+
+    function syncInviteFrequency() {
+        const frequency = window.GameInvites.frequency();
+        const timing = window.GameInvites.timing(frequency);
+        if (invites.frequency !== frequency) {
+            invites.frequency = frequency;
+            invites.next = nextInvite('initial', timing);
+            invites.retry = invites.retryUntil = 0;
+            saveInvites();
+        }
+        return timing;
+    }
+
     function useSession() {
         if (!SESSION_ID) return false;
         const key = getStorageKey(storageName);
@@ -45,7 +61,8 @@
         try { saved = JSON.parse(localStorage.getItem(key)); } catch (_) {}
         invites = {
             enabled: saved?.enabled !== false,
-            next: Number(saved?.next) || Date.now() + minutes(10, 18),
+            frequency: saved?.frequency || 'normal',
+            next: Number(saved?.next) || nextInvite('initial'),
             retry: Number(saved?.retry) || 0,
             retryUntil: Number(saved?.retryUntil) || 0,
             retryMode: Object.hasOwn(modes, saved?.retryMode) ? saved.retryMode : 'memory',
@@ -124,7 +141,8 @@
         modal.addEventListener('change', event => {
             if (event.target.id !== 'memory-match-auto') return;
             invites.enabled = event.target.checked;
-            if (invites.enabled && invites.next <= Date.now()) invites.next = Date.now() + minutes(10, 18);
+            if (invites.enabled && invites.next <= Date.now()) invites.next = nextInvite('initial');
+            if (!invites.enabled) invites.retry = invites.retryUntil = 0;
             saveInvites();
         });
         document.body.append(modal);
@@ -246,7 +264,7 @@
     }
 
     function deferRegularInvite() {
-        invites.next = Date.now() + minutes(25, 45);
+        invites.next = nextInvite('regular');
         saveInvites();
     }
 
@@ -281,10 +299,11 @@
                 showPrompt(label() + '：' + reply, [actionButton('close', '好')]);
             } else if (response < .32) {
                 mode = 'reply';
-                if (Math.random() < .55) {
+                const timing = syncInviteFrequency();
+                if (invites.enabled && timing && Math.random() < .55) {
                     const now = Date.now();
-                    invites.retry = now + minutes(5, 9.75);
-                    invites.retryUntil = now + 10 * minute;
+                    invites.retry = now + minutes(...timing.retry);
+                    invites.retryUntil = now + timing.retryWindow * minute;
                     invites.retryMode = chosenMode;
                     saveInvites();
                 }
@@ -298,6 +317,8 @@
     function checkInvite() {
         if (!useSession() || document.hidden) return;
         if (isOpen() && expireOutgoingInvite()) return;
+        const timing = syncInviteFrequency();
+        if (!invites.enabled || !timing) return;
         if (document.body.dataset.hsPage !== 'chat') return;
         const now = Date.now();
         if (invites.retryUntil && now > invites.retryUntil) {
@@ -305,9 +326,9 @@
             saveInvites();
         }
         const retry = invites.retry > 0 && now >= invites.retry;
-        if (!invites.enabled || partnerUnavailable() || (!retry && now < invites.next) || mode === 'game') return;
+        if (partnerUnavailable() || (!retry && now < invites.next) || mode === 'game') return;
         if (document.activeElement?.matches('input,textarea,select,[contenteditable=true]')) return;
-        if (document.querySelector('#hs-banner,#qa-popup,#decision-notice,#incoming-letter-popup,#envelope-reply-popup')) return;
+        if (document.querySelector('#hs-banner,#qa-popup,#decision-notice,#incoming-letter-popup,#envelope-reply-popup,dialog[open]')) return;
         if ([...document.querySelectorAll('.modal')].some(item => getComputedStyle(item).display !== 'none')) return;
         incomingMode = retry ? invites.retryMode : pick(Object.keys(modes));
         invites.retry = invites.retryUntil = 0;
@@ -615,7 +636,8 @@
         completedRounds++;
         const partner = label();
         const reply = pick(won ? resultLines.win : resultLines.loss);
-        const offer = !game.solo && !partnerUnavailable() && completedRounds < 3 && Math.random() < .55;
+        const offer = !game.solo && invites.enabled && window.GameInvites.timing() &&
+            !partnerUnavailable() && completedRounds < 3 && Math.random() < .55;
         invites.history = [{mode:game.key,solo:game.solo,won,partner,reply}, ...invites.history].slice(0,8);
         saveInvites();
         game.offer = offer;
@@ -698,6 +720,9 @@
     }
 
     $('chat-memory-match-btn')?.addEventListener('click', open);
+    window.addEventListener('game-invite-frequency-change', () => {
+        if (useSession()) syncInviteFrequency();
+    });
     setInterval(checkInvite, 8000);
     document.addEventListener('visibilitychange', checkInvite);
 })();

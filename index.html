@@ -137,7 +137,7 @@
                     <span id="my-status-text">在线</span>
                 </div>
             </div>
-            <button id="hs-chat-more" type="button" hidden title="聊天显示" aria-label="聊天显示" aria-haspopup="dialog" aria-controls="hs-chat-display">
+            <button id="hs-chat-more" type="button" hidden title="聊天选项" aria-label="聊天选项" aria-haspopup="dialog" aria-controls="hs-chat-display">
                 <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
             </button>
         </div>
@@ -736,6 +736,14 @@
             </div>
             <div id="hs-home-glass-preview"><span>毛玻璃预览</span></div>
         </section>
+        <section class="settings-section" aria-labelledby="hs-home-dark-title">
+            <div class="settings-section-title" id="hs-home-dark-title"><i class="fas fa-moon" aria-hidden="true"></i>夜间背景调暗</div>
+            <div class="font-size-control">
+                <label class="font-size-label" for="hs-home-dark-range">调暗程度</label>
+                <input type="range" min="0" max="100" class="font-size-slider" id="hs-home-dark-range" value="48">
+                <output class="font-size-value" for="hs-home-dark-range" id="hs-home-dark-value">48%</output>
+            </div>
+        </section>
     </div>
 
     <div id="appearance-panel-bubble" class="appearance-sub-panel" style="display:none;">
@@ -1293,7 +1301,7 @@
 
     <div class="modal" id="hs-chat-display" role="dialog" aria-modal="true" aria-labelledby="hs-chat-display-title">
         <div class="modal-content">
-            <div class="modal-title" id="hs-chat-display-title">聊天显示</div>
+            <div class="modal-title" id="hs-chat-display-title">聊天选项</div>
             <div class="cs-card">
                 <button type="button" class="setting-pill-row" id="immersive-toggle" role="switch" aria-checked="false" onclick="toggleImmersiveMode()">
                     <span class="setting-pill-icon"><i class="fas fa-expand-arrows-alt"></i></span>
@@ -1314,6 +1322,16 @@
                             <output id="moment-emotion-rate-value" for="moment-emotion-rate">70%</output>
                         </div>
                     </div>
+                </div>
+                <div class="setting-pill-row">
+                    <span class="setting-pill-icon"><i class="fas fa-gamepad" aria-hidden="true"></i></span>
+                    <label class="setting-pill-label" for="hs-game-invite-frequency">游戏邀请频率</label>
+                    <select id="hs-game-invite-frequency">
+                        <option value="off">不可邀请</option>
+                        <option value="low">低频</option>
+                        <option value="normal" selected>正常</option>
+                        <option value="high">高频</option>
+                    </select>
                 </div>
                 <button type="button" class="setting-pill-row" id="poke-symbol-toggle" onclick="window._openPokeSymSettings && window._openPokeSymSettings()">
                     <span class="setting-pill-icon"><i class="fas fa-asterisk"></i></span>
@@ -2657,7 +2675,7 @@
     <script src="js/features/period-reminder.js"></script>
     <script src="js/features/hygiene-reminder.js"></script>
     <script src="js/features/anniversary.js"></script>
-    <script src="js/features/moments.js"></script>
+    <script src="js/features/moments.js?v=2"></script>
     <script src="js/features/incoming-letter.js"></script>
     <script src="js/features/decision-helper.js"></script>
     <script src="js/features/core-utils.js"></script>
@@ -2678,6 +2696,7 @@
     <script src="js/data.js"></script>
     <script src="js/onboarding.js"></script> 
     <script src="js/listeners.js"></script>
+    <script src="js/features/game-invites.js"></script>
     <script src="js/features/memory-match.js"></script>
     <script src="js/features/link-test.js"></script>
     <script src="js/features/schedule.js"></script>

@@ -14,6 +14,7 @@
  const profile=()=>typeof settings!=='undefined'?settings:{};
  const validWallpaper=value=>/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(value);
  const glassTransparency=()=>Math.max(0,Math.min(100,Number(config.homeGlassTransparency)||0));
+ const homeDarkness=()=>Math.max(0,Math.min(100,Number(config.homeNightDarkness??48)||0));
  function ordinal(date){const parts=/^(\d{4})-(\d{2})-(\d{2})$/.exec(date||'');if(!parts)return null;const [y,m,d]=parts.slice(1).map(Number),v=new Date(Date.UTC(y,m-1,d));return v.getUTCFullYear()===y&&v.getUTCMonth()===m-1&&v.getUTCDate()===d?v.getTime()/86400000:null;}
  function relation(date,now=new Date()){
   const start=ordinal(date);if(start===null)return null;
@@ -173,6 +174,11 @@
  function setupChatDisplay(){
   const trigger=$('hs-chat-more'),modal=$('hs-chat-display'),close=$('hs-chat-display-close');
   if(!trigger||!modal||!close)return;
+  const frequency=$('hs-game-invite-frequency');
+  frequency.onchange=()=>{
+   try{window.GameInvites.setFrequency(frequency.value);}
+   catch{frequency.value=window.GameInvites.frequency();toast('游戏邀请频率保存失败，请重试。');}
+  };
   const switches=[...modal.querySelectorAll('[role=switch]')];
   const syncSwitches=()=>switches.forEach(button=>button.setAttribute('aria-checked',String(button.classList.contains('active'))));
   const observer=new MutationObserver(syncSwitches);
@@ -182,7 +188,7 @@
    const focusTarget=document.body.classList.contains('immersive-mode')?$('immersive-exit-btn'):trigger;
    focusTarget?.focus();
   };
-  trigger.onclick=()=>{syncSwitches();window.MomentStatus?.syncEmotionSetting?.();showModal(modal,close);};
+  trigger.onclick=()=>{syncSwitches();frequency.value=window.GameInvites.frequency();window.MomentStatus?.syncEmotionSetting?.();showModal(modal,close);};
   close.onclick=dismiss;
   modal.addEventListener('click',event=>{if(event.target===modal)dismiss();});
   document.addEventListener('keydown',event=>{
@@ -347,6 +353,7 @@
   const input=$('hs-home-wallpaper-file'),status=$('hs-home-wallpaper-status');
   const gallery=$('hs-home-background-gallery'),add=$('hs-home-background-add'),theme=$('hs-home-background-theme');
   const reset=$('hs-home-wallpaper-reset'),range=$('hs-home-glass-range'),value=$('hs-home-glass-value');
+  const darkRange=$('hs-home-dark-range'),darkValue=$('hs-home-dark-value');
   const preview=$('hs-home-glass-preview');
   if(!entry||!panel)return;
   let busy=false,lastTap=null,lastImages,lastWallpaper;
@@ -359,6 +366,11 @@
    const transparency=Number(range.value);
    value.textContent=transparency+'%';
    preview.style.setProperty('--hs-glass-opacity',1-transparency/100);
+  };
+  const previewDark=()=>{
+   const darkness=Number(darkRange.value);
+   darkValue.textContent=darkness+'%';
+   for(const target of [home,preview])target.style.setProperty('--hs-night-darkness',darkness/100);
   };
   const select=async (wallpaper,file)=>{
    if(busy)return;
@@ -398,6 +410,7 @@
     else preview.style.removeProperty('--hs-wallpaper');
    }
    if(range!==document.activeElement){range.value=String(glassTransparency());previewGlass();}
+   if(darkRange!==document.activeElement){darkRange.value=String(homeDarkness());previewDark();}
   };
   const isBlank=event=>!event.target.closest('button,input,.hs-time,.hs-home-music,.hs-home-functions');
   home.addEventListener('dblclick',event=>{if(isBlank(event))open();});
@@ -424,6 +437,11 @@
   };
   theme.onclick=reset.onclick=()=>select('');
   range.oninput=previewGlass;
+  darkRange.oninput=previewDark;
+  darkRange.onchange=async()=>{
+   try{await save({homeNightDarkness:Number(darkRange.value)});update();}
+   catch{toast('夜间调暗程度保存失败，请重试。');darkRange.value=String(homeDarkness());previewDark();}
+  };
   range.onchange=async()=>{
    try{await save({homeGlassTransparency:Number(range.value)});update();}
    catch{toast('透明度保存失败，请重试。');range.value=String(glassTransparency());previewGlass();}
@@ -460,6 +478,7 @@
   #hs-chat-display .setting-pill-row:focus-visible{outline-offset:-3px}
   #hs-chat-display .setting-pill-label>span{display:block;margin-top:4px;line-height:1.4}
   #hs-chat-display .setting-pill-knob{display:block}
+  #hs-game-invite-frequency{font:inherit;color:var(--text-primary);background:var(--primary-bg);border:1px solid var(--border-color);border-radius:10px;padding:6px 8px}
   #hs-settings #advanced-settings{display:none!important}#hs-relation [hidden]{display:none!important}
   #custom-replies-modal>.modal-content{box-sizing:border-box;width:94%;max-width:600px;min-width:0;overflow:hidden;max-height:90vh;max-height:90dvh;margin:0 auto;padding:0;flex-direction:column}
   #custom-replies-modal .modal-sidebar{box-sizing:border-box;display:flex;flex-direction:row;flex-wrap:nowrap;justify-content:flex-start;width:100%;max-width:100%;min-width:0;overflow-x:auto;overflow-y:hidden;padding:10px 12px;gap:8px;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scroll-padding-inline:12px;touch-action:pan-x;scrollbar-width:thin}
@@ -485,7 +504,7 @@
   }
   html[data-theme=dark] :is(#hs-home,#hs-home-glass-preview,body.hs-enabled[data-hs-page=home] #hs-nav){
    --hs-glass-line:rgba(255,255,255,calc(.12 + .14 * var(--hs-glass-strength)));
-   --hs-wallpaper-wash:rgba(var(--primary-bg-rgb),calc(.53 * var(--hs-glass-strength)));
+   --hs-wallpaper-wash:rgba(0,0,0,var(--hs-night-darkness,.48));
   }
   #hs-home{
    bottom:0;padding:0;overflow:hidden;
@@ -507,7 +526,7 @@
   .hs-home-background-reset .modal-btn{padding:6px 12px;font-size:12px}
   #hs-home-wallpaper-reset:disabled{opacity:.55;cursor:default}
   #hs-home-wallpaper-status:empty{display:none}
-  #hs-home-glass-range{min-width:0}
+  #hs-home-glass-range,#hs-home-dark-range{min-width:0}
   #hs-home-glass-range:focus-visible,#hs-home-background-gallery button:focus-visible{outline:2px solid var(--accent-color);outline-offset:3px}
   #hs-home-glass-preview{
    display:grid;place-items:center;min-height:74px;border-radius:14px;

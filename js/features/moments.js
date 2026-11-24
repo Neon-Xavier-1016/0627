@@ -496,6 +496,8 @@
         if (comments.length > 0) {
             var myName = localStorage.getItem('myName') || (window.settings && window.settings.myName) || '我';
             var partnerName = localStorage.getItem('partnerName') || (window.settings && window.settings.partnerName) || '梦角';
+            var escapeText = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+            var nameHtml = name => '<span style="color:' + nameColor + ';font-weight:700;">' + escapeText(name) + '</span>';
             commentsHtml = '<div class="moment-comments" style="margin-top:0;">';
             comments.forEach(function(comment) {
                 var sRaw = comment.sender || '';
@@ -503,26 +505,22 @@
                             sRaw === 'partner' ? partnerName :
                             sRaw === myName ? myName :
                             sRaw === partnerName ? partnerName : partnerName;
-                var replyText = '';
+                var replyName = '';
                 if (comment.replyToCommentId) {
                     var parent = comments.find(function(c) { return c.id === comment.replyToCommentId; });
                     if (parent) {
                         var pRaw = parent.sender || '';
-                        var pName = pRaw === 'me' ? myName : (pRaw === 'partner' ? partnerName : pRaw);
-                        replyText = '回复 ' + pName + '：';
+                        replyName = pRaw === 'me' ? myName : (pRaw === 'partner' ? partnerName : pRaw);
                     }
                 }
-                var text = (comment.text != null) ? comment.text : '';
+                var prefix = replyName
+                    ? nameHtml(cName) + ' 回复 ' + nameHtml(replyName) + '：'
+                    : nameHtml(cName + '：');
 
                 commentsHtml += '<div class="moment-comment" data-comment-id="' + comment.id + '" style="display:flex;align-items:flex-start;padding:6px 0 2px 0;font-size:13px;line-height:1.5;">' +
-                    '<div style="flex:1;min-width:0;">' +
-                        '<div style="color:' + nameColor + ';font-weight:700;margin-bottom:2px;">' + cName + '</div>' +
-                        '<div style="color:' + textColor + ';word-break:break-all;">' +
-                            (replyText ? '<span style="color:' + nameColor + ';font-weight:700;">' + replyText + '</span>' : '') +
-                            text +
-                        '</div>' +
+                    '<div class="moment-comment-trigger" tabindex="0" role="button" aria-haspopup="dialog" style="flex:1;min-width:0;color:' + textColor + ';overflow-wrap:anywhere;touch-action:manipulation;cursor:pointer;">' +
+                        prefix + '<span style="white-space:pre-wrap;">' + escapeText(comment.text) + '</span>' +
                     '</div>' +
-                    '<span class="comment-actions" data-comment-id="' + comment.id + '" style="margin-left:auto;color:' + (isDark ? '#888' : '#999') + ';font-size:12px;cursor:pointer;padding:0 4px;flex-shrink:0;"><i class="fas fa-ellipsis-v"></i></span>' +
                     '</div>';
             });
             commentsHtml += '</div>';
@@ -651,15 +649,36 @@
     // ==================== 事件绑定 ====================
     function bindCardEvents() {
         var container = dom.list;
-        if (!container) return;
+        if (!container || container._momentsListener) return;
 
-        if (container._momentsListener) {
-            container.removeEventListener('click', container._momentsListener);
-            container.removeEventListener('keydown', container._momentsListener);
-        }
-
+        var lastCommentClick;
         container._momentsListener = function(e) {
             var target = e.target;
+            var commentTrigger = target.closest('.moment-comment-trigger');
+            if (commentTrigger) {
+                var comment = commentTrigger.closest('.moment-comment');
+                var momentId = comment.closest('.moment-card')?.dataset.momentId;
+                var commentId = comment.dataset.commentId;
+                if (!momentId || !commentId) return;
+
+                if (e.type === 'click') {
+                    if (e.button !== 0) return;
+                    var previous = lastCommentClick;
+                    lastCommentClick = { momentId, commentId, time: e.timeStamp, x: e.clientX, y: e.clientY };
+                    if (!previous || previous.momentId !== momentId || previous.commentId !== commentId ||
+                        e.timeStamp - previous.time > 500 ||
+                        Math.hypot(e.clientX - previous.x, e.clientY - previous.y) > 32) return;
+                } else if (e.repeat || (e.key !== 'Enter' && e.key !== ' ')) {
+                    return;
+                }
+                lastCommentClick = null;
+                e.preventDefault();
+                e.stopPropagation();
+                var selection = window.getSelection();
+                if (selection?.anchorNode && commentTrigger.contains(selection.anchorNode)) selection.removeAllRanges();
+                showCommentMenu(momentId, commentId);
+                return;
+            }
 
             var trigger = target.closest('.moment-menu-trigger');
             if (trigger) {
@@ -729,16 +748,6 @@
                 return;
             }
 
-            var commentActions = target.closest('.comment-actions');
-            if (commentActions) {
-                e.stopPropagation();
-                var commentId = commentActions.dataset.commentId;
-                var card = commentActions.closest('.moment-card');
-                var momentId = card ? card.dataset.momentId : null;
-                if (momentId && commentId) showCommentMenu(momentId, commentId);
-                return;
-            }
-
             var img = target.closest('.moment-image img');
             if (img) {
                 var cImg = img.closest('.moment-image');
@@ -763,6 +772,7 @@
         };
 
         container._momentsLeaveListener = function(e) {
+            if (!e.target.closest('.moment-comment-trigger')) lastCommentClick = null;
             var popup = e.target.closest('.moment-menu-popup');
             var trigger = e.target.closest('.moment-menu-trigger');
             if (!popup && !trigger) {
