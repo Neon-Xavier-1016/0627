@@ -486,7 +486,7 @@ function showEmojiTab() {
 
     // ── 「对方」标签 ──
     if (tabName === 'partner-sticker') {
-        const partner = (typeof stickerLibrary !== 'undefined' && Array.isArray(stickerLibrary)) ? stickerLibrary : [];
+        const partner = window.StickerAssets?.available() || [];
         if (partner.length === 0) {
             area.style.display = 'flex';
             area.style.flexDirection = 'column';
@@ -1434,22 +1434,10 @@ function applyDgOverlayBg(data, tintOpacity) {
 })();
 
 window.switchToAnnouncementPanel = function() {
-    var listArea = document.getElementById('custom-replies-list');
+    setReplyLibraryPanel('announcement');
     var annPanel = document.getElementById('announcement-panel');
-    var toolbar = document.getElementById('cr-toolbar');
-    var batchToolbar = document.getElementById('batch-ops-toolbar');
-    var subTabs = document.getElementById('cr-sub-tabs');
-    var addBtn = document.getElementById('add-custom-reply');
     var titleEl = document.getElementById('cr-modal-title');
-    // 隐藏并清空列表区域，彻底清除 emoji/sticker/字卡等残留内容
-    if (listArea) { listArea.style.display = 'none'; listArea.innerHTML = ''; listArea.className = 'content-list-area'; }
-    // 隐藏并清空批量操作工具栏，防止工具栏内容残留
-    if (batchToolbar) { batchToolbar.style.display = 'none'; batchToolbar.innerHTML = ''; }
-    // 隐藏并清空 sub tabs，防止 tab 按钮残留
-    if (subTabs) { subTabs.style.display = 'none'; subTabs.innerHTML = ''; }
-    if (annPanel) { annPanel.style.display = 'block'; annPanel.scrollTop = 0; }
-    if (toolbar) toolbar.style.display = 'none';
-    if (addBtn) addBtn.style.display = 'none';
+    if (annPanel) annPanel.scrollTop = 0;
     if (titleEl) titleEl.textContent = '今日公告配置';
     var customData = {};
     try { customData = JSON.parse(localStorage.getItem('dg_custom_data') || '{}'); } catch(e2) {}

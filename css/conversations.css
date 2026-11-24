@@ -35,6 +35,27 @@ button.xv-avatar { border: 1px dashed var(--text-secondary); cursor: pointer; fo
 .xv-settings .xv-pin { width: 100%; min-height: 50px; padding: 5px 13px; color: var(--text-primary); font: inherit; text-align: left; }
 .xv-pin .setting-pill-switch { margin-inline-start: auto; }
 .xv-pin .setting-pill-knob { display: block; }
+.xv-asset-dialog { position: fixed; inset: 0; margin: auto; box-sizing: border-box; width: min(92vw, 400px); height: fit-content; max-height: 75dvh; overflow: auto; padding: 18px; border: 1px solid var(--border-color); border-radius: 16px; background: var(--secondary-bg); color: var(--text-primary); font: inherit; }
+.xv-asset-dialog::backdrop { background: #0006; }
+.xv-asset-dialog h2 { margin: 0 0 12px; font-size: 1.1rem; }
+.xv-asset-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.xv-asset-choices label { position: relative; cursor: pointer; }
+.xv-asset-all { grid-column: 1 / -1; }
+.xv-asset-choices input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.xv-asset-choice { display: grid; place-items: center; min-height: 44px; padding: 7px 8px; border: 1.5px solid var(--border-color); border-radius: 11px; text-align: center; overflow-wrap: anywhere; }
+.xv-asset-choices input:checked + .xv-asset-choice { border-color: var(--accent-color); background: rgba(var(--accent-color-rgb), .12); color: var(--accent-color); }
+.xv-asset-choices input:focus-visible + .xv-asset-choice { outline: 2px solid var(--accent-color); outline-offset: 2px; }
+.xv-asset-choices input:disabled + .xv-asset-choice { opacity: .5; }
+.xv-asset-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.xv-asset-dialog button, .xv-asset-button, .xv-role-select { border: 1px solid var(--border-color); border-radius: 8px; background: var(--secondary-bg); color: var(--text-primary); padding: 5px 8px; font: inherit; cursor: pointer; }
+.xv-asset-summary { padding: 8px 15px; font-size: .85rem; color: var(--text-secondary); }
+.xv-asset-summary .xv-asset-button { margin-inline-start: 8px; }
+.xv-asset-summary .xv-asset-button:disabled { opacity: .5; cursor: default; }
+.xv-asset-summary details div { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+.xv-asset-summary details img { width: 32px; height: 32px; object-fit: contain; }
+.sticker-item > .xv-asset-button { position: absolute; bottom: 3px; left: 3px; max-width: calc(100% - 6px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .72rem; }
+.xv-role-select { width: 100%; margin: 0 0 12px; }
+.ip-share-avatar { position: absolute; bottom: 3px; left: 3px; font-size: .7rem; }
 .xv-settings h2 { font-size: .9rem; color: var(--text-secondary); margin: 12px 0 0; }
 .xv-settings label { display: grid; gap: 6px; }
 .xv-settings input:not([type=checkbox]) { min-width: 0; width: 100%; box-sizing: border-box; background: var(--secondary-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px; font: inherit; }
@@ -44,14 +65,10 @@ button.xv-avatar { border: 1px dashed var(--text-secondary); cursor: pointer; fo
 #xv-chat-title > span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 #xv-chat-title .xv-avatar { width: 34px; height: 34px; flex-basis: 34px; }
 body[data-xv-thread] .header .user-info:has(> #partner-avatar-container), body[data-xv-thread] #chat-container, body[data-xv-thread] #history-loader, body[data-xv-thread] #empty-state, body[data-xv-thread] #typing-indicator-wrapper, body[data-xv-thread] #hs-new-messages, body[data-xv-thread] #reply-preview-container { display: none !important; }
-body[data-hs-page=chat] #xv-thread { display: flex; flex-direction: column; overflow-y: auto; position: absolute; inset: 0 0 var(--chat-input-area-height, 65px); padding: 14px; gap: 12px; box-sizing: border-box; }
 #xv-thread[hidden], #xv-chat-title[hidden] { display: none !important; }
-.xv-post { display: flex; gap: 8px; align-items: flex-start; max-width: 90%; align-self: flex-start; }
-.xv-post.xv-mine { align-self: flex-end; }
-.xv-post .xv-avatar { flex-basis: 32px; width: 32px; height: 32px; }
-.xv-bubble { padding: 9px 12px; border-radius: 15px; background: var(--secondary-bg); color: var(--text-primary); white-space: pre-wrap; overflow-wrap: anywhere; }
-.xv-mine .xv-bubble { background: var(--accent-color); color: var(--primary-bg); }
-.xv-bubble img { display: block; max-width: min(52vw, 280px); max-height: 270px; object-fit: contain; cursor: zoom-in; }
-.xv-system { align-self: center; text-align: center; margin: 4px 0; }
-.xv-typing { align-self: flex-start; margin: 0; }
+#xv-thread .xv-chat-spacer { flex: 1 0 0; }
+#xv-thread .xv-typing { align-self: flex-start; flex-shrink: 0; margin-top: 8px; }
+#xv-thread .message-image { max-width: min(45vw, 160px); max-height: 160px; object-fit: contain; }
+html[data-theme="dark"] body.with-background #xv-thread .message-meta { color: #e9e9e9; opacity: 1; text-shadow: 0 1px 3px #000; }
+#xv-thread .group-sender-name { color: var(--text-secondary); font-weight: 400; }
 body[data-xv-thread=group] #chat-media-panel > :not(#attachment-btn) { display: none !important; }

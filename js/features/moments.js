@@ -309,8 +309,8 @@
         var shuffled = lib.slice().sort(function() { return Math.random() - 0.5; });
         return shuffled.slice(0, count);
     }
-    function getRandomSticker() {
-        var lib = getStickerLibrary();
+    function getRandomSticker(roleId) {
+        var lib = window.StickerAssets?.available(roleId) || getStickerLibrary();
         if (!lib.length) return null;
         return lib[randomInt(0, lib.length - 1)];
     }
@@ -1197,7 +1197,7 @@
 
         var images = [];
         if (Math.random() < CONFIG.STICKER_RATIO) {
-            var sticker = getRandomSticker();
+            var sticker = getRandomSticker(author?.id);
             if (sticker) images.push(sticker);
         }
 

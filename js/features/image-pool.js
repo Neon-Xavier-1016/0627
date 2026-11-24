@@ -8,6 +8,9 @@ if (window.__imagePoolLoaded) return;
 window.__imagePoolLoaded = true;
 
 const $ = id => document.getElementById(id);
+let pickerRole;
+const primaryRole = () => window.XavierConversations?.primaryId();
+const activeRole = () => window.XavierConversations?.activeId() || primaryRole();
 const esc = s => String(s == null ? '' : s)
   .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
   .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -69,6 +72,35 @@ function getPool() {
   return p;
 }
 function savePool() { try { if (typeof throttledSaveData === 'function') throttledSaveData(); } catch(e) {} }
+function ownerPool(target, id = pickerRole || activeRole()) {
+  const pool = getPool();
+  if (target !== 'partner' || !id || id === SESSION_ID) return pool;
+  pool.roles ||= {};
+  return pool.roles[id] ||= {partnerNamePool:[], partnerAvatarHashes:[]};
+}
+function avatarInUse(hash) {
+  const pool = getPool();
+  return pool.myAvatarHashes.includes(hash) || pool.partnerAvatarHashes.includes(hash) ||
+    Object.values(pool.roles || {}).some(person => person.partnerAvatarHashes.includes(hash));
+}
+function assignAvatar(hash) {
+  const people = window.XavierConversations.profiles();
+  const existing = people.filter(person => ownerPool('partner', person.id).partnerAvatarHashes.includes(hash)).map(person => person.id);
+  window.StickerAssets.chooseScope('选择可用这张头像的梦角', existing, async scope => {
+    const targets = new Set(scope);
+    const pools = people.map(person => ({person, list:ownerPool('partner', person.id).partnerAvatarHashes}));
+    const full = pools.find(({person,list}) => targets.has(person.id) && !list.includes(hash) && list.length >= AVATAR_POOL_MAX);
+    if (full) throw Error(full.person.name + ' 的头像库已满');
+    for (const {person,list} of pools) {
+      const index = list.indexOf(hash);
+      if (targets.has(person.id) && index === -1) list.push(hash);
+      else if (!targets.has(person.id) && index !== -1) list.splice(index, 1);
+    }
+    await saveData();
+    if (!avatarInUse(hash)) await localforage.removeItem(avatarKey(hash));
+    render();
+  }, false);
+}
 function avatarKey(hash) {
   try { if (typeof getStorageKey === 'function') return getStorageKey('imagePool:av:' + hash); } catch(e) {}
   return 'xy-home-v2:imagePool:av:' + hash;
@@ -92,41 +124,13 @@ async function computeHash(dataURL) {
  * 二、面板切换
  * ============================================================ */
 function switchToImagePoolPanel() {
-  const listArea = $('custom-replies-list');
-  const annPanel = $('announcement-panel');
-  const ipPanel  = $('imagepool-panel');
-  const subTabs  = $('cr-sub-tabs');
-  const addBtn   = $('add-custom-reply');
-  const titleEl  = $('cr-modal-title');
-  const toolbar  = $('batch-ops-toolbar');
-
-  if (listArea) { listArea.style.display = 'none'; listArea.innerHTML = ''; }
-  if (annPanel) annPanel.style.display = 'none';
-  if (subTabs)  { subTabs.style.display = 'none'; subTabs.innerHTML = ''; }
-  if (toolbar)  { toolbar.style.display = 'none'; toolbar.innerHTML = ''; }
-  if (ipPanel)  { ipPanel.style.display = 'block'; ipPanel.scrollTop = 0; }
-  if (addBtn)   addBtn.style.display = 'none';
-  if (titleEl)  titleEl.textContent = '形象库';
-
-  document.querySelectorAll('.sidebar-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.major === 'imagepool');
-  });
+  pickerRole = activeRole();
+  setReplyLibraryPanel('imagepool');
+  $('cr-modal-title').textContent = '形象库';
+  $('imagepool-panel').scrollTop = 0;
   render();
 }
 window.switchToImagePoolPanel = switchToImagePoolPanel;
-
-function bindSidebarWatch() {
-  document.querySelectorAll('.sidebar-btn').forEach(btn => {
-    if (btn.__ipWatchBound) return;
-    btn.__ipWatchBound = true;
-    btn.addEventListener('click', () => {
-      if (btn.dataset.major !== 'imagepool') {
-        const ip = $('imagepool-panel');
-        if (ip) ip.style.display = 'none';
-      }
-    });
-  });
-}
 
 /* ============================================================
  * 三、渲染
@@ -166,19 +170,30 @@ function render() {
     ownerTabs.appendChild(b);
   });
   panel.appendChild(ownerTabs);
+  const people = window.XavierConversations?.profiles() || [];
+  if (currentOwnerTab === 'partner' && people.length > 1) {
+    const select = document.createElement('select');
+    select.className = 'xv-role-select';
+    select.setAttribute('aria-label', '选择梦角的形象库');
+    for (const person of people) select.add(new Option(person.name, person.id));
+    select.value = people.some(person => person.id === pickerRole) ? pickerRole : activeRole();
+    select.onchange = () => { pickerRole = select.value; render(); };
+    panel.append(select);
+  }
 
   const body = document.createElement('div');
   body.id = 'imagepool-body';
   panel.appendChild(body);
 
-  const p = getPool();
+  const p = ownerPool(currentOwnerTab);
   if (currentMainTab === 'avatar') {
     const list = currentOwnerTab === 'partner' ? p.partnerAvatarHashes : p.myAvatarHashes;
     renderAvatarPool(body, currentOwnerTab, list);
-    const total = p.partnerAvatarHashes.length + p.myAvatarHashes.length;
+    const all = getPool();
+    const total = new Set([...(p.partnerAvatarHashes || []), ...all.myAvatarHashes]).size;
     const tip = document.createElement('div');
     tip.style.cssText = 'text-align:center;font-size:11px;color:var(--text-secondary);margin-top:14px;';
-    tip.textContent = '两池合计 ' + total + '/' + AVATAR_POOL_TOTAL_MAX;
+    tip.textContent = '我的头像与当前梦角的头像共 ' + total + ' 张';
     body.appendChild(tip);
   } else {
     const list = currentOwnerTab === 'partner' ? p.partnerNamePool : p.myNamePool;
@@ -187,6 +202,7 @@ function render() {
 }
 
 function renderAvatarPool(container, target, list) {
+  const roleId = pickerRole || activeRole();
   const counter = document.createElement('div');
   counter.style.cssText = 'text-align:right;font-size:11px;color:var(--text-secondary);margin-bottom:8px;';
   counter.textContent = (list.length ? '双击头像即可换上 · ' : '') + list.length + '/' + AVATAR_POOL_MAX;
@@ -214,9 +230,9 @@ function renderAvatarPool(container, target, list) {
       const apply = () => {
         if (!img.hasAttribute('src')) return;
         const value = img.getAttribute('src');
-        const current = target === 'partner' ? S().partnerAvatar : S().myAvatar;
+        const current = target === 'partner' ? window.XavierConversations?.profile(roleId)?.avatar : S().myAvatar;
         if (value === current) return;
-        applyChange('avatar', target === 'partner' ? 'partner' : 'me', value);
+        applyChange('avatar', target === 'partner' ? 'partner' : 'me', value, roleId);
         toast('头像已更换');
       };
       select.addEventListener('dblclick', apply);
@@ -235,6 +251,14 @@ function renderAvatarPool(container, target, list) {
       del.style.cssText = 'position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;border:none;font-size:12px;line-height:1;cursor:pointer;padding:0;';
       del.onclick = (e) => { e.stopPropagation(); deleteAvatarAt(target, idx); };
       cell.appendChild(del);
+      if (target === 'partner' && (window.XavierConversations?.profiles().length || 0) > 1) {
+        const share = document.createElement('button');
+        share.type = 'button';
+        share.className = 'xv-asset-button ip-share-avatar';
+        share.textContent = '分配';
+        share.onclick = () => assignAvatar(hash);
+        cell.append(share);
+      }
       grid.appendChild(cell);
       try { localforage.getItem(avatarKey(hash)).then(data => { if (data) img.src = data; }).catch(() => {}); } catch(e) {}
     });
@@ -277,7 +301,7 @@ function renderNamePool(container, target, list) {
       del.type = 'button'; del.textContent = '×';
       del.style.cssText = 'flex-shrink:0;width:22px;height:22px;border:none;border-radius:50%;background:rgba(0,0,0,.06);color:var(--text-secondary);font-size:12px;cursor:pointer;padding:0;margin-left:6px;';
       del.onclick = () => {
-        const p = getPool();
+        const p = ownerPool(target);
         const key = target === 'partner' ? 'partnerNamePool' : 'myNamePool';
         p[key].splice(idx, 1);
         savePool(); render();
@@ -305,10 +329,11 @@ function renderNamePool(container, target, list) {
  * 四、池子增删
  * ============================================================ */
 function addAvatarTo(target) {
-  const p = getPool();
+  const p = ownerPool(target);
   const key = target === 'partner' ? 'partnerAvatarHashes' : 'myAvatarHashes';
   const other = target === 'partner' ? 'myAvatarHashes' : 'partnerAvatarHashes';
-  const roomTotal = AVATAR_POOL_TOTAL_MAX - (p[key].length + p[other].length);
+  const otherPool = target === 'partner' ? getPool() : ownerPool('partner');
+  const roomTotal = AVATAR_POOL_TOTAL_MAX - (p[key].length + otherPool[other].length);
   const roomSelf  = AVATAR_POOL_MAX - p[key].length;
   const room = Math.min(roomTotal, roomSelf);
   if (room <= 0) { toast(roomSelf <= 0 ? '这个池子已满（' + AVATAR_POOL_MAX + '）' : '两池合计已满（' + AVATAR_POOL_TOTAL_MAX + '）'); return; }
@@ -347,28 +372,26 @@ function addAvatarTo(target) {
   input.click();
 }
 async function deleteAvatarAt(target, idx) {
-  const p = getPool();
+  const p = ownerPool(target);
   const key = target === 'partner' ? 'partnerAvatarHashes' : 'myAvatarHashes';
-  const other = target === 'partner' ? 'myAvatarHashes' : 'partnerAvatarHashes';
   const hash = p[key][idx];
   if (!hash) return;
   p[key].splice(idx, 1);
-  if (p[other].indexOf(hash) < 0) { try { await localforage.removeItem(avatarKey(hash)); } catch(e) {} }
+  if (!avatarInUse(hash)) { try { await localforage.removeItem(avatarKey(hash)); } catch(e) {} }
   savePool(); render();
 }
 function clearAvatarPool(target) {
-  const p = getPool();
+  const p = ownerPool(target);
   const key = target === 'partner' ? 'partnerAvatarHashes' : 'myAvatarHashes';
-  const other = target === 'partner' ? 'myAvatarHashes' : 'partnerAvatarHashes';
   if (!p[key].length) return;
   if (!confirm('清空' + (target === 'partner' ? 'TA' : '我') + '的头像池？')) return;
   const gone = p[key].slice();
   p[key] = [];
-  gone.forEach(h => { if (p[other].indexOf(h) < 0) { try { localforage.removeItem(avatarKey(h)); } catch(e) {} } });
+  gone.forEach(h => { if (!avatarInUse(h)) localforage.removeItem(avatarKey(h)).catch(console.warn); });
   savePool(); render(); toast('已清空');
 }
 function addNameTo(target) {
-  const p = getPool();
+  const p = ownerPool(target);
   const key = target === 'partner' ? 'partnerNamePool' : 'myNamePool';
   const room = NAME_POOL_MAX - p[key].length;
   if (room <= 0) { toast('这个池子已满（' + NAME_POOL_MAX + '）'); return; }
@@ -405,7 +428,7 @@ function addNameTo(target) {
   };
 }
 function clearNamePool(target) {
-  const p = getPool();
+  const p = ownerPool(target);
   const key = target === 'partner' ? 'partnerNamePool' : 'myNamePool';
   if (!p[key].length) return;
   if (!confirm('清空' + (target === 'partner' ? 'TA' : '我') + '的名字池？')) return;
@@ -463,8 +486,12 @@ function injectIpcStyles() {
   `;
   document.head.appendChild(st);
 }
-function addSystemMessage(htmlOrText) {
+function addSystemMessage(htmlOrText, id) {
   const msg = { id: Date.now() + Math.random(), sender: 'system', type: 'system', text: htmlOrText, timestamp: new Date() };
+  if (id) {
+    if (window.XavierConversations?.profile(id)) window.XavierConversations.addToSingle(id, msg);
+    return;
+  }
   try { if (typeof addMessage === 'function') { addMessage(msg); return; } } catch(e) {}
   try { if (typeof window.messages !== 'undefined' && Array.isArray(window.messages)) window.messages.push(msg); } catch(e) {}
   try {
@@ -479,20 +506,23 @@ function addSystemMessage(htmlOrText) {
   } catch(e) {}
   try { if (typeof throttledSaveData === 'function') throttledSaveData(); } catch(e) {}
 }
-function pushAvatarCard(who, dataURL) {
+function pushAvatarCard(who, dataURL, id) {
   const whoText = who === 'partner' ? 'TA把头像换成了' : 'TA给你换了个新头像';
   addSystemMessage(
     '<div class="ip-avatar-card">' +
       '<div class="ip-avatar-card-head">' + esc(whoText) + '</div>' +
       '<div class="ip-avatar-card-img"><img src="' + dataURL + '" alt=""></div>' +
-    '</div>'
+    '</div>', id
   );
 }
 
 /* ============================================================
  * 七、应用 / 抽池
  * ============================================================ */
-function applyChange(kind, owner, value) {
+function applyChange(kind, owner, value, id = primaryRole()) {
+  if (owner === 'partner' && id && id !== primaryRole()) {
+    return window.XavierConversations.updateAppearance(id, kind, value).catch(console.warn);
+  }
   if (kind === 'name') {
     const s = S();
     if (owner === 'partner') s.partnerName = value; else s.myName = value;
@@ -520,8 +550,8 @@ function applyChange(kind, owner, value) {
   }
   try { if (typeof throttledSaveData === 'function') throttledSaveData(); } catch(e) {}
 }
-async function pickFromPool(owner, kind) {
-  const p = getPool();
+async function pickFromPool(owner, kind, id = primaryRole()) {
+  const p = ownerPool(owner, id);
   const key = kind === 'name'
     ? (owner === 'partner' ? 'partnerNamePool' : 'myNamePool')
     : (owner === 'partner' ? 'partnerAvatarHashes' : 'myAvatarHashes');
@@ -650,18 +680,19 @@ const REJECT_NAME_MSGS = ['今天不想换名字，现在这样挺好的','算�
 const REJECT_AVATAR_MSGS = ['今天不想换头像，现在这张挺好的','头像先不换了','这张用着挺习惯的，先放着吧','下次吧，今天没心情换头像'];
 const REJECT_BOTH_MSGS = ['今天不想折腾了，名字头像都先不换','先这样吧，等以后再说','现在这样挺好的，先不动了'];
 
-async function requestChange(who, forcedKind) {
+async function requestChange(who, forcedKind, id = activeRole()) {
+  const send = text => addSystemMessage(text, id);
   const p = getPool();
   let kind = forcedKind || (Math.random() < 0.5 ? 'name' : 'avatar');
 
-  if (kind === 'name' && !p.allowNameChange) { addSystemMessage('TA：现在还不打算换名字'); return; }
-  if (kind === 'avatar' && !p.allowAvatarChange) { addSystemMessage('TA：现在还不打算换头像'); return; }
+  if (kind === 'name' && !p.allowNameChange) { send('TA：现在还不打算换名字'); return; }
+  if (kind === 'avatar' && !p.allowAvatarChange) { send('TA：现在还不打算换头像'); return; }
 
   const checkKind = (k) => {
     const key = k === 'name'
       ? (who === 'partner' ? 'partnerNamePool' : 'myNamePool')
       : (who === 'partner' ? 'partnerAvatarHashes' : 'myAvatarHashes');
-    return p[key] && p[key].length;
+    return ownerPool(who, id)[key]?.length;
   };
   const usableKinds = [];
   if (kind === 'both') {
@@ -670,27 +701,28 @@ async function requestChange(who, forcedKind) {
   } else {
     if (checkKind(kind)) usableKinds.push(kind);
   }
-  if (!usableKinds.length) { addSystemMessage('TA：还没有可以换的素材呢'); return; }
+  if (!usableKinds.length) { send('TA：还没有可以换的素材呢'); return; }
 
   if (Math.random() < REJECT_PROB) {
     const pool = kind === 'both' ? REJECT_BOTH_MSGS : (kind === 'avatar' ? REJECT_AVATAR_MSGS : REJECT_NAME_MSGS);
     const line = pool[Math.floor(Math.random() * pool.length)];
-    setTimeout(() => addSystemMessage('TA：' + line), 600 + Math.random() * 600);
+    setTimeout(() => send('TA：' + line), 600 + Math.random() * 600);
     return;
   }
 
   setTimeout(async () => {
     for (const k of usableKinds) {
-      const value = await pickFromPool(who, k);
+      if (id && !window.XavierConversations?.profile(id)) return;
+      const value = await pickFromPool(who, k, id);
       if (!value) continue;
-      applyChange(k, who, value);
+      await applyChange(k, who, value, id);
       await new Promise(r => setTimeout(r, 400));
       if (k === 'name') {
-        addSystemMessage(who === 'partner'
+        send(who === 'partner'
           ? 'TA给自己换了个新名字：' + value
           : 'TA给你换了个新名字：' + value);
       } else {
-        pushAvatarCard(who, value);
+        pushAvatarCard(who, value, id);
       }
     }
   }, 500 + Math.random() * 500);
@@ -699,7 +731,7 @@ async function requestChange(who, forcedKind) {
 /* ============================================================
  * 十、关键词触发
  * ============================================================ */
-function handleKeyword(text) {
+function handleKeyword(text, id) {
   if (!text) return;
   let kind = null;
   if (/给我.{0,3}换.{0,3}头像/.test(text)) kind = 'avatar';
@@ -711,7 +743,7 @@ function handleKeyword(text) {
   if (p._lastKeywordAt && now - p._lastKeywordAt < KW_COOLDOWN_MS) return;
   p._lastKeywordAt = now; savePool();
   if (Math.random() > KW_TRIGGER_PROB) return;
-  setTimeout(() => requestChange('me', kind), 900 + Math.random() * 800);
+  setTimeout(() => requestChange('me', kind, id), 900 + Math.random() * 800);
 }
 
 function bindKeywordListener() {
@@ -721,7 +753,8 @@ function bindKeywordListener() {
     const input = document.getElementById('message-input');
     if (!input) return;
     const v = String(input.value || '').trim();
-    if (v) setTimeout(() => handleKeyword(v), 400);
+    const id = window.XavierConversations?.openConversationId();
+    if (v && (!id || window.XavierConversations.profile(id))) setTimeout(() => handleKeyword(v, id || activeRole()), 400);
   };
   const bindSend = () => {
     const b = document.getElementById('send-btn');
@@ -747,7 +780,8 @@ function bindKeywordListener() {
         if (!t) { const i = document.getElementById('message-input'); if (i) t = String(i.value || '').trim(); }
       } catch(e) {}
       const r = orig.apply(this, arguments);
-      if (t) setTimeout(() => handleKeyword(t), 300);
+      const id = window.XavierConversations?.openConversationId();
+      if (t && (!id || window.XavierConversations.profile(id))) setTimeout(() => handleKeyword(t, id || activeRole()), 300);
       return r;
     };
     window.sendMessage.__ipWrapped = true;
@@ -811,17 +845,18 @@ function askConsent(kind, value) {
   });
 }
 async function performSwap(reason, skipUserAvatar = false) {
+  const id = window.XavierConversations?.homeId() || primaryRole();
   const p = getPool();
   const allowName = p.allowNameChange, allowAvatar = p.allowAvatarChange;
   if (!allowName && !allowAvatar) return;
   let kind = (allowName && allowAvatar) ? (Math.random() < 0.5 ? 'name' : 'avatar') : (allowName ? 'name' : 'avatar');
   const partnerAvatarOnly = skipUserAvatar && kind === 'avatar';
   let owner = partnerAvatarOnly || Math.random() < 0.5 ? 'partner' : 'me';
-  let value = await pickFromPool(owner, kind);
+  let value = await pickFromPool(owner, kind, id);
   if (!value) {
     if (partnerAvatarOnly) return;
     const altOwner = owner === 'partner' ? 'me' : 'partner';
-    value = await pickFromPool(altOwner, kind);
+    value = await pickFromPool(altOwner, kind, id);
     if (!value) return;
     owner = altOwner;
   }
@@ -829,13 +864,13 @@ async function performSwap(reason, skipUserAvatar = false) {
   if (needConsent) {
     const agreed = await askConsent(kind, value);
     if (!agreed) { addSystemMessage('你拒绝了TA给你换' + (kind === 'name' ? '名字' : '头像') + '的邀请'); return; }
-    applyChange(kind, owner, value);
-    if (kind === 'avatar') pushAvatarCard(owner, value);
-    else addSystemMessage('你同意了TA给你换的新名字：' + value);
+    await applyChange(kind, owner, value, id);
+    if (kind === 'avatar') pushAvatarCard(owner, value, id);
+    else addSystemMessage('你同意了TA给你换的新名字：' + value, id);
   } else {
-    applyChange(kind, owner, value);
-    if (kind === 'avatar') pushAvatarCard(owner, value);
-    else addSystemMessage(pickMsg(kind, owner));
+    await applyChange(kind, owner, value, id);
+    if (kind === 'avatar') pushAvatarCard(owner, value, id);
+    else addSystemMessage(pickMsg(kind, owner), id);
   }
 }
 function nextSwapTime() {
@@ -903,13 +938,12 @@ function checkAndSwap(reason) {
  * ============================================================ */
 function isPanelVisible() {
   const p = $('imagepool-panel');
-  return !!(p && p.style.display !== 'none');
+  return !!(p && !p.hidden && p.style.display !== 'none');
 }
 function boot() {
   getPool();
   bindToggles();
   syncToggles();
-  bindSidebarWatch();
   injectIpcStyles();
   bindKeywordListener();
   if (isPanelVisible()) render();
@@ -940,7 +974,7 @@ setTimeout(boot, 3500);
 
 async function exportLibrary(owner) {
   const prefix=owner==='partner'?'partner':'my';
-  const pool=getPool();
+  const pool=ownerPool(owner);
   const names=pool[prefix+'NamePool'].slice();
   const avatars=await Promise.all(pool[prefix+'AvatarHashes'].map(hash=>localforage.getItem(avatarKey(hash))));
   if(avatars.some(value=>typeof value!=='string'||!value))throw Error('有头像素材无法读取');
@@ -950,7 +984,7 @@ async function exportLibrary(owner) {
 async function restoreLibrary(owner, data, overwrite) {
   if(!Array.isArray(data?.names)||!Array.isArray(data?.avatars))throw Error('形象库格式不正确');
   const prefix=owner==='partner'?'partner':'my';
-  const pool=getPool();
+  const pool=ownerPool(owner);
   const namesKey=prefix+'NamePool', avatarsKey=prefix+'AvatarHashes';
   const avatars=data.avatars.map(value=>{
     if(typeof value!=='string'||!/^data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=\s]+$/i.test(value))throw Error('头像格式不正确');

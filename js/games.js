@@ -1319,19 +1319,20 @@ function initComboMenu() {
 
     function renderPartnerStickerLibrary() {
         contentArea.innerHTML = '';
-        if (!stickerLibrary || stickerLibrary.length === 0) {
+        const availableStickers = window.StickerAssets?.available() || [];
+        if (!availableStickers.length) {
             contentArea.innerHTML = `
                 <div class="empty-sticker-tip">
                     <i class="far fa-images"></i>
-                    对方表情库还是空的哦<br>
-                    请去"高级功能"->"自定义回复"->"表情库"中添加图片~
+                    当前角色暂无可用表情<br>
+                    可以到「自定义回复 → 表情库」分配表情。
                 </div>
             `;
             return;
         }
         const grid = document.createElement('div');
         grid.className = 'sticker-grid-view';
-        stickerLibrary.forEach(src => {
+        availableStickers.forEach(src => {
             const item = makeStickerItem(src, () => {
                 addMessage({ id: Date.now(), sender: 'user', text: '', timestamp: new Date(), image: src, status: 'sent', type: 'normal' });
                 playSound('send');

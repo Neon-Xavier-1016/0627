@@ -502,13 +502,7 @@ let currentAnnType = 'anniversary';
 window.openMyStickerSettings = function() {
     const picker = document.getElementById('user-sticker-picker');
     if (picker) picker.classList.remove('active');
-    if (typeof currentMajorTab !== 'undefined') {
-        currentMajorTab = 'reply';
-        currentSubTab = 'stickers';
-    }
-    var sidebarBtns = document.querySelectorAll('.sidebar-btn');
-    sidebarBtns.forEach(function(b) { b.classList.toggle('active', b.dataset.major === 'reply'); });
-    if (typeof renderReplyLibrary === 'function') renderReplyLibrary();
+    selectReplyLibraryTab('reply', 'stickers');
     var modal = document.getElementById('custom-replies-modal');
     if (modal && typeof showModal === 'function') showModal(modal);
 };
@@ -602,8 +596,7 @@ const saveData = async () => {
         { key: 'customStatuses',         val: () => localforage.setItem(getStorageKey('customStatuses'), customStatuses) },
         { key: 'customMottos',           val: () => localforage.setItem(getStorageKey('customMottos'), customMottos) },
         { key: 'customIntros',           val: () => localforage.setItem(getStorageKey('customIntros'), customIntros) },
-        { key: 'stickerLibrary',         val: () => localforage.setItem(getStorageKey('stickerLibrary'), stickerLibrary) },
-        { key: 'myStickerLibrary',       val: () => localforage.setItem(getStorageKey('myStickerLibrary'), myStickerLibrary) },
+        { key: 'stickerLibraryShared',   val: () => window.StickerAssets?.save() },
         { key: 'customThemes',           val: () => localforage.setItem(`${APP_PREFIX}customThemes`, customThemes) },
         { key: 'themeSchemes',           val: () => localforage.setItem(`${APP_PREFIX}themeSchemes`, themeSchemes) },
         { key: 'chatMessages',           val: () => localforage.setItem(getStorageKey('chatMessages'), messages) },
@@ -1042,7 +1035,7 @@ function attachChatEntryActions(entry, id) {
     entry.append(actions);
 }
 
-function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
+function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef, conversationView) {
     const fragment = new DocumentFragment();
     if (msg.type === 'status-moment-question') return fragment;
     const messageDate = new Date(msg.timestamp).toDateString();
@@ -1093,17 +1086,20 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
             }
 
             recallDiv.appendChild(inner);
-            attachChatEntryActions(recallDiv, msg.id);
+            if (!conversationView) attachChatEntryActions(recallDiv, msg.id);
             fragment.appendChild(recallDiv);
             lastSenderRef.current = 'system';
             return fragment;
         }
 
-    if (msg.type === 'system') {
+    if (msg.type === 'system' || (conversationView && msg.type === 'normal' && (!msg.sender || msg.sender === 'system'))) {
         const systemMsgDiv = document.createElement('div');
         systemMsgDiv.className = 'system-message';
-        systemMsgDiv.innerHTML = msg.text;
-        attachChatEntryActions(systemMsgDiv, msg.id);
+        if (conversationView) systemMsgDiv.textContent = conversationView.systemText(msg);
+        else {
+            systemMsgDiv.innerHTML = msg.text;
+            attachChatEntryActions(systemMsgDiv, msg.id);
+        }
         fragment.appendChild(systemMsgDiv);
         lastSenderRef.current = 'system';
         return fragment;
@@ -1128,7 +1124,7 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
         line.textContent = result.partner + '：' + result.reply;
         card.append(mode, outcome, line);
         wrapper.appendChild(card);
-        attachChatEntryActions(wrapper, msg.id);
+        if (!conversationView) attachChatEntryActions(wrapper, msg.id);
         fragment.appendChild(wrapper);
         lastSenderRef.current = 'system';
         return fragment;
@@ -1143,19 +1139,20 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
         const colorClass = isRejected ? 'call-event-pill--rejected' : 'call-event-pill--ended';
         const detail = msg.callDetail ? `<span class="call-event-detail">${msg.callDetail}</span>` : '';
         callEvDiv.innerHTML = `<div class="call-event-pill ${colorClass}"><i class="fas ${icon} call-event-icon"></i><span class="call-event-label">${msg.text.replace(/ · .*/, '')}</span>${detail}</div>`;
-        attachChatEntryActions(callEvDiv, msg.id);
+        if (!conversationView) attachChatEntryActions(callEvDiv, msg.id);
         fragment.appendChild(callEvDiv);
         lastSenderRef.current = 'system';
         return fragment;
     }
 
+    const senderKey = message => message.sender === 'user' ? 'user' : message.roleId || message.sender;
     let showTimestamp = true;
     if (settings.timeFormat === 'off') {
         showTimestamp = false;
     } else if (nextMsg) {
         const currentTs = new Date(msg.timestamp).getTime();
         const nextTs = new Date(nextMsg.timestamp).getTime();
-        if (nextMsg.sender === msg.sender && nextMsg.type !== 'system' && (nextTs - currentTs < 60000)) {
+        if (senderKey(nextMsg) === senderKey(msg) && nextMsg.type !== 'system' && (nextTs - currentTs < 60000)) {
             showTimestamp = false;
         }
     }
@@ -1164,7 +1161,7 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
     if (nextMsg) {
         const currentTs = new Date(msg.timestamp).getTime();
         const nextTs = new Date(nextMsg.timestamp).getTime();
-        if (nextMsg.sender === msg.sender && nextMsg.type !== 'system' && (nextTs - currentTs < 60000)) {
+        if (senderKey(nextMsg) === senderKey(msg) && nextMsg.type !== 'system' && (nextTs - currentTs < 60000)) {
             isLastInSenderGroup = false;
         }
     }
@@ -1180,14 +1177,23 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
         avatarDiv.style.marginTop = settings.inChatAvatarCustomOffset + 'px';
     }
 
-    const groupMember = (msg.sender !== 'user' && typeof getGroupMemberForMessage === 'function') ? getGroupMemberForMessage(msg.id) : null;
+    const author = msg.sender !== 'user' ? conversationView?.author(msg) : null;
+    const groupMember = (!conversationView && msg.sender !== 'user' && typeof getGroupMemberForMessage === 'function') ? getGroupMemberForMessage(msg.id) : null;
 
     if (settings.inChatAvatarEnabled) {
         const isSameSenderGroup = groupMember && lastSenderRef.current === 'group_' + (groupMember ? groupMember.name : '');
-        const isSameSenderNormal = !groupMember && msg.sender === lastSenderRef.current;
+        const isSameSenderNormal = !groupMember && senderKey(msg) === lastSenderRef.current;
         const shouldHide = !settings.alwaysShowAvatar && (isSameSenderGroup || isSameSenderNormal);
         if (shouldHide) {
             avatarDiv.classList.add('hidden');
+        } else if (author) {
+            const shape = settings.partnerAvatarShape || 'circle';
+            if (shape !== 'none') avatarDiv.classList.add('shape-' + shape);
+            const icon = document.createElement(author.avatar ? 'img' : 'i');
+            if (author.avatar) { icon.src = author.avatar; icon.alt = ''; }
+            else icon.className = 'fas fa-user';
+            avatarDiv.append(icon);
+            applyAvatarFrame(avatarDiv, settings.partnerAvatarFrame);
         } else if (groupMember) {
             const groupAvatarShape = settings.partnerAvatarShape || 'circle';
             ['circle', 'square', 'pentagon', 'heart'].forEach(s => avatarDiv.classList.remove('shape-' + s));
@@ -1222,12 +1228,12 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
         nameLabel.textContent = groupMember.name;
         const isSameSenderGroupForName = lastSenderRef.current === 'group_' + groupMember.name;
         if (!isSameSenderGroupForName) contentWrapper.appendChild(nameLabel);
-    } else if (!groupMember && msg.sender !== 'user' && msg.sender !== null && (settings.showPartnerNameInChat || showPartnerNameInChat)) {
-        const isSameSenderForName = lastSenderRef.current === msg.sender;
+    } else if (!groupMember && msg.sender !== 'user' && msg.sender !== null && (conversationView?.group || settings.showPartnerNameInChat || showPartnerNameInChat)) {
+        const isSameSenderForName = lastSenderRef.current === senderKey(msg);
         if (!isSameSenderForName) {
             const nameLabel = document.createElement('div');
             nameLabel.className = 'group-sender-name';
-            nameLabel.textContent = settings.partnerName || msg.sender || '对方';
+            nameLabel.textContent = author?.name || settings.partnerName || msg.sender || '对方';
             contentWrapper.appendChild(nameLabel);
         }
     }
@@ -1241,11 +1247,11 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
                 ? window.VoiceLibrary.buildVoiceBubbleHTML(msg)
                 : '<span style="opacity:0.6;">[语音]</span>';
         } else if (!statusCard) {
-            if (msg.text) {
+            if (msg.text && !conversationView) {
                 let textHtml = msg.text.replace(/\n/g, '<br>');
                 content = `<div>${textHtml}</div>`;
             }
-            if (msg.image) {
+            if (msg.image && !conversationView) {
                 const isSticker = (msg.type === 'sticker' || msg.isSticker === true || isImageOnly);
                 const imgMax = isSticker ? 120 : 160;
                 content += `<img src="${msg.image}" class="message-image${isImageOnly ? ' message-image-only' : ''}" alt="图片" style="max-width:${imgMax}px !important; max-height:${imgMax}px !important; width:auto !important; height:auto !important; object-fit:contain !important; border-radius:12px;${!isImageOnly ? ' margin-top: 6px;' : ''} cursor:pointer;" onclick="viewImage('${msg.image}')">`;
@@ -1259,17 +1265,35 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
         messageDiv.className = `message message-${msg.sender === 'user' ? 'sent' : 'received'} ${settings.bubbleStyle}`;
     }
     if (statusCard) messageDiv.appendChild(statusCard);
+    else if (conversationView && !__isVoiceMsg) {
+        if (msg.text) {
+            const text = document.createElement('div');
+            text.style.whiteSpace = 'pre-wrap';
+            text.textContent = msg.text;
+            messageDiv.append(text);
+        }
+        if (msg.image) {
+            const image = document.createElement('img');
+            image.className = 'message-image' + (isImageOnly ? ' message-image-only' : '');
+            image.src = msg.image;
+            image.alt = '图片';
+            image.tabIndex = 0;
+            image.onclick = () => viewImage(msg.image);
+            image.onkeydown = event => { if (event.key === 'Enter') viewImage(msg.image); };
+            messageDiv.append(image);
+        }
+    }
     else messageDiv.innerHTML = content;
     if (msg.partnerEmotion) window.MomentStatus?.appendEmotion?.(messageDiv, msg.partnerEmotion);
     if (msg.replyTo) {
         const quote = document.createElement('div');
         quote.className = 'reply-indicator';
         quote.dataset.replyId = msg.replyTo.id ?? '';
-        quote.addEventListener('click', () => window.scrollToQuotedMessage(quote));
+        if (!conversationView) quote.addEventListener('click', () => window.scrollToQuotedMessage(quote));
 
         const sender = document.createElement('span');
         sender.className = 'reply-indicator-sender';
-        sender.textContent = msg.replyTo.sender === 'user' ? (settings.myName || '我') : (settings.partnerName || '对方');
+        sender.textContent = msg.replyTo.sender === 'user' ? (settings.myName || '我') : (author?.name || settings.partnerName || '对方');
 
         const excerpt = document.createElement('span');
         excerpt.className = 'reply-indicator-text';
@@ -1278,6 +1302,7 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
         messageDiv.prepend(quote);
     }
 
+   if (!conversationView) {
    let actionsHTML = '';
    if (settings.replyEnabled) actionsHTML += `<button class="meta-action-btn reply-btn" title="回复"><i class="fas fa-reply"></i></button>`;
    const starIcon = msg.favorited ? 'fas fa-star' : 'far fa-star';
@@ -1293,6 +1318,8 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
    const actionsDiv = document.createElement('div');
     actionsDiv.className = 'message-meta-actions';
     actionsDiv.innerHTML = actionsHTML;
+    contentWrapper.append(actionsDiv);
+   }
 
     let metaHTML = '';
     if (showTimestamp) {
@@ -1340,14 +1367,14 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
             }
         }
         metaDiv.innerHTML = metaHTML;
-        contentWrapper.append(actionsDiv, messageDiv, metaDiv);
+        contentWrapper.append(messageDiv, metaDiv);
     } else {
-        contentWrapper.append(actionsDiv, messageDiv);
+        contentWrapper.append(messageDiv);
     }
     wrapper.appendChild(contentWrapper);
     fragment.appendChild(wrapper);
 
-    lastSenderRef.current = groupMember ? ('group_' + groupMember.name) : msg.sender;
+    lastSenderRef.current = groupMember ? ('group_' + groupMember.name) : senderKey(msg);
     return fragment;
 }
 
@@ -1948,12 +1975,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                         return;
                     }
 
-                    let disabledStickerItems = new Set();
-                    try {
-                        const raw = localStorage.getItem('disabledStickerItems');
-                        if (raw) disabledStickerItems = new Set(JSON.parse(raw));
-                    } catch (e) {}
-                    const enabledStickerPool = (stickerLibrary || []).filter(s => !disabledStickerItems.has(s));
+                    const enabledStickerPool = window.StickerAssets?.available(window.XavierConversations?.primaryId()) || [];
                     const shouldSendSticker = enabledStickerPool.length > 0 && Math.random() < 0.2;
 
                     let finalText = replyText;

@@ -99,7 +99,9 @@
     function renderPeriodCare(container) {
         if (!container) return;
         if (!window.periodCareMessages) {
-            loadPromise.then(() => renderPeriodCare(container));
+            loadPromise.then(() => {
+                if (currentMajorTab === 'reply' && currentSubTab === 'period') renderPeriodCare(container);
+            });
             return;
         }
 
@@ -381,7 +383,7 @@
 
     function refreshCurrentView() {
         const listArea = document.getElementById('custom-replies-list');
-        if (listArea && window.currentSubTab === 'period') {
+        if (listArea && currentMajorTab === 'reply' && currentSubTab === 'period') {
             renderPeriodCare(listArea);
         }
     }
@@ -535,75 +537,5 @@
 
     injectStyles();
 
-    // ==================== 触发渲染 ====================
-    function ensureRendering() {
-        if (window.currentSubTab === 'period') {
-            const listArea = document.getElementById('custom-replies-list');
-            if (listArea) {
-                setTimeout(() => renderPeriodCare(listArea), 30);
-            }
-        }
-    }
-
-    document.addEventListener('click', function(e) {
-        const btn = e.target.closest('.reply-tab-btn');
-        if (btn && btn.dataset.id === 'period') {
-            setTimeout(ensureRendering, 80);
-        }
-    });
-
-    const modal = document.getElementById('custom-replies-modal');
-    if (modal) {
-        const observer = new MutationObserver(() => {
-            if (modal.style.display === 'flex') {
-                setTimeout(ensureRendering, 100);
-            }
-        });
-        observer.observe(modal, { attributes: true, attributeFilter: ['style'] });
-    }
-
     window._renderPeriodCareTab = renderPeriodCare;
 })();
-
-// ==================== 选项卡 hook ====================
-function setupPeriodTabHook() {
-    const tabsContainer = document.getElementById('cr-sub-tabs');
-    if (!tabsContainer) {
-        setTimeout(setupPeriodTabHook, 500);
-        return;
-    }
-    const periodBtn = tabsContainer.querySelector('.reply-tab-btn[data-id="period"]');
-    if (!periodBtn) {
-        setTimeout(setupPeriodTabHook, 500);
-        return;
-    }
-    if (periodBtn.dataset.hooked === 'true') return;
-    periodBtn.dataset.hooked = 'true';
-
-    const newBtn = periodBtn.cloneNode(true);
-    periodBtn.parentNode.replaceChild(newBtn, periodBtn);
-
-    newBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        window.currentSubTab = 'period';
-        const listArea = document.getElementById('custom-replies-list');
-        if (listArea && typeof window._renderPeriodCareTab === 'function') {
-            window._renderPeriodCareTab(listArea);
-        }
-        const allTabs = tabsContainer.querySelectorAll('.reply-tab-btn');
-        allTabs.forEach(tab => tab.classList.remove('active'));
-        newBtn.classList.add('active');
-    });
-}
-
-const modal = document.getElementById('custom-replies-modal');
-if (modal) {
-    const observer = new MutationObserver(() => {
-        if (modal.style.display === 'flex') {
-            setTimeout(setupPeriodTabHook, 100);
-        }
-    });
-    observer.observe(modal, { attributes: true, attributeFilter: ['style'] });
-}
-setupPeriodTabHook();

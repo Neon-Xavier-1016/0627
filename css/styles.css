@@ -5764,6 +5764,21 @@
     margin-bottom: 22px;
         }
 
+        #ann-input-date {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 44px;
+    -webkit-appearance: none;
+    appearance: none;
+        }
+
+        #ann-input-date::-webkit-date-and-time-value {
+    text-align: start;
+        }
+
         .ann-label {
     display: flex;
     align-items: center;

@@ -3086,9 +3086,11 @@ playlist.style.top = (rect.top + (player.classList.contains('collapsed') ? 65 : 
             function syncInputAreaHeight() {
                 const height = inputArea.getBoundingClientRect().height;
                 if (!height || chatArea.style.getPropertyValue(heightProperty) === height + 'px') return;
-                const atBottom = chat.clientHeight && chat.scrollHeight - chat.scrollTop - chat.clientHeight < 90;
+                const additional = document.getElementById('xv-thread');
+                const scrollport = additional && !additional.hidden ? additional : chat;
+                const atBottom = scrollport.clientHeight && scrollport.scrollHeight - scrollport.scrollTop - scrollport.clientHeight < 90;
                 chatArea.style.setProperty(heightProperty, height + 'px');
-                if (atBottom) chat.scrollTo({top: chat.scrollHeight, behavior: 'instant'});
+                if (atBottom) scrollport.scrollTo({top: scrollport.scrollHeight, behavior: 'instant'});
             }
             if (typeof ResizeObserver !== 'undefined') new ResizeObserver(syncInputAreaHeight).observe(inputArea);
             else window.addEventListener('resize', syncInputAreaHeight);
@@ -3446,40 +3448,14 @@ function initStickerUploadListeners() {
     async function handleFiles(files, target) {
         if (!files || !files.length) return;
 
-        const arr = target === 'partner'
-            ? (stickerLibrary = stickerLibrary || [])
-            : (window.myStickerLibrary = window.myStickerLibrary || []);
-
-        let added = 0;
-        for (const file of Array.from(files)) {
-            if (!file.type.startsWith('image/')) continue;
-            if (file.size > 5 * 1024 * 1024) {
-                if (typeof showNotification === 'function')
-                    showNotification(`「${file.name}」超过 5MB`, 'warning');
-                continue;
-            }
-            try {
-                const base64 = await new Promise((res, rej) => {
-                    const r = new FileReader();
-                    r.onload = e => res(e.target.result);
-                    r.onerror = rej;
-                    r.readAsDataURL(file);
-                });
-                arr.push(base64);
-                added++;
-            } catch (err) {
-                console.error('表情读取失败:', err);
-            }
-        }
-
-        // 保存到对应 key
+        let added;
         try {
-            const key = target === 'partner' ? 'stickerLibrary' : 'myStickerLibrary';
-            await localforage.setItem(getStorageKey(key), arr);
+            added = await window.StickerAssets.addFiles(Array.from(files), target);
         } catch (err) {
             console.error('保存失败:', err);
             if (typeof showNotification === 'function')
                 showNotification('保存失败，存储可能已满', 'error');
+            return;
         }
 
         if (added > 0) {

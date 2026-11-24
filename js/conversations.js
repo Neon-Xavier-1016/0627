@@ -104,7 +104,7 @@
         title.id = 'xv-chat-title';
         title.hidden = true;
         document.querySelector('.header-inner').append(title);
-        thread = el('div');
+        thread = el('div', 'chat-container');
         thread.id = 'xv-thread';
         thread.hidden = true;
         thread.setAttribute('role', 'log');
@@ -198,8 +198,28 @@
 
     function preview(item, message) {
         if (!message) return '还没有消息';
+        if (message.type === 'memory-match-result' && message.memoryMatchResult) {
+            const {mode, outcome} = message.memoryMatchResult;
+            return [mode, outcome].filter(Boolean).join(' · ') || '[翻牌结果]';
+        }
+        if (message.type === 'system' && /^\s*</.test(message.text || '')) {
+            const template = el('template');
+            template.innerHTML = message.text;
+            const music = template.content.querySelector('.mi-card');
+            if (music) {
+                if (music.dataset.miFrom === 'me') return '你发出了一起听邀请';
+                const title = music.querySelector('.mi-title')?.textContent.trim();
+                return title || name(item) + (music.matches('.mi-reserve') ? ' 预订了下一首' : ' 想和你一起听');
+            }
+            const avatarCard = template.content.querySelector('.ip-avatar-card');
+            if (avatarCard) {
+                const title = avatarCard.querySelector('.ip-avatar-card-head')?.textContent || '';
+                return name(item) + (title.includes('给你') ? ' 给你换了个新头像' : ' 换了头像');
+            }
+            if (template.content.firstElementChild) return '[互动卡片]';
+        }
         const content = message.image ? '[图片]' : message.type === 'voice' ? '[语音]' : message.text || '[消息]';
-        if (!item.members || !message.sender) return content;
+        if (!item.members || !message.sender || message.sender === 'system') return content;
         return (message.sender === 'user' ? settings.myName || '我' : message.author || message.sender) + '：' + content;
     }
 
@@ -333,13 +353,13 @@
             title.hidden = thread.hidden = false;
             renderTitle(item);
             renderThread();
-            thread.scrollTop = thread.scrollHeight;
+            scrollThreadToEnd();
         }
         applyThreadBackground();
     }
 
     function renderTitle(item) {
-        title.replaceChildren(...(item.members ? [imageBadge(item)] : []), el('span', '', name(item)));
+        title.replaceChildren(imageBadge(item), el('span', '', name(item)));
     }
 
     function closeThread() {
@@ -367,47 +387,57 @@
         const item = conversation(active);
         if (!item || isPrimary(item.id)) return;
         const nearBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 110;
-        thread.replaceChildren();
-        thread.classList.toggle('xv-square', settings.myAvatarShape === 'square');
-        if (!item.messages.length) thread.append(el('p', 'xv-system xv-meta', '还没有消息'));
-        for (const message of item.messages) {
-            if (!message.sender || message.sender === 'system' || message.type === 'system') {
-                thread.append(el('p', 'xv-system xv-meta', message.text));
-                continue;
-            }
-            const me = message.sender === 'user';
-            const post = el('div', me ? 'xv-post xv-mine' : 'xv-post');
-            const copy = el('div');
-            if (!me) {
-                post.append(imageBadge(role(message.roleId) || {avatar: message.avatar}));
-                copy.append(el('div', 'xv-meta', role(message.roleId) ? name(role(message.roleId)) : message.author || message.sender));
-            }
-            const bubble = el('div', 'xv-bubble', message.text || '');
-            if (message.image) {
-                const img = el('img');
-                img.src = message.image;
-                img.alt = '聊天图片';
-                img.tabIndex = 0;
-                img.onclick = () => viewImage(message.image);
-                img.onkeydown = event => { if (event.key === 'Enter') viewImage(message.image); };
-                bubble.append(img);
-            }
-            copy.append(bubble, el('time', 'xv-meta', time(message.timestamp)));
-            post.append(copy);
-            thread.append(post);
+        const typing = !item.members && timers.get(item.id)?.size && settings.typingIndicatorEnabled;
+        const fragment = new DocumentFragment();
+        const spacer = el('div', 'xv-chat-spacer');
+        fragment.append(spacer);
+        const entries = item.messages.filter(isVisibleChatMessage);
+        const lastSender = {current: null};
+        const view = {
+            group: Boolean(item.members),
+            author(message) {
+                const sender = item.members ? role(message.roleId) : item;
+                return sender ? {name: name(sender), avatar: avatar(sender)} :
+                    {name: message.author || message.sender, avatar: message.avatar};
+            },
+            systemText: message => preview(item, message)
+        };
+        if (!entries.length) fragment.append(el('p', 'system-message', '说点什么，让对话开始吧'));
+        entries.forEach((entry, index) => {
+            fragment.append(createMessageFragment(entry, entries[index - 1], entries[index + 1], lastSender, view));
+        });
+        if (typing) {
+            const indicator = el('div', 'typing-indicator xv-typing');
+            indicator.setAttribute('role', 'status');
+            const badge = imageBadge(item);
+            badge.className = 'typing-indicator-avatar';
+            const dots = el('div', 'typing-dots');
+            dots.setAttribute('aria-hidden', 'true');
+            dots.append(el('div', 'typing-dot'), el('div', 'typing-dot'), el('div', 'typing-dot'));
+            indicator.append(badge, el('span', 'typing-indicator-label', name(item) + ' 正在输入'), dots);
+            fragment.append(indicator);
         }
-        if (!item.members && timers.get(item.id)?.size && settings.typingIndicatorEnabled) {
-            thread.append(el('p', 'xv-meta xv-typing', name(item) + ' 正在输入'));
-        }
-        if (nearBottom) thread.scrollTop = thread.scrollHeight;
+        thread.replaceChildren(fragment);
+        if (nearBottom) scrollThreadToEnd();
+    }
+
+    function scrollThreadToEnd() {
+        thread.scrollTo({top: thread.scrollHeight, behavior: 'instant'});
     }
 
     async function append(item, message) {
         if (conversation(item.id) !== item) return;
-        item.messages.push({id: uid(), timestamp: new Date().toISOString(), type: 'normal', ...message});
+        const entry = {id: uid(), timestamp: new Date().toISOString(), type: 'normal', ...message};
+        item.messages.push(entry);
+        window.HomeShell?.onConversationMessage?.(entry, describeMessage(entry, item));
         if (active === item.id) renderThread();
         if (listVisible && listScreen) renderList();
         await persist();
+    }
+
+    function describeMessage(message, item = primary()) {
+        if (!item) return null;
+        return {id: item.id, name: name(item), avatar: avatar(item), text: preview(item, message)};
     }
 
     async function sendDraft() {
@@ -430,7 +460,7 @@
         }
         if (conversation(item.id) !== item) return;
         await append(item, {sender: 'user', text, image});
-        if (active === item.id) thread.scrollTop = thread.scrollHeight;
+        if (active === item.id) scrollThreadToEnd();
         playSound('send');
         if (replyGeneration.get(item.id) === generation) schedule(item, item.members || [item.id]);
     }
@@ -451,8 +481,15 @@
                 if (!pending.size) timers.delete(item.id);
                 const speaker = role(id);
                 if (!speaker || conversation(item.id) !== item) return;
+                for (const message of item.messages) if (message.sender === 'user') message.status = 'read';
                 const text = pool[Math.floor(Math.random() * pool.length)] || '我在听。';
-                append(item, {sender: name(speaker), roleId: id, author: name(speaker), avatar: avatar(speaker), text}).catch(fail);
+                const partnerEmotion = window.MomentStatus?.pickReplyEmotion?.();
+                append(item, {sender: name(speaker), roleId: id, author: name(speaker), avatar: avatar(speaker), text, partnerEmotion}).catch(fail);
+                const stickers = window.StickerAssets?.available(id) || [];
+                if (stickers.length && Math.random() < 0.2) {
+                    append(item, {sender: name(speaker), roleId:id, author:name(speaker), avatar:avatar(speaker),
+                        image:stickers[Math.floor(Math.random() * stickers.length)], type:'sticker', isSticker:true}).catch(fail);
+                }
                 if (active === item.id) playSound('message');
             }, low + Math.random() * (high - low));
             pending.set(id, timer);
@@ -466,7 +503,7 @@
         const generation = replyGeneration.get(item.id);
         append(item, message).then(() => {
             if (conversation(item.id) !== item) return;
-            if (active === item.id) thread.scrollTop = thread.scrollHeight;
+            if (active === item.id) scrollThreadToEnd();
             playSound('send');
             if (replyGeneration.get(item.id) === generation) schedule(item, item.members || [item.id]);
         }).catch(fail);
@@ -798,11 +835,26 @@
         homeKey: value => current()?.id && current().id !== SESSION_ID ? value + ':' + current().id : value,
         defaultBackgroundChanged: value => { defaultBackground = value; applyThreadBackground(); },
         onNativeMessage: () => { if (listVisible && listScreen) renderList(); },
+        describeMessage,
+        openById: id => { const item = conversation(id); if (!item) return false; openThread(item); return true; },
+        isViewingAdditionalConversation: () => Boolean(active && !isPrimary(active)),
         profiles: () => data?.roles.map(item => ({id: item.id, name: name(item), avatar: avatar(item)})) || [],
         primaryId: () => primary()?.id,
         homeId: () => current()?.id,
         openConversationId: () => active,
         profile: id => role(id) ? {id, name: name(role(id)), avatar: avatar(role(id))} : null,
+        updateAppearance: async (id, kind, value) => {
+            const item = role(id);
+            if (!item) return;
+            if (isPrimary(id)) await updatePrimary(kind === 'name' ? value : name(item), kind === 'avatar' ? value : avatar(item));
+            else {
+                item[kind === 'avatar' ? 'avatar' : 'name'] = value;
+                await persist();
+                if (active === id) { renderTitle(item); renderThread(); }
+            }
+            window.HomeShell?.refresh();
+            if (listVisible && listScreen) renderList();
+        },
         activeId: () => active && role(active) ? active : current()?.id,
         choose, addToSingle, sendFromComposer
     };

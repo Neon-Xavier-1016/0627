@@ -220,11 +220,46 @@ function renderReplyLibraryRaf() {
     });
 }
 
-function renderReplyLibrary() {
-    const _ip = document.getElementById('imagepool-panel');
-    if (_ip) _ip.style.display = 'none';
+function setReplyLibraryPanel(major) {
+    currentMajorTab = major;
+    const library = Boolean(LIBRARY_CONFIG[major]);
+    const period = library && currentSubTab === 'period';
+    const visibility = {
+        'custom-replies-list': library,
+        'cr-sub-tabs': library,
+        'batch-ops-toolbar': library && !period,
+        'add-custom-reply': library && !period,
+        'announcement-panel': major === 'announcement',
+        'imagepool-panel': major === 'imagepool'
+    };
+    for (const [id, visible] of Object.entries(visibility)) {
+        const element = document.getElementById(id);
+        if (element) {
+            element.hidden = !visible;
+            element.style.display = '';
+        }
+    }
+    document.querySelectorAll('#custom-replies-modal .sidebar-btn').forEach(button => {
+        button.classList.toggle('active', button.dataset.major === major);
+    });
+}
 
-    if (currentMajorTab === 'announcement') return;
+function selectReplyLibraryTab(major, sub = LIBRARY_CONFIG[major]?.tabs[0].id) {
+    if (major === 'announcement') return window.switchToAnnouncementPanel();
+    if (major === 'imagepool') return window.switchToImagePoolPanel();
+    currentMajorTab = major;
+    currentSubTab = sub;
+    _batchModeActive = false;
+    _batchSelectedIndices.clear();
+    _activeGroupFilter = null;
+    _searchVisible = false;
+    _searchQuery = '';
+    renderReplyLibrary();
+    document.getElementById('custom-replies-list').scrollTop = 0;
+}
+
+function renderReplyLibrary() {
+    if (currentMajorTab === 'announcement' || currentMajorTab === 'imagepool') return;
     const list = document.getElementById('custom-replies-list');
     const titleEl = document.getElementById('cr-modal-title');
     if (!list) return;
@@ -235,6 +270,7 @@ function renderReplyLibrary() {
     if (!currentSubTab || !_cc.tabs.some(t => t.id === currentSubTab)) {
         currentSubTab = _cc.tabs[0].id;
     }
+    setReplyLibraryPanel(currentMajorTab);
     
     const currentConfig = LIBRARY_CONFIG[currentMajorTab];
     if (titleEl) titleEl.textContent = currentConfig.title;
@@ -249,14 +285,7 @@ function renderReplyLibrary() {
         `).join('');
         subTabsContainer.querySelectorAll('.reply-tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
-                currentSubTab = btn.dataset.id;
-                _batchModeActive = false;
-                _batchSelectedIndices.clear();
-                _activeGroupFilter = null;
-                _searchVisible = false;
-                _searchQuery = '';
-                subTabsContainer.scrollLeft = 0;
-                renderReplyLibrary();
+                selectReplyLibraryTab(currentMajorTab, btn.dataset.id);
             });
         });
     }
@@ -267,6 +296,10 @@ function renderReplyLibrary() {
     const activeTabConfig = currentConfig.tabs.find(t => t.id === currentSubTab);
     if (activeTabConfig) list.classList.add(activeTabConfig.mode + '-mode');
 
+    if (currentMajorTab === 'reply' && currentSubTab === 'period') {
+        window._renderPeriodCareTab?.(list);
+        return;
+    }
     _renderModernToolbar();
 
     let itemsToRender = [];
@@ -332,6 +365,12 @@ function _renderModernToolbar() {
     const ctx = _getGroupCtx();
     const totalItems = isMainCustom ? customReplies.length : (isStickersTab ? stickerLibrary.length : 0);
     const selectedCount = _batchSelectedIndices.size;
+    const batchLabel = _batchModeActive ? '退出批量' : (isStickersTab ? '批量分配' : '批量管理');
+    const batchButton = canBatch ? `
+        <button type="button" class="toolbar-icon-btn ${_batchModeActive ? 'active' : ''}" id="tb-batch-btn"
+                title="${batchLabel}" aria-label="${batchLabel}" aria-pressed="${_batchModeActive}">
+            <span aria-hidden="true">${ICONS.batch}</span>
+        </button>` : '';
 
     const addBtnLabel = (() => {
         if (!isMainCustom) return '新增';
@@ -389,7 +428,7 @@ function _renderModernToolbar() {
                     ${selectedCount === totalItems ? '取消全选' : `全选 (${totalItems})`}
                 </button>
                 <span style="font-size:12px;color:var(--text-secondary);flex:1;min-width:60px;">
-                    ${selectedCount > 0 ? `已选 <strong style="color:var(--text-primary);">${selectedCount}</strong> 条` : '点击字卡以选择'}
+                    ${selectedCount > 0 ? `已选 <strong style="color:var(--text-primary);">${selectedCount}</strong> 条` : (isStickersTab ? '点选要分配的表情' : '点击字卡以选择')}
                 </span>
                 ${showGroupBtn ? `
                     <button id="batch-group-btn" class="batch-act-pill ${selectedCount === 0 ? 'batch-act-disabled' : ''}" data-tip="分配分组">
@@ -463,10 +502,7 @@ function _renderModernToolbar() {
                 ${ICONS.dedup}
             </button>
             <div style="flex:1;"></div>
-            ${canBatch ? `
-            <button class="toolbar-icon-btn ${_batchModeActive ? 'active' : ''}" id="tb-batch-btn" title="${_batchModeActive ? '退出批量' : '批量管理'}">
-                ${ICONS.batch}
-            </button>` : ''}
+            ${batchButton}
             <button class="toolbar-icon-btn" id="tb-import-btn" title="导入">
                 ${ICONS.import}
             </button>
@@ -534,6 +570,17 @@ function _renderModernToolbar() {
         };
     }
 
+    if (isStickersTab && window.StickerAssets) {
+        toolbar.prepend(window.StickerAssets.summary());
+        if (_batchModeActive) {
+            const sources = [..._batchSelectedIndices].map(index => stickerLibrary[index]).filter(Boolean);
+            const assign = window.StickerAssets.scopeButton(sources, '分配所选（' + sources.length + '）', { replaceForRoles: true });
+            assign.className = 'batch-act-pill';
+            assign.disabled = !sources.length;
+            assign.classList.toggle('batch-act-disabled', assign.disabled);
+            toolbar.querySelector('#batch-action-bar').append(assign);
+        }
+    }
     toolbar.querySelector('#tb-dedup-btn')?.addEventListener('click', _runDedup);
     toolbar.querySelector('#tb-import-btn')?.addEventListener('click', () => document.getElementById('import-replies-input')?.click());
     toolbar.querySelector('#tb-export-btn')?.addEventListener('click', _showExportUI);
@@ -910,6 +957,7 @@ function _renderEmojiTab(list, itemsToRender) {
 
 function _renderStickerTab(list, itemsToRender) {
     const disabledSet = _getDisabledStickerItemsSet();
+    const showRoleLabels = !_batchModeActive && window.StickerAssets && (window.XavierConversations?.profiles().length || 0) > 1;
     itemsToRender.forEach((item, index) => {
         const div = document.createElement('div');
         const isDisabled = disabledSet.has(item);
@@ -941,6 +989,9 @@ function _renderStickerTab(list, itemsToRender) {
                 renderReplyLibrary();
             }
         });
+        if (showRoleLabels) {
+            div.append(window.StickerAssets.scopeButton([item], window.StickerAssets.scopeLabel(item)));
+        }
         list.appendChild(div);
     });
 }
@@ -952,14 +1003,11 @@ function _getDisabledItemsSet() {
 }
 
 function _getDisabledStickerItemsSet() {
-    try {
-        const raw = localStorage.getItem('disabledStickerItems');
-        return raw ? new Set(JSON.parse(raw)) : new Set();
-    } catch { return new Set(); }
+    return window.StickerAssets?.getDisabled() || new Set();
 }
 
 function _saveDisabledStickerItemsSet(set) {
-    localStorage.setItem('disabledStickerItems', JSON.stringify([...set]));
+    window.StickerAssets?.setDisabled(set);
 }
 
 function _saveDisabledItemsSet(set) {
@@ -1469,8 +1517,8 @@ function _libraryAssetModules() {
     const periodCount = data => periodKeys.reduce((count,key) => count + (data[key]?.length || 0),0);
     return [
         {id:'_rl_partner_stickers', key:'stickerLibrary', label:'对方的表情库', icon:ICONS.smile, section:'表情与语音',
-            count:()=>stickerLibrary.length, measure:data=>data.length, read:()=>stickerLibrary,
-            restore:(data,overwrite)=>{stickerLibrary=lists(stickerLibrary,stickers(data),overwrite);window.stickerLibrary=stickerLibrary;}},
+            count:()=>stickerLibrary.length, measure:data=>data.length, read:()=>window.StickerAssets.exportPartner(),
+            restore:(data,overwrite)=>window.StickerAssets.restorePartner(data,overwrite)},
         {id:'_rl_my_stickers', key:'myStickerLibrary', label:'我的表情库', icon:ICONS.smile, section:'表情与语音',
             count:()=>window.myStickerLibrary.length, measure:data=>data.length, read:()=>window.myStickerLibrary,
             restore:(data,overwrite)=>{window.myStickerLibrary=lists(window.myStickerLibrary,stickers(data),overwrite);}},
@@ -2235,69 +2283,13 @@ function initReplyLibraryListeners() {
     if (entryBtn) {
         entryBtn.addEventListener('click', () => {
             hideModal(DOMElements.advancedModal.modal);
-            currentMajorTab = 'reply';
-            currentSubTab = 'custom';
-            _batchModeActive = false;
-            _batchSelectedIndices.clear();
-            _searchVisible = false;
-            _searchQuery = '';
-            _activeGroupFilter = null;
-            // 确保公告面板隐藏、列表区域显示
-            const annPanel = document.getElementById('announcement-panel');
-            const listArea = document.getElementById('custom-replies-list');
-            const subTabs  = document.getElementById('cr-sub-tabs');
-            const addBtn2  = document.getElementById('add-custom-reply');
-            const batchTb  = document.getElementById('batch-ops-toolbar');
-            if (annPanel)  annPanel.style.display = 'none';
-            if (listArea)  listArea.style.display = '';
-            if (subTabs)   subTabs.style.display = '';
-            if (addBtn2)   addBtn2.style.display = '';
-            if (batchTb)   batchTb.style.display = '';
-            document.querySelectorAll('.sidebar-btn').forEach(b => {
-                b.classList.toggle('active', b.dataset.major === 'reply');
-            });
-            renderReplyLibrary();
+            selectReplyLibraryTab('reply');
             showModal(DOMElements.customRepliesModal.modal);
         });
     }
 
-    document.querySelectorAll('.sidebar-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.sidebar-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            currentMajorTab = btn.dataset.major;
-
-            if (currentMajorTab === 'announcement') {
-                if (typeof window.switchToAnnouncementPanel === 'function') window.switchToAnnouncementPanel();
-                return;
-            }
-
-            if (currentMajorTab === 'imagepool') {
-                if (typeof window.switchToImagePoolPanel === 'function') window.switchToImagePoolPanel();
-                return;
-            }
-
-            const listArea = document.getElementById('custom-replies-list');
-            const annPanel = document.getElementById('announcement-panel');
-            const crToolbar = document.getElementById('cr-toolbar');
-            const subTabs = document.getElementById('cr-sub-tabs');
-            const addBtn = document.getElementById('add-custom-reply');
-            const titleEl = document.getElementById('cr-modal-title');
-            if (listArea) listArea.style.display = '';
-            if (annPanel) annPanel.style.display = 'none';
-            if (crToolbar) crToolbar.style.display = '';
-            if (subTabs) subTabs.style.display = '';
-            if (addBtn) addBtn.style.display = '';
-            if (titleEl) titleEl.textContent = '内容管理';
-
-            _batchModeActive = false;
-            _batchSelectedIndices.clear();
-            _searchVisible = false;
-            _searchQuery = '';
-            _activeGroupFilter = null;
-            currentSubTab = LIBRARY_CONFIG[currentMajorTab].tabs[0].id;
-            renderReplyLibrary();
-        });
+    document.querySelectorAll('#custom-replies-modal .sidebar-btn').forEach(btn => {
+        btn.addEventListener('click', () => selectReplyLibraryTab(btn.dataset.major));
     });
 
     document.addEventListener('click', e => {
@@ -2351,7 +2343,9 @@ function initReplyLibraryListeners() {
     if (addBtn) {
         addBtn.addEventListener('click', () => {
             if (currentSubTab === 'stickers') {
-                document.getElementById('sticker-file-input')?.click(); return;
+                const input = document.getElementById('sticker-file-input');
+                if (input) window.StickerAssets.prepareUpload(input);
+                return;
             }
             if (currentSubTab === 'emojis') {
                 const input = prompt('请输入要添加的 Emoji（支持组合表情）:');
