@@ -57,22 +57,23 @@
   if($('hs-new-messages'))$('hs-new-messages').hidden=!(page==='chat'&&unread.length);
  }
  function navigate(next){
-  if(!ready||!['home','chat','settings'].includes(next))return;
+  if(!ready||!['home','messages','chat','settings'].includes(next))return;
   if(next==='chat')clearNotes();
   page=next;document.body.dataset.hsPage=next;
+  window.XavierConversations?.show(next);
   if($('hs-nav'))$('hs-nav').hidden=next==='chat';
   if($('hs-chat-toolbar'))$('hs-chat-toolbar').hidden=next!=='chat';
   if($('hs-chat-more'))$('hs-chat-more').hidden=next!=='chat';
   $('hs-home').hidden=next!=='home';$('hs-settings').hidden=next!=='settings';
   if(next==='home')window.HomeSchedule.showHome();
-  document.querySelectorAll('[data-hs-page]').forEach(b=>b.setAttribute('aria-current',b.dataset.hsPage===next?'page':'false'));
+  document.querySelectorAll('#hs-nav [data-hs-page]').forEach(b=>b.setAttribute('aria-current',b.dataset.hsPage===next?'page':'false'));
   update();badges();showNote();
   if(next==='chat'){
    scrollLatest();
    if(bottom()&&!document.hidden&&!modalOpen())read();
   }
  }
- const settingPages={'custom-replies-modal':'自定义回复','chat-modal':'聊天设置','appearance-modal':'外观设置','data-modal':'数据管理','session-modal':'会话管理'};
+ const settingPages={'custom-replies-modal':'自定义回复','chat-modal':'聊天设置','appearance-modal':'外观设置','data-modal':'数据管理','session-modal':'会话管理','hs-chat-display':'聊天选项','xv-manage':'会话管理','xv-conversation-settings':'会话设置','xv-create-role':'创建角色','xv-add-members':'选择群成员'};
  let detailStack=[],detailReturn='settings';
  function clearDetails(){
   for(const id of detailStack){const node=$(id);if(node)node.style.display='none';}
@@ -147,7 +148,7 @@
  }
  function update(){
   if(!ready)return;
-  const s=profile();$('hs-names').textContent=(s.partnerName||'Ta')+' ＆ '+(s.myName||'我');
+  const s=window.XavierConversations?.homeProfile()||profile();$('hs-names').textContent=(s.partnerName||'Ta')+' ＆ '+(s.myName||'我');
   avatar($('hs-my-avatar'),s.myAvatar||'');avatar($('hs-partner-avatar'),s.partnerAvatar||'');
   $('hs-relation-details').hidden=!config.showRelation;
   $('hs-relation').classList.toggle('hs-relation-simple',!config.showRelation);
@@ -171,6 +172,14 @@
   const now=new Date();$('hs-clock').textContent=now.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false});$('hs-date').textContent=now.toLocaleDateString('zh-CN',{month:'long',day:'numeric',weekday:'long'});
   if($('theme-toggle'))$('theme-toggle').setAttribute('aria-pressed',String(!!s.isDarkMode));
  }
+ function openChatDisplay(){
+  const modal=$('hs-chat-display');
+  if(!modal)return;
+  modal.querySelectorAll('[role=switch]').forEach(button=>button.setAttribute('aria-checked',String(button.classList.contains('active'))));
+  $('hs-game-invite-frequency').value=window.GameInvites.frequency();
+  window.MomentStatus?.syncEmotionSetting?.();
+  showModal(modal);
+ }
  function setupChatDisplay(){
   const trigger=$('hs-chat-more'),modal=$('hs-chat-display'),close=$('hs-chat-display-close');
   if(!trigger||!modal||!close)return;
@@ -183,25 +192,8 @@
   const syncSwitches=()=>switches.forEach(button=>button.setAttribute('aria-checked',String(button.classList.contains('active'))));
   const observer=new MutationObserver(syncSwitches);
   switches.forEach(button=>observer.observe(button,{attributes:true,attributeFilter:['class']}));
-  const dismiss=()=>{
-   hideModal(modal);
-   const focusTarget=document.body.classList.contains('immersive-mode')?$('immersive-exit-btn'):trigger;
-   focusTarget?.focus();
-  };
-  trigger.onclick=()=>{syncSwitches();frequency.value=window.GameInvites.frequency();window.MomentStatus?.syncEmotionSetting?.();showModal(modal,close);};
-  close.onclick=dismiss;
-  modal.addEventListener('click',event=>{if(event.target===modal)dismiss();});
-  document.addEventListener('keydown',event=>{
-   if(modal.style.display!=='flex'||$('poke-sym-modal'))return;
-   if(event.key==='Escape'){event.preventDefault();dismiss();return;}
-   if(event.key!=='Tab')return;
-   const buttons=modal.querySelectorAll('button');
-   const edge=event.shiftKey?buttons[0]:buttons[buttons.length-1];
-   if(document.activeElement===edge||!modal.contains(document.activeElement)){
-    event.preventDefault();
-    (event.shiftKey?buttons[buttons.length-1]:buttons[0]).focus();
-   }
-  });
+  trigger.onclick=openChatDisplay;
+  close.onclick=()=>hideModal(modal);
  }
  function setupHomeMusic(){
   const audio=$('audio'),title=$('music-title'),subtitle=$('music-subtitle'),cover=$('vinyl-record-visual');
@@ -320,6 +312,7 @@
     </fieldset>
    </fieldset>
    <label>关系名称<input id="hs-label-input" maxlength="16" value="${esc(config.label)}" placeholder="我们在一起 / 我们相识"></label><label>绑定已有重要日<select id="hs-ann-input"><option value="">单独设置起始日</option>${options.map(a=>`<option value="${esc(a.id)}" ${String(a.id)===config.annId?'selected':''}>${esc(a.name)} · ${esc(a.date)}</option>`).join('')}</select></label><label>起始日期<input id="hs-date-input" type="date" value="${esc(config.date||relationDate()||'')}"></label><p class="hs-hint">从起始日起计算已经过去的自然日，起始日为 0 天；2 月 29 日在平年以 2 月 28 日纪念。</p><p class="hs-hint">卡片标语与聊天顶部同步，可在「字卡库 → 氛围感 → 顶部格言」中管理。</p><label>专属背景<input id="hs-bg-input" type="file" accept="image/*"></label><label><input id="hs-clear-bg" type="checkbox"> 恢复主题色背景</label><button id="hs-save" type="button">保存这张关系卡</button>`;
+  window.XavierConversations?.mountRelationship($('hs-edit-body'));
   const showRelation=$('hs-show-relation');
   const syncOptions=()=>{$('hs-relation-options').disabled=!showRelation.checked;};
   showRelation.onchange=syncOptions;
@@ -647,11 +640,11 @@
   moveShortcut('session-manager-btn','会话管理','settings');
   const order=['hs-shortcut-theme-toggle','hs-shortcut-daily-greeting-btn','hs-shortcut-what-are-you-doing-btn','anniversary-function','mood-function','qa-function','envelope-function','incoming-letter-function','hs-schedule-entry','decision-helper-function','message-cards-function','hs-moments-entry'];
   apps.sort((a,b)=>(order.includes(a.id)?order.indexOf(a.id):100)-(order.includes(b.id)?order.indexOf(b.id):100));setupAppPages(apps);
-  const nav=document.createElement('nav');nav.id='hs-nav';nav.setAttribute('aria-label','主导航');nav.innerHTML=`<button data-hs-page="home"><i class="fas fa-home"></i><span>首页</span></button><button data-hs-page="chat"><i class="far fa-comment-dots"></i><span>聊天</span><span class="hs-badge" id="hs-chat-badge" hidden></span></button><button data-hs-page="settings"><i class="fas fa-cog"></i><span>设置</span></button>`;document.body.appendChild(nav);
+  const nav=document.createElement('nav');nav.id='hs-nav';nav.setAttribute('aria-label','主导航');nav.innerHTML=`<button data-hs-page="home"><i class="fas fa-home"></i><span>首页</span></button><button data-hs-page="messages"><i class="far fa-comment-dots"></i><span>消息</span><span class="hs-badge" id="hs-chat-badge" hidden></span></button><button data-hs-page="settings"><i class="fas fa-cog"></i><span>设置</span></button>`;document.body.appendChild(nav);
   const toolbar=document.createElement('div');toolbar.id='hs-chat-toolbar';toolbar.hidden=true;
-  toolbar.innerHTML='<button id="hs-chat-back" type="button" aria-label="返回首页" title="返回首页"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14.5 5-7 7 7 7"/></svg></button>';
+  toolbar.innerHTML='<button id="hs-chat-back" type="button" aria-label="返回消息" title="返回消息"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14.5 5-7 7 7 7"/></svg></button>';
   document.querySelector('.header .header-inner')?.prepend(toolbar);
-  if($('hs-chat-back'))$('hs-chat-back').onclick=()=>navigate('home');
+  if($('hs-chat-back'))$('hs-chat-back').onclick=()=>navigate('messages');
   const newer=document.createElement('button');newer.id='hs-new-messages';newer.textContent='↓ 有新消息';newer.hidden=true;newer.onclick=jumpLatest;document.body.appendChild(newer);
   const edit=document.createElement('div');edit.id='hs-edit-modal';edit.className='modal';edit.innerHTML='<div class="modal-content"><div class="modal-title">我们的关系卡</div><div id="hs-edit-body"></div><div class="modal-buttons"><button class="modal-btn modal-btn-secondary" id="hs-edit-close">关闭</button></div></div>';document.body.appendChild(edit);$('hs-edit-close').onclick=()=>hideModal(edit);
   nav.onclick=e=>{const b=e.target.closest('[data-hs-page]');if(b)navigate(b.dataset.hsPage);};$('hs-relation').onclick=editor;
@@ -672,10 +665,11 @@
    });
   });
   setupSettingsPages();
+  window.XavierConversations?.mount();
   ready=true;document.body.classList.add('hs-enabled');navigate('home');
   document.documentElement.removeAttribute('data-hs-boot');
  }
- window.HomeShell={navigate,routeModal,onMessage,isChat:()=>!ready||page==='chat'};
+ window.HomeShell={navigate,routeModal,onMessage,openChatDisplay,refresh:update,isChat:()=>!ready||page==='chat'};
  let booting=false;
  async function tryBoot(){
   if(ready||booting||typeof SESSION_ID==='undefined'||!SESSION_ID)return;

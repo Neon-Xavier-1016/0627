@@ -29,7 +29,7 @@ function S() {
   if (!window.settings) window.settings = s;
   return s;
 }
-const partnerName = () => S().partnerName || 'TA';
+const partnerName = () => listeningWith?.partnerName || window.XavierConversations?.profile(window.XavierConversations.activeId())?.name || S().partnerName || 'TA';
 const myName = () => S().myName || '我';
 
 function getMessages() {
@@ -196,10 +196,10 @@ async function maybeTaSwitchSong() {
 }
 
 /* ───────────── 一起听状态 ───────────── */
-function setListening(on, trackName, force) {
+function setListening(on, trackName, force, author) {
   if (on) {
     if (listeningWith && listeningWith.timer) clearTimeout(listeningWith.timer);
-    listeningWith = { name: trackName, timer: null };
+    listeningWith = { name: trackName, timer: null, partnerName: listeningWith?.partnerName || author?.name || partnerName() };
     const exitDelay = force
       ? 3000
       : randRange(10 * 60 * 1000, 40 * 60 * 1000);
@@ -502,12 +502,19 @@ function taRespondToInvite(track, cid, forceState) {
 
 function taJoinNow(track) {
   if (!track) return;
-  if (listeningWith && listeningWith.name === track.name) return;
-  inMsg('我也来陪你听。', false);
+  if (listeningWith) return;
+  const author = track.author || window.XavierConversations?.profile(window.XavierConversations.activeId());
   setTimeout(() => {
+    if (listeningWith) return;
     playUrl(track.url, track.name);
-    setListening(true, track.name);
-    sysMsg('🎧 ' + partnerName() + ' 加入了你一起听《' + track.name + '》');
+    setListening(true, track.name, false, author);
+    if (author && window.XavierConversations) {
+      window.XavierConversations.addToSingle(author.id, {sender:author.name, text:'我也来陪你听。', status:'received'});
+      window.XavierConversations.addToSingle(author.id, {sender:'system', type:'system', text:'🎧 ' + author.name + ' 加入了你一起听《' + track.name + '》'});
+    } else {
+      inMsg('我也来陪你听。', false);
+      sysMsg('🎧 ' + partnerName() + ' 加入了你一起听《' + track.name + '》');
+    }
   }, 700 + Math.random() * 500);
 }
 
@@ -519,15 +526,18 @@ function maybeTaAutoJoin(track) {
   if (Math.random() * 100 >= prob) return;
   setCD('autoJoin');
 
-  // 延迟改为 10 秒 ~ 3 分钟，落在大多数歌的时长之内
-  const delay = randRange(10 * 1000, 3 * 60 * 1000);
-  setTimeout(() => {
-    const a = $('audio');
-    if (!a || a.paused) return;
-    const curName = ($('music-title')?.textContent || '').trim();
-    if (curName !== track.name) return;   // 中途切歌就放弃
-    taJoinNow(track);
-  }, delay);
+  const roles = window.XavierConversations?.profiles() || [];
+  for (const author of (roles.length ? roles : [null])) {
+    const delay = randRange(10 * 1000, 3 * 60 * 1000);
+    setTimeout(() => {
+      const a = $('audio');
+      if (!a || a.paused || listeningWith) return;
+      const curName = ($('music-title')?.textContent || '').trim();
+      if (curName !== track.name) return;
+      if (author && !window.XavierConversations.profile(author.id)) return;
+      taJoinNow({...track, author});
+    }, delay);
+  }
 }
 
 /* ───────────── TA 预订下一首 ───────────── */

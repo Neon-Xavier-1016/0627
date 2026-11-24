@@ -415,6 +415,13 @@
   const HOTPOT_TEXT = '大吃兔咪火锅中，已经等了好久了，貌似只点了肉食呢';
 
   /* ---------- 3. 行程生成 ---------- */
+    const storageKeyForRole = key => key.startsWith('wyd_') && key !== 'wyd_fake_min'
+        ? window.XavierConversations?.homeKey(key) || key : key;
+    const roleStorage = {
+        getItem: key => localStorage.getItem(storageKeyForRole(key)),
+        setItem: (key, value) => localStorage.setItem(storageKeyForRole(key), value),
+        removeItem: key => localStorage.removeItem(storageKeyForRole(key))
+    };
   const STORE_KEY = 'wyd_where_plan';
 
   function todayStr(offset = 0) {
@@ -453,7 +460,7 @@
       if (window.WydMeal && typeof window.WydMeal.ensureToday === 'function') {
         return window.WydMeal.ensureToday();
       }
-      return JSON.parse(localStorage.getItem('wyd_data') || 'null');
+      return JSON.parse(roleStorage.getItem('wyd_data') || 'null');
     } catch (e) { return null; }
   }
 
@@ -847,7 +854,7 @@
   }
 
   function readPlan(key) {
-    try { return JSON.parse(localStorage.getItem(key) || 'null'); }
+    try { return JSON.parse(roleStorage.getItem(key) || 'null'); }
     catch { return null; }
   }
 
@@ -855,11 +862,11 @@
     let plan = readPlan(STORE_KEY);
     if (!plan || plan.date !== todayStr()) {
       try {
-        if (plan?.date === todayStr(-1)) localStorage.setItem(STORE_KEY + '_previous', JSON.stringify(plan));
-        else if (readPlan(STORE_KEY + '_previous')?.date !== todayStr(-1)) localStorage.removeItem(STORE_KEY + '_previous');
+        if (plan?.date === todayStr(-1)) roleStorage.setItem(STORE_KEY + '_previous', JSON.stringify(plan));
+        else if (readPlan(STORE_KEY + '_previous')?.date !== todayStr(-1)) roleStorage.removeItem(STORE_KEY + '_previous');
       } catch {}
       plan = generatePlan();
-      try { localStorage.setItem(STORE_KEY, JSON.stringify(plan)); } catch (e) {}
+      try { roleStorage.setItem(STORE_KEY, JSON.stringify(plan)); } catch (e) {}
     }
     return plan;
   }
@@ -1248,7 +1255,7 @@
     loadPlan,
     renderYesterday,
     invalidateToday() {
-      if (readPlan(STORE_KEY)?.date === todayStr()) localStorage.removeItem(STORE_KEY);
+      if (readPlan(STORE_KEY)?.date === todayStr()) roleStorage.removeItem(STORE_KEY);
     },
     currentLocation() {
       window.WydMeal?.ensureToday?.();

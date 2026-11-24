@@ -239,6 +239,7 @@ autoSendInterval: 5,
                         }
                     } catch (e2) {}
                     localforage.setItem(getStorageKey('chatBackground'), bg.value);
+                    window.XavierConversations?.defaultBackgroundChanged(bg.value);
                     renderBackgroundGallery();
                     showNotification('背景已切换', 'success');
                 };
@@ -996,6 +997,7 @@ function manageAutoSendTimer() {
             document.body.classList.remove('with-background');
             localforage.removeItem(getStorageKey('chatBackground'));
             safeRemoveItem(getStorageKey('chatBackground'));
+            window.XavierConversations?.defaultBackgroundChanged('');
             showNotification('背景图片已移除', 'success');
         };
 
@@ -1474,6 +1476,7 @@ const addMessage = (message) => {
     }
 
     if (window.HomeShell) window.HomeShell.onMessage(message, hsAtBottom);
+    window.XavierConversations?.onNativeMessage();
     requestAnimationFrame(() => {
         if (!window.HomeShell || (window.HomeShell.isChat() && (hsAtBottom || message.sender === 'user'))) container.scrollTop = container.scrollHeight;
     });
@@ -1816,9 +1819,21 @@ const addMessage = (message) => {
             ro.observe(inputArea);
         })();
 
+        let nativeReplyGeneration = 0;
+        window.cancelPartnerReply = function() {
+            nativeReplyGeneration++;
+            clearTimeout(window._pendingReplyTimer);
+            clearTimeout(window._typingIndicatorAutoHideTimer);
+            window._pendingReplyTimer = null;
+            const indicator = document.getElementById('typing-indicator-wrapper');
+            if (indicator) indicator.style.display = 'none';
+        };
+
         window.simulateReply = function(preferredReply) {
             const contextual = typeof preferredReply === 'string' && preferredReply.trim();
             const activeSession = SESSION_ID;
+            const generation = nativeReplyGeneration;
+            const cancelled = () => SESSION_ID !== activeSession || nativeReplyGeneration !== generation;
             function showTypingIndicator() {
                 if (!settings.typingIndicatorEnabled) return;
                 const tiWrapper = document.getElementById('typing-indicator-wrapper');
@@ -1904,7 +1919,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                 const delayRange = settings.replyDelayMax - settings.replyDelayMin;
                 delay += settings.replyDelayMin + Math.random() * delayRange;
                 setTimeout(() => {
-                    if (SESSION_ID !== activeSession) return;
+                    if (cancelled()) return;
                     try {
                     const replyPool = replyPoolOnce;
                     // 被屏蔽或无效项直接换下一个，尽量保证每次都产出可用回复
@@ -2011,6 +2026,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                     if (shouldSendSticker) {
                         const randomSticker = enabledStickerPool[Math.floor(Math.random() * enabledStickerPool.length)];
                         setTimeout(() => {
+                            if (cancelled()) return;
                             addMessage({
                                 id: Date.now() + i + 2000,
                                 sender: settings.partnerName || '对方',
@@ -2031,6 +2047,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
 
                     if (separateEmoji) {
                         setTimeout(() => {
+                            if (cancelled()) return;
                             addMessage({
                                 id: Date.now() + i + 1000,
                                 sender: settings.partnerName || '对方',
@@ -2571,8 +2588,11 @@ window.initializeSession = async function() {
     const sessionsData = await localforage.getItem(`${APP_PREFIX}sessionList`);
     sessionList = sessionsData || [];
 
+    const anchor = await localforage.getItem(APP_PREFIX + 'characterSessionAnchor');
     const hash = window.location.hash.substring(1);
-    if (hash && sessionList.some(s => s.id === hash)) {
+    if (anchor && sessionList.some(s => s.id === anchor)) {
+        SESSION_ID = anchor;
+    } else if (hash && sessionList.some(s => s.id === hash)) {
         SESSION_ID = hash;
     } else if (sessionList.length > 0) {
         const lastId = await localforage.getItem(`${APP_PREFIX}lastSessionId`);
@@ -2582,6 +2602,7 @@ window.initializeSession = async function() {
     }
 
     await localforage.setItem(`${APP_PREFIX}lastSessionId`, SESSION_ID);
+    await localforage.setItem(APP_PREFIX + 'characterSessionAnchor', SESSION_ID);
 }
 
 // core.js 底部 DOMContentLoaded 里

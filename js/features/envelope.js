@@ -1,4 +1,6 @@
 let envelopeData = { outbox: [], inbox: [] }; 
+let envelopeRecipient = null;
+const letterEscape = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[character]));
 let currentEnvTab = 'outbox';
 let editingEnvId = null; 
 let editingEnvSection = null; 
@@ -37,6 +39,8 @@ async function checkEnvelopeStatus() {
             const inboxLetter = {
                 id: replyId,
                 refId: letter.id,
+                partnerId: letter.partnerId,
+                partnerName: letter.partnerName,
                 originalContent: letter.content,
                 content: replyContent,
                 receivedTime: Date.now(),
@@ -189,7 +193,7 @@ function renderOutboxList() {
             <div class="env-letter-header">
                 <div class="env-letter-header-from">
                     <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:3px;"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9l20-7z"/></svg>
-                    寄出 · ${date}
+                    寄给 ${letterEscape(letter.partnerName || settings.partnerName || '梦角')} · ${date}
                 </div>
                 <div class="env-stamp">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.8)" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
@@ -227,7 +231,7 @@ function renderInboxList() {
             <div class="env-letter-header">
                 <div class="env-letter-header-from">
                     <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:3px;"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></svg>
-                    收到 · ${date}
+                    来自 ${letterEscape(letter.partnerName || settings.partnerName || '梦角')} · ${date}
                     ${isNew ? '<span style="background:rgba(255,255,255,0.3);color:#fff;font-size:9px;padding:1px 5px;border-radius:6px;margin-left:6px;">新</span>' : ''}
                 </div>
                 <div class="env-stamp">
@@ -276,7 +280,7 @@ window.viewEnvLetter = function(section, id) {
     const toLine = document.getElementById('env-view-to-line');
     const greetingLine = document.getElementById('env-view-greeting-line');
     if (section === 'outbox') {
-        const partnerName = (typeof settings !== 'undefined' && settings.partnerName) || '亲爱的';
+        const partnerName = letter.partnerName || settings.partnerName || '亲爱的';
         if (toLine) toLine.textContent = `致 ${partnerName}：`;
         if (greetingLine) greetingLine.textContent = '见字如面，望君安好。';
     } else {
@@ -295,7 +299,7 @@ window.viewEnvLetter = function(section, id) {
         const myName = (typeof settings !== 'undefined' && settings.myName) || '你';
         if (signNameEl) signNameEl.textContent = myName;
     } else {
-        const partnerName = (typeof settings !== 'undefined' && settings.partnerName) || '对方';
+        const partnerName = letter.partnerName || settings.partnerName || '对方';
         if (signNameEl) signNameEl.textContent = partnerName;
     }
 
@@ -374,11 +378,13 @@ window.deleteEnvLetter = function(event, section, id) {
     showNotification('已删除', 'success');
 };
 
-window.openNewEnvelopeForm = function() {
+window.openNewEnvelopeForm = async function() {
+    envelopeRecipient = await window.XavierConversations?.choose('选择收件人');
+    if (window.XavierConversations && !envelopeRecipient) return;
     document.getElementById('env-outbox-section').style.display = 'none';
     document.getElementById('env-inbox-section').style.display = 'none';
     document.getElementById('env-main-close-btn').style.display = 'none';
-    document.getElementById('env-compose-title').textContent = '写一封信';
+    document.getElementById('env-compose-title').textContent = envelopeRecipient ? '写给 ' + envelopeRecipient.name : '写一封信';
     document.getElementById('envelope-input').value = '';
     document.getElementById('env-send-to-chat').checked = false;
     document.getElementById('env-compose-form').style.display = 'block';
@@ -400,7 +406,7 @@ function handleSendEnvelope() {
 
     const sendToChat = document.getElementById('env-send-to-chat').checked;
     if (sendToChat) {
-        addMessage({ id: Date.now(), sender: 'user', text: `【寄出的信】\n${text}`, timestamp: new Date(), status: 'sent', type: 'normal' });
+        window.XavierConversations?.addToSingle(envelopeRecipient?.id, {sender: 'user', text: '【寄出的信】\n' + text, status: 'sent'});
     }
 
     const minHours = 10, maxHours = 24;
@@ -409,6 +415,8 @@ function handleSendEnvelope() {
     const newId = 'env_' + Date.now() + '_' + Math.random().toString(36).substr(2,4);
     envelopeData.outbox.push({
         id: newId, content: text,
+        partnerId: envelopeRecipient?.id,
+        partnerName: envelopeRecipient?.name || settings.partnerName,
         sentTime: Date.now(), replyTime,
         status: 'pending'
     });

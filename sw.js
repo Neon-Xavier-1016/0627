@@ -4,7 +4,7 @@ const SCOPE_URL = self.registration.scope;
 const SCOPE = new URL(SCOPE_URL);
 const HOME_URL = new URL('index.html', SCOPE_URL).href;
 const CACHE_PREFIX = 'xavier-static-' + encodeURIComponent(SCOPE_URL) + '-';
-const CACHE_NAME = CACHE_PREFIX + 'v2';
+const CACHE_NAME = CACHE_PREFIX + 'v3';
 const LEGACY_CACHE = 'xavier-v1';
 const CORE_FILES = [SCOPE_URL, HOME_URL, new URL('manifest.json', SCOPE_URL).href];
 

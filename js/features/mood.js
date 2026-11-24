@@ -240,6 +240,26 @@ async function initMoodData() {
     window.moodTrash = moodTrash;
     checkPartnerDailyMood();
 }
+function moodForHomeRole(date, create = false, roleId = window.XavierConversations?.homeId()) {
+    if (!moodData[date] && create) moodData[date] = {};
+    const day = moodData[date];
+    if (!roleId || roleId === SESSION_ID || !day) return day;
+    if (create) {
+        day.partnerMoods ||= {};
+        day.partnerMoods[roleId] ||= {};
+    }
+    return day.partnerMoods?.[roleId];
+}
+
+function moodDayForDisplay(date) {
+    const entry = moodData[date];
+    if (!entry) return entry;
+    const roleMood = moodForHomeRole(date);
+    if (roleMood === entry) return entry;
+    const {partner, partnerNote, partnerWeather, partnerChecked, ...user} = entry;
+    return {...user, ...roleMood};
+}
+
 function checkPartnerDailyMood() {
     const today = new Date();
     const dateStr = formatDateStr(today);
@@ -248,14 +268,15 @@ function checkPartnerDailyMood() {
         moodData[dateStr] = {};
     }
 
-    if (!moodData[dateStr].partner && moodData[dateStr].partnerChecked === undefined) {
-        moodData[dateStr].partnerChecked = true;
+    const roleMood = moodForHomeRole(dateStr, true);
+    if (!roleMood.partner && roleMood.partnerChecked === undefined) {
+        roleMood.partnerChecked = true;
         if (Math.random() < 0.20) {
             saveMoodData();
             return;
         }
         const randomMood = getAllMoodOptions()[Math.floor(Math.random() * getAllMoodOptions().length)];
-        moodData[dateStr].partner = randomMood.key;
+        roleMood.partner = randomMood.key;
         try {
             const cReplies = (typeof customReplies !== 'undefined') ? customReplies : (window._customReplies || []);
             const sourcePool = [...cReplies];
@@ -266,7 +287,7 @@ function checkPartnerDailyMood() {
                 for (let i = 0; i < Math.min(count, shuffled.length); i++) {
                     chosen.push(shuffled[i]);
                 }
-                moodData[dateStr].partnerNote = chosen.join('　');
+                roleMood.partnerNote = chosen.join('　');
             }
         } catch(e) {  }
         saveMoodData();
@@ -362,7 +383,7 @@ function renderMoodCalendar() {
         const dotsContainer = document.createElement('div');
         dotsContainer.className = 'mood-dots-container';
 
-        const dayData = moodData[dateStr];
+        const dayData = moodDayForDisplay(dateStr);
         
         if (dayData) {
             if (dayData.user) {
@@ -388,7 +409,7 @@ function renderMoodCalendar() {
         dayDiv.appendChild(dotsContainer);
 
         dayDiv.addEventListener('click', () => {
-            const dayEntry = moodData[dateStr];
+            const dayEntry = moodDayForDisplay(dateStr);
             if (dayEntry && (dayEntry.user || dayEntry.partner)) {
                 showDayDetails(dateStr, dayEntry);
             } else {
@@ -426,7 +447,7 @@ function updateDualMoodStats(stats) {
     if (!container) return;
 
     const mName = (typeof settings !== 'undefined' && settings.myName) ? settings.myName : '我';
-    const pName = (typeof settings !== 'undefined' && settings.partnerName) ? settings.partnerName : '梦角';
+    const pName = window.XavierConversations?.homeProfile()?.partnerName || settings.partnerName || '梦角';
 
     const myTotal = stats.me.total;
     const partnerTotal = stats.partner.total;
@@ -478,7 +499,7 @@ function updateDualMoodStats(stats) {
     const partnerBarHTML = createMoodBarHTML(stats.partner.counts, partnerTotal);
 
     var todayStr = formatDateStr(new Date());
-    var todayEntry = moodData[todayStr] || {};
+    var todayEntry = moodDayForDisplay(todayStr) || {};
     var myWeatherVal = todayEntry.myWeather || '';
     var partnerWeatherVal = todayEntry.partnerWeather || '';
 
@@ -540,7 +561,7 @@ window.editStatsWeather = function(el, who) {
     if (el.querySelector('input')) return;
     var todayStr = formatDateStr(new Date());
     if (!moodData[todayStr]) moodData[todayStr] = {};
-    var current = who === 'me' ? (moodData[todayStr].myWeather || '') : (moodData[todayStr].partnerWeather || '');
+    var current = who === 'me' ? (moodData[todayStr].myWeather || '') : (moodForHomeRole(todayStr)?.partnerWeather || '');
     var input = document.createElement('input');
     input.type = 'text';
     input.value = current;
@@ -553,7 +574,7 @@ window.editStatsWeather = function(el, who) {
     function save() {
         var val = input.value.trim();
         if (who === 'me') moodData[todayStr].myWeather = val;
-        else moodData[todayStr].partnerWeather = val;
+        else moodForHomeRole(todayStr, true).partnerWeather = val;
         saveMoodData();
         el.innerHTML = val ? `<span>${val}</span>` : `<span style="opacity:0.4;">+ 天气</span>`;
     }
@@ -566,7 +587,7 @@ window.editStatsWeather = function(el, who) {
 
 window.deleteDailyMood = function(dateStr, who) {
     if (!moodData[dateStr]) return;
-    const src = moodData[dateStr];
+    const src = who === 'me' ? moodData[dateStr] : moodForHomeRole(dateStr, true);
     const trashItem = {
         id: Date.now() + Math.random(),
         dateStr,
@@ -586,17 +607,18 @@ window.deleteDailyMood = function(dateStr, who) {
         delete moodData[dateStr].myWeather;
         delete moodData[dateStr].sharedMoodCount;
     } else {
+        trashItem.partnerId = window.XavierConversations?.homeId() || SESSION_ID;
         trashItem.payload = {
             partner: src.partner || null,
             partnerNote: src.partnerNote || '',
             partnerWeather: src.partnerWeather || ''
         };
-        delete moodData[dateStr].partner;
-        delete moodData[dateStr].partnerNote;
-        delete moodData[dateStr].partnerWeather;
+        delete src.partner;
+        delete src.partnerNote;
+        delete src.partnerWeather;
     }
 
-    if (!moodData[dateStr].user && !moodData[dateStr].partner) delete moodData[dateStr];
+    if (!moodData[dateStr].user && !moodData[dateStr].partner && !moodData[dateStr].partnerMoods) delete moodData[dateStr];
 
     moodTrash.unshift(trashItem);
     saveMoodTrash();
@@ -631,7 +653,7 @@ function renderMoodTrashList() {
         return;
     }
     const mName = (typeof settings !== 'undefined' && settings.myName) ? settings.myName : '我';
-    const pName = (typeof settings !== 'undefined' && settings.partnerName) ? settings.partnerName : '梦角';
+    const pName = window.XavierConversations?.homeProfile()?.partnerName || settings.partnerName || '梦角';
     const allMoods = getAllMoodOptions();
 
     list.innerHTML = moodTrash.map(item => {
@@ -679,9 +701,10 @@ window.restoreMoodTrashItem = function(trashId) {
         moodData[item.dateStr].note = item.payload.note || '';
         moodData[item.dateStr].myWeather = item.payload.myWeather || '';
     } else {
-        moodData[item.dateStr].partner = item.payload.partner;
-        moodData[item.dateStr].partnerNote = item.payload.partnerNote || '';
-        moodData[item.dateStr].partnerWeather = item.payload.partnerWeather || '';
+        const mood = moodForHomeRole(item.dateStr, true, item.partnerId || SESSION_ID);
+        mood.partner = item.payload.partner;
+        mood.partnerNote = item.payload.partnerNote || '';
+        mood.partnerWeather = item.payload.partnerWeather || '';
     }
 
     moodTrash = moodTrash.filter(t => String(t.id) !== idStr);
@@ -896,7 +919,7 @@ function switchMoodEditTarget(target) {
     currentMoodEditTarget = target;
     document.getElementById('mood-tab-me').classList.toggle('active', target === 'me');
     document.getElementById('mood-tab-partner').classList.toggle('active', target === 'partner');
-    const existing = moodData[selectedDateStr];
+    const existing = moodDayForDisplay(selectedDateStr);
     let currentKey, noteVal;
     if (target === 'me') {
         currentKey = existing ? existing.user : null;
@@ -940,7 +963,7 @@ function openMoodSelector(dateStr, editTarget) {
     document.getElementById('mood-tab-me').classList.toggle('active', currentMoodEditTarget === 'me');
     document.getElementById('mood-tab-partner').classList.toggle('active', currentMoodEditTarget === 'partner');
 
-    const existing = moodData[dateStr];
+    const existing = moodDayForDisplay(dateStr);
     let currentKey, noteVal, weatherVal;
     if (currentMoodEditTarget === 'me') {
         currentKey = existing ? existing.user : null;
@@ -957,7 +980,7 @@ function openMoodSelector(dateStr, editTarget) {
     if (weatherInput) weatherInput.value = weatherVal;
     const weatherLabel = document.getElementById('mood-weather-label');
     if (weatherLabel) {
-        var pNameW = (typeof settings !== 'undefined' && settings.partnerName) ? settings.partnerName : '梦角';
+        var pNameW = window.XavierConversations?.homeProfile()?.partnerName || settings.partnerName || '梦角';
         var mNameW = (typeof settings !== 'undefined' && settings.myName) ? settings.myName : '我';
         if (weatherLabel.firstChild) weatherLabel.firstChild.textContent = currentMoodEditTarget === 'me' ? mNameW + '的天气\u00a0' : pNameW + '的天气\u00a0';
     }
@@ -998,9 +1021,10 @@ document.getElementById('confirm-mood-save').addEventListener('click', () => {
         moodData[selectedDateStr].note = document.getElementById('mood-note-input').value.trim();
         moodData[selectedDateStr].myWeather = weatherVal.trim();
     } else {
-        if (currentMoodSelection) moodData[selectedDateStr].partner = currentMoodSelection;
-        moodData[selectedDateStr].partnerNote = document.getElementById('mood-note-input').value.trim();
-        moodData[selectedDateStr].partnerWeather = weatherVal.trim();
+        const roleMood = moodForHomeRole(selectedDateStr, true);
+        if (currentMoodSelection) roleMood.partner = currentMoodSelection;
+        roleMood.partnerNote = document.getElementById('mood-note-input').value.trim();
+        roleMood.partnerWeather = weatherVal.trim();
     }
     
     saveMoodData();
@@ -1097,7 +1121,7 @@ window.closeMoodOverlay = function() {
 };
 window.viewMoodDetailFromEditor = function() {
     if (!selectedDateStr || !moodData[selectedDateStr]) return;
-    showDayDetails(selectedDateStr, moodData[selectedDateStr]);
+    showDayDetails(selectedDateStr, moodDayForDisplay(selectedDateStr));
 };
 document.getElementById('cancel-mood-edit').addEventListener('click', closeMoodOverlay);
 

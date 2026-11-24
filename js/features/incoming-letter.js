@@ -182,6 +182,8 @@ async function runIncomingStatusCheck() {
 
 /* ---------- 生成来信内容 ---------- */
 function generateIncomingLetter() {
+    const roles = window.XavierConversations?.profiles() || [];
+    const author = roles[Math.floor(Math.random() * roles.length)];
     const sourcePool = (typeof customReplies !== 'undefined' && Array.isArray(customReplies)) ? customReplies : [];
     const cardCount = Math.floor(Math.random() * (45 - 15 + 1)) + 15;
     let content = '';
@@ -197,6 +199,8 @@ function generateIncomingLetter() {
     return {
         id: 'inc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
         content,
+        partnerId: author?.id,
+        partnerName: author?.name || settings.partnerName,
         greeting: INC_GREETINGS[Math.floor(Math.random() * INC_GREETINGS.length)],
         receivedTime: Date.now(),
         isNew: true,
@@ -209,7 +213,7 @@ function generateIncomingLetter() {
 function showIncomingLetterPopup(letter, count) {
     const existing = document.getElementById('incoming-letter-popup');
     if (existing) existing.remove();
-    const partnerName = (typeof settings !== 'undefined' && settings.partnerName) || '对方';
+    const partnerName = letter.partnerName || settings.partnerName || '对方';
     const popup = document.createElement('div');
     popup.id = 'incoming-letter-popup';
     popup.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--secondary-bg);border:1px solid var(--border-color);border-radius:20px;padding:18px 20px;z-index:8000;max-width:320px;width:88%;box-shadow:0 8px 32px rgba(0,0,0,0.18);display:flex;flex-direction:column;gap:12px;animation:slideUpNotif 0.4s cubic-bezier(0.22,1,0.36,1);';
@@ -294,7 +298,7 @@ function renderIncReceivedList() {
             <div class="env-letter-header">
                 <div class="env-letter-header-from">
                     <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:3px;"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></svg>
-                    收信 · ${date}
+                    来自 ${letterEscape(letter.partnerName || settings.partnerName || '梦角')} · ${date}
                     ${isNew ? '<span style="background:rgba(255,255,255,0.3);color:#fff;font-size:9px;padding:1px 5px;border-radius:6px;margin-left:6px;">新</span>' : ''}
                 </div>
                 <div class="env-stamp">
@@ -335,7 +339,7 @@ function renderIncSentList() {
             <div class="env-letter-header">
                 <div class="env-letter-header-from">
                     <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:3px;"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9l20-7z"/></svg>
-                    寄出 · ${date}
+                    寄给 ${letterEscape(reply.partnerName || settings.partnerName || '梦角')} · ${date}
                 </div>
                 <div style="display:flex;align-items:center;gap:12px;">
                     ${readBadge}
@@ -406,7 +410,7 @@ window.viewIncLetter = function(section, id) {
     document.getElementById('inc-view-sign-date').textContent = fullDateStr;
 
     const myName = (typeof settings !== 'undefined' && settings.myName) || '你';
-    const partnerName = (typeof settings !== 'undefined' && settings.partnerName) || '对方';
+    const partnerName = letter.partnerName || settings.partnerName || '对方';
 
     const toLine = document.getElementById('inc-view-to-line');
     const greetLine = document.getElementById('inc-view-greeting-line');
@@ -521,7 +525,7 @@ window.openIncReplyFormFromView = function() {
     const origEl = document.getElementById('inc-reply-original');
     if (origEl) {
         const preview = letter.content.length > 120 ? letter.content.substring(0, 120) + '…' : letter.content;
-        origEl.textContent = preview;
+        origEl.textContent = '回信给 ' + (letter.partnerName || settings.partnerName || '梦角') + '\n' + preview;
     }
     setTimeout(() => document.getElementById('inc-reply-input').focus(), 100);
 };
@@ -542,7 +546,7 @@ window.handleSendIncomingReply = function() {
 
     const sendToChat = document.getElementById('inc-send-to-chat').checked;
     if (sendToChat && typeof addMessage === 'function') {
-        addMessage({ id: Date.now(), sender: 'user', text: `【寄出的回信】\n${text}`, timestamp: new Date(), status: 'sent', type: 'normal' });
+        window.XavierConversations?.addToSingle(originalLetter.partnerId, {sender: 'user', text: '【寄出的回信】\n' + text, status: 'sent'});
     }
 
     const minMs = 20 * 60 * 1000;
@@ -553,6 +557,8 @@ window.handleSendIncomingReply = function() {
     incomingLetterData.myReplies.push({
         id: replyId,
         refId: originalLetter.id,
+        partnerId: originalLetter.partnerId,
+        partnerName: originalLetter.partnerName || settings.partnerName,
         originalContent: originalLetter.content,
         content: text,
         sentTime: Date.now(),

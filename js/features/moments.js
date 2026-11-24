@@ -413,13 +413,17 @@
     }
 
     // ==================== 渲染卡片 ====================
+    function escapeMomentText(text) {
+        return String(text ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[character]));
+    }
+
     function renderMomentCard(moment) {
         var avStyle = getMomentAvatarStyle(moment.publisher);
         var isMe = moment.publisher === 'me';
         var name = isMe
             ? ((window.settings && window.settings.myName) || '我')
-            : ((window.settings && window.settings.partnerName) || '梦角');
-        var avatarUrl = getAvatar(moment.publisher);
+            : (moment.publisherName || (window.settings && window.settings.partnerName) || '梦角');
+        var avatarUrl = moment.partnerId ? (window.XavierConversations?.profile(moment.partnerId)?.avatar || moment.partnerAvatar || '') : getAvatar(moment.publisher);
         var timeStr = formatTime(moment.timestamp);
 
         var likes = moment.likes || [];
@@ -452,7 +456,7 @@
             });
             likesHtml = '<div class="moment-likes-row" style="display:flex;align-items:center;padding:0;font-size:13px;line-height:1.6;">' +
                 '<i class="far fa-heart" style="color:' + nameColor + ';margin-right:4px;font-size:13px;"></i>' +
-                '<span style="color:' + nameColor + ';font-weight:700;">' + names.join('、') + '</span>' +
+                '<span style="color:' + nameColor + ';font-weight:700;">' + names.map(escapeMomentText).join('、') + '</span>' +
                 '</div>';
         }
 
@@ -502,7 +506,7 @@
             comments.forEach(function(comment) {
                 var sRaw = comment.sender || '';
                 var cName = sRaw === 'me' ? myName :
-                            sRaw === 'partner' ? partnerName :
+                            sRaw === 'partner' ? (comment.senderName || partnerName) :
                             sRaw === myName ? myName :
                             sRaw === partnerName ? partnerName : partnerName;
                 var replyName = '';
@@ -510,7 +514,7 @@
                     var parent = comments.find(function(c) { return c.id === comment.replyToCommentId; });
                     if (parent) {
                         var pRaw = parent.sender || '';
-                        replyName = pRaw === 'me' ? myName : (pRaw === 'partner' ? partnerName : pRaw);
+                        replyName = pRaw === 'me' ? myName : (pRaw === 'partner' ? parent.senderName || partnerName : pRaw);
                     }
                 }
                 var prefix = replyName
@@ -555,8 +559,8 @@
         return '<div class="moment-card" data-moment-id="' + moment.id + '" style="padding:12px 16px 8px;border-bottom:1px solid ' + (isDark ? 'rgba(255,255,255,0.06)' : 'var(--border-color)') + ';">' +
             '<div class="moment-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
                 '<div class="moment-user" style="display:flex;align-items:center;gap:6px;margin:0;padding:0;flex:1;min-width:0;">' +
-                    '<img class="moment-avatar" src="' + avatarUrl + '" style="width:' + avStyle.width + ';height:' + avStyle.height + ';border-radius:' + avStyle.borderRadius + ';object-fit:cover;background:#eee;margin:0;padding:0;flex-shrink:0;display:block;">' +
-                    '<span class="moment-name" style="font-weight:700;font-size:15px;color:' + nameColor + ';margin:0;padding:0;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + name +
+                    '<img class="moment-avatar" src="' + escapeMomentText(avatarUrl) + '" style="width:' + avStyle.width + ';height:' + avStyle.height + ';border-radius:' + avStyle.borderRadius + ';object-fit:cover;background:#eee;margin:0;padding:0;flex-shrink:0;display:block;">' +
+                    '<span class="moment-name" style="font-weight:700;font-size:15px;color:' + nameColor + ';margin:0;padding:0;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeMomentText(name) +
                         (moment.isFavorited ? ' <i class="fas fa-star" style="color:#f7b500;font-size:11px;margin-left:2px;" title="已收藏"></i>' : '') +
                     '</span>' +
                 '</div>' +
@@ -803,12 +807,14 @@
             var publisher = data.publisher || 'me';
             var publisherName = publisher === 'me'
                 ? ((window.settings && window.settings.myName) || '我')
-                : ((window.settings && window.settings.partnerName) || '梦角');
+                : (data.person?.name || (window.settings && window.settings.partnerName) || '梦角');
 
             var newMoment = {
                 id: generateId(),
                 publisher: publisher,
                 publisherName: publisherName,
+                partnerId: data.person?.id,
+                partnerAvatar: data.person?.avatar,
                 content: data.content || '',
                 images: data.images || [],
                 timestamp: timestamp,
@@ -1023,6 +1029,14 @@
     // ==================== 延迟回复 / 延迟点赞 ====================
 
     function schedulePartnerReplyToMoment(momentId) {
+        const roles = window.XavierConversations?.profiles() || [];
+        for (const role of (roles.length ? roles : [null])) {
+            if (role && roles.length > 1 && Math.random() >= 0.75) continue;
+            queueMomentReply(momentId, role);
+        }
+    }
+
+    function queueMomentReply(momentId, person) {
         var moment = moments.find(function(m) { return m.id === momentId; });
         if (!moment) return;
         if (getReplyLibrary().length === 0) {
@@ -1031,7 +1045,7 @@
         }
         var autoReplyCount = moment.autoReplyCount || 0;
         var pendingAutoReply = moment.pendingAutoReply || 0;
-        if (autoReplyCount + pendingAutoReply >= CONFIG.MAX_AUTO_REPLY_ROUNDS) return;
+        if (autoReplyCount + pendingAutoReply >= Math.max(CONFIG.MAX_AUTO_REPLY_ROUNDS, window.XavierConversations?.profiles().length || 1)) return;
 
         var delay = randomInt(CONFIG.REPLY_DELAY_MIN, CONFIG.REPLY_DELAY_MAX);
         var scheduledAt = Date.now() + delay;
@@ -1039,6 +1053,8 @@
             id: generateTaskId(),
             type: 'partner_action',
             triggerType: 'moment',
+            partnerId: person?.id,
+            partnerName: person?.name,
             momentId: momentId,
             replyToCommentId: null,
             scheduledAt: scheduledAt,
@@ -1095,9 +1111,15 @@
         var moment = moments.find(function(m) { return m.id === task.momentId; });
         if (!moment) { removeTask(task.id); return; }
 
-        if (task.shouldLike && moment.likes.indexOf('partner') === -1) {
-            moment.likes.push('partner');
+        const author = task.partnerId ? window.XavierConversations?.profile(task.partnerId) : null;
+        if (task.partnerId && !author) {
+            moment.pendingAutoReply = Math.max(0, (moment.pendingAutoReply || 0) - 1);
+            saveMoments();
+            removeTask(task.id);
+            return;
         }
+        const likeId = task.partnerName || 'partner';
+        if (task.shouldLike && moment.likes.indexOf(likeId) === -1) moment.likes.push(likeId);
 
         var cardCount = randomInt(1, 5);
         var cards = getRandomReplyCards(cardCount);
@@ -1106,7 +1128,7 @@
             var replyComment = {
                 id: generateCommentId(),
                 sender: 'partner',
-                senderName: (window.settings && window.settings.partnerName) || '梦角',
+                senderName: task.partnerName || (window.settings && window.settings.partnerName) || '梦角',
                 text: replyText,
                 timestamp: task.scheduledAt || Date.now(),
                 replyToCommentId: task.replyToCommentId || null,
@@ -1162,6 +1184,8 @@
      * @param {number} ts 发布时刻，默认当前时间；补发时使用计划中的历史时间
      */
     function generatePartnerMoment(ts) {
+        const roles = window.XavierConversations?.profiles() || [];
+        const author = roles[Math.floor(Math.random() * roles.length)];
         ts = ts || Date.now();
 
         if (getReplyLibrary().length === 0) return null;
@@ -1177,12 +1201,14 @@
             if (sticker) images.push(sticker);
         }
 
-        var initialLikes = Math.random() < CONFIG.PARTNER_SELF_LIKE_RATIO ? ['partner'] : [];
+        var initialLikes = Math.random() < CONFIG.PARTNER_SELF_LIKE_RATIO ? [author?.name || 'partner'] : [];
 
         var newMoment = {
             id: generateId(),
             publisher: 'partner',
-            publisherName: (window.settings && window.settings.partnerName) || '梦角',
+            publisherName: author?.name || (window.settings && window.settings.partnerName) || '梦角',
+            partnerId: author?.id,
+            partnerAvatar: author?.avatar,
             content: content,
             images: images,
             timestamp: ts,
@@ -1653,7 +1679,7 @@
         });
     };
 
-    function submitMoment() {
+    async function submitMoment() {
         var modal = dom.editorModal;
         if (!modal) return;
         var contentEl = modal.querySelector('#editor-content');
@@ -1684,7 +1710,10 @@
             return;
         }
 
-        publishMoment({ publisher: identity, content: content, images: images, timestamp: timestamp });
+        const recipient = identity === 'partner' ? await window.XavierConversations?.choose('选择发布动态的梦角') : null;
+        if (identity === 'partner' && window.XavierConversations && !recipient) return;
+        const person = recipient ? window.XavierConversations.profile(recipient.id) : null;
+        publishMoment({ publisher: identity, person, content: content, images: images, timestamp: timestamp });
         closeEditor();
     }
 

@@ -232,6 +232,7 @@
 
             updateLoader('正在读取记忆存档...', '40%');
             await safeAwait(loadData());
+            await safeAwait(window.XavierConversations?.init());
 
             // 3. 其他模块初始化
             await safeAwait(initPeriodData());

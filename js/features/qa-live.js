@@ -53,17 +53,49 @@
         const [min,max]=first?[3,8]:(ranges[s.settings.frequency]||ranges.normal);
         s.next=q?{question:q,at:now+(min+Math.random()*(max-min))*MIN}:null;
     }
-    function issue(s,q,now,depth=0) {
-        const r={id:uid(),question:copy(q),askedAt:now,status:'pending',answer:'',reply:'',depth};
+    function issue(s,q,now,depth=0,author) {
+        author ||= window.XavierConversations?.profile(window.XavierConversations.homeId());
+        const r={id:uid(),question:copy(q),askedAt:now,status:'pending',answer:'',reply:'',depth,partnerId:author?.id,partnerName:author?.name};
         s.pending=r;s.next=null;s.lastAt=now;
         s.recent=[q.id,...s.recent.filter(id=>id!==q.id)].slice(0,10);
         return r;
     }
     function advance(s,now) {
         if(s.day!==dayKey(now)){s.day=dayKey(now);s.dailyCount=0;}
-        if(!s.settings.enabled||s.pending)return null;
+        if(!s.settings.enabled)return null;
         const cap={quiet:1,normal:2,active:4}[s.settings.frequency]||2;
-        if(s.dailyCount>=cap)return null;
+        const roles = window.XavierConversations?.profiles() || [];
+        if (roles.length > 1) {
+            s.roleSchedule ||= {};
+            const roleIds = new Set(roles.map(role => role.id));
+            for (const id of Object.keys(s.roleSchedule)) if (!roleIds.has(id)) delete s.roleSchedule[id];
+            for (const role of roles) {
+                if (!s.roleSchedule[role.id]) {
+                    const slot = {...s};
+                    arm(slot, now, true);
+                    s.roleSchedule[role.id] = {next: slot.next, day:s.day, count:0};
+                }
+                const slot = s.roleSchedule[role.id];
+                if (slot.day !== s.day) { slot.day = s.day; slot.count = 0; }
+                if (slot.next && !pool(s).some(question => question.id === slot.next.question.id)) {
+                    const next = {...s};
+                    arm(next, now);
+                    slot.next = next.next;
+                }
+            }
+            if (s.pending) return null;
+            const due = roles.map(role => ({role, slot:s.roleSchedule[role.id]}))
+                .filter(({slot}) => slot.count < cap && slot.next?.at <= now)
+                .sort((a,b) => a.slot.next.at - b.slot.next.at)[0];
+            if (!due) return null;
+            const record = issue(s, due.slot.next.question, due.slot.next.at, 0, due.role);
+            due.slot.count++;
+            const next = {...s};
+            arm(next, now);
+            due.slot.next = next.next;
+            return record;
+        }
+        if (s.pending || s.dailyCount>=cap)return null;
         if(!s.next){arm(s,now,true);return null;}
         if(s.next.at>now)return null;
         // 关闭的题目或分类不能被旧排期重新发出来。
@@ -120,7 +152,7 @@
     function cardHTML(r,available=true,interactive=false){
         if(!r)return '<div class="ql-muted">问题记录暂不可用。</div>';
         const q=r.question,ready=available&&state?.pending?.id===r.id;
-        let html=`<div class="ql-top">${esc((typeof settings!=='undefined'&&settings.partnerName)||'Ta')} · 突然想问你 <span>${esc(time(r.askedAt))}</span></div><div class="ql-question">${esc(q.text)}</div>`;
+        let html=`<div class="ql-top">${esc(r.partnerName || settings.partnerName || 'Ta')} · 突然想问你 <span>${esc(time(r.askedAt))}</span></div><div class="ql-question">${esc(q.text)}</div>`;
         if(r.status==='pending'){
             if(interactive)html+=`<div class="ql-actions">${q.type==='choice'?q.options.map((o,i)=>`<button data-ql="answer" data-id="${r.id}" data-index="${i}" ${ready?'':'disabled'}>${esc(o.text)}</button>`).join(''):`<textarea data-ql-answer="${r.id}" maxlength="2000" placeholder="输入你的回答…" ${ready?'':'disabled'}>${esc(drafts.get(r.id)||'')}</textarea><button data-ql="answer" data-id="${r.id}" ${ready?'':'disabled'}>提交</button>`}</div><div class="ql-actions"><button class="ql-soft" data-ql="skip" data-id="${r.id}" ${ready?'':'disabled'}>跳过</button></div>`;
             else html+=`<div class="ql-muted">Ta 在等你的回答</div><div class="ql-actions"><button data-ql="open-question" data-id="${r.id}">打开问题</button></div>`;
@@ -174,8 +206,8 @@
         const snapshot=typeof messages!=='undefined'?messages.find(m=>m.type==='qa-live'&&m.qaRecordId===id)?.qaSnapshot:null;
         const r=currentRecord(id,snapshot);if(!r){say('这次互动已被清理。');return;}
         activeQuestionId=id;shown=id;$('qa-live-notice')?.remove();
-        const name=(typeof settings!=='undefined'&&settings.partnerName)||'Ta';
-        const avatar=(typeof settings!=='undefined'&&settings.partnerAvatar)||'';
+        const name=r.partnerName || settings.partnerName || 'Ta';
+        const avatar=r.partnerId ? window.XavierConversations?.profile(r.partnerId)?.avatar || '' : settings.partnerAvatar || '';
         $('ql-question-person').textContent=name;
         $('ql-question-avatar').innerHTML=avatar?`<img src="${esc(avatar)}" alt="">`:'💭';
         $('ql-question-type').textContent=r.question.type==='choice'?'选择题':'文字题';
@@ -378,15 +410,16 @@
         if(a==='ask'||a==='continue'||a==='repeat'){
             await transaction(s=>{
                 if(s.pending)throw Error('先回答或跳过 Ta 当前的问题吧。');
-                let depth=0,q;
+                let depth=0,q,author;
                 if(a==='continue'){
                     const previous=s.history.find(r=>r.id===id);if(!previous||previous.depth>=2||previous.finished||!previous.followUpOffered)throw Error('这次先聊到这里吧。');
                     if(previous.continued)throw Error('这轮已经继续问过了，看看新问题吧。');
+                    author = previous.partnerId ? {id:previous.partnerId,name:previous.partnerName} : undefined;
                     depth=previous.depth+1;q=pick(s);if(!q)throw Error('没有可用问题，去问题库开启一些吧。');previous.continued=true;
                 }else if(a==='repeat'){
                     q=s.history.find(r=>r.id===id)?.question;
                 }else q=[...PRESETS,...s.questions].find(q=>q.id===qid);
-                if(!q)throw Error('找不到这道问题。');return copy(issue(s,q,Date.now(),depth));
+                if(!q)throw Error('找不到这道问题。');return copy(issue(s,q,Date.now(),depth,author));
             });refresh();locate();return;
         }
     }

@@ -190,6 +190,13 @@
      * 三、通用工具
      * ============================================================ */
 
+    const storageKeyForRole = key => key.startsWith('wyd_') && key !== 'wyd_fake_min'
+        ? window.XavierConversations?.homeKey(key) || key : key;
+    const roleStorage = {
+        getItem: key => localStorage.getItem(storageKeyForRole(key)),
+        setItem: (key, value) => localStorage.setItem(storageKeyForRole(key), value),
+        removeItem: key => localStorage.removeItem(storageKeyForRole(key))
+    };
     const STORE_KEY      = 'wyd_data';
     const MOOD_STORE_KEY = 'wyd_mood_data';
 
@@ -202,7 +209,7 @@
     }
 
     function nowMin() {
-        const fake = localStorage.getItem('wyd_fake_min');
+        const fake = roleStorage.getItem('wyd_fake_min');
         if (fake !== null) return parseInt(fake, 10);
         const d = new Date();
         return d.getHours() * 60 + d.getMinutes();
@@ -224,7 +231,7 @@
     }
     function getPartnerName() {
         try {
-            return (typeof settings !== 'undefined' && settings.partnerName) ? settings.partnerName : '梦角';
+            return window.XavierConversations?.homeProfile()?.partnerName || settings.partnerName || '梦角';
         } catch (e) { return '梦角'; }
     }
 
@@ -249,12 +256,12 @@
      * ============================================================ */
 
     function isRevealed(tab) {
-        try { return localStorage.getItem('wyd_revealed_' + tab) === todayStr(); }
+        try { return roleStorage.getItem('wyd_revealed_' + tab) === todayStr(); }
         catch (e) { return false; }
     }
 
     function markRevealed(tab) {
-        try { localStorage.setItem('wyd_revealed_' + tab, todayStr()); }
+        try { roleStorage.setItem('wyd_revealed_' + tab, todayStr()); }
         catch (e) {}
     }
 
@@ -370,7 +377,7 @@
     }
 
     function readDay(key) {
-        try { return JSON.parse(localStorage.getItem(key) || 'null'); }
+        try { return JSON.parse(roleStorage.getItem(key) || 'null'); }
         catch { return null; }
     }
 
@@ -383,8 +390,8 @@
 
     function archiveDay(key, data) {
         try {
-            if (data?.date === todayStr(-1)) localStorage.setItem(key + '_previous', JSON.stringify(data));
-            else if (!yesterday(key)) localStorage.removeItem(key + '_previous');
+            if (data?.date === todayStr(-1)) roleStorage.setItem(key + '_previous', JSON.stringify(data));
+            else if (!yesterday(key)) roleStorage.removeItem(key + '_previous');
         } catch {}
     }
 
@@ -393,7 +400,7 @@
         if (!data || data.date !== todayStr()) {
             archiveDay(STORE_KEY, data);
             data = initToday();
-            try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) {}
+            try { roleStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) {}
 
             // 新增：如果今天有火锅，清掉 where plan（下次打开"在做什么"会重新生成并联动）
             const hasHotpot = ['lunch', 'dinner'].some(k =>
@@ -519,13 +526,13 @@
         if (!data || data.date !== todayStr()) {
             archiveDay(MOOD_STORE_KEY, data);
             data = { date: todayStr(), moods: {} };
-            try { localStorage.setItem(MOOD_STORE_KEY, JSON.stringify(data)); } catch (e) {}
+            try { roleStorage.setItem(MOOD_STORE_KEY, JSON.stringify(data)); } catch (e) {}
         }
         return data;
     }
 
     function saveMoodData(data) {
-        try { localStorage.setItem(MOOD_STORE_KEY, JSON.stringify(data)); } catch (e) {}
+        try { roleStorage.setItem(MOOD_STORE_KEY, JSON.stringify(data)); } catch (e) {}
     }
 
     function ensureMoodForHour(hour) {
@@ -728,7 +735,7 @@
         },
         revealLocation: function () { markRevealed('where'); },
         getToday: function () {
-            try { return JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); }
+            try { return JSON.parse(roleStorage.getItem(STORE_KEY) || 'null'); }
             catch (e) { return null; }
         }
     };

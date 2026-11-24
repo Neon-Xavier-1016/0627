@@ -122,7 +122,9 @@
                 changed = true;
                 return;
             }
-            _createPartnerCard(item.timestamp);
+            const roles = window.XavierConversations?.profiles() || [];
+            const author = roles[Math.floor(Math.random() * roles.length)];
+            _createPartnerCard(item.timestamp, author);
             item.generated = true;
             changed = true;
         });
@@ -135,12 +137,14 @@
         return 'mc_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
     }
 
-    function _createPartnerCard(timestamp) {
+    function _createPartnerCard(timestamp, person) {
         const text = generatePartnerText(CARD_COUNT_MIN, CARD_COUNT_MAX);
         if (!text) return null;
         const card = {
             id: genId(),
             author: 'partner',
+            partnerId: person?.id,
+            partnerName: person?.name || settings.partnerName,
             text,
             createdAt: timestamp,
             editedAt: null,
@@ -158,6 +162,8 @@
 
     function createMyCard(text) {
         if (!text || !text.trim()) return null;
+        const roles = window.XavierConversations?.profiles() || [];
+        const first = roles[0];
         const replyText = generatePartnerText(REPLY_COUNT_MIN, REPLY_COUNT_MAX);
         const delay = Math.random() < LONG_DELAY_PROB
             ? randInt(LONG_DELAY_MIN, LONG_DELAY_MAX)
@@ -171,12 +177,19 @@
             editedAt: null,
             reply: {
                 text: replyText,
+                partnerId: first?.id,
+                partnerName: first?.name || settings.partnerName,
                 createdAt: Date.now() + delay,
                 editedAt: null
             },
             favorited: false,
             read: true
         };
+        card.otherReplies = roles.slice(1).filter(() => Math.random() < 0.65).map(person => ({
+            text: generatePartnerText(REPLY_COUNT_MIN, REPLY_COUNT_MAX),
+            partnerId: person.id, partnerName: person.name,
+            createdAt: Date.now() + randInt(SHORT_DELAY_MIN, SHORT_DELAY_MAX)
+        }));
         const list = getCards();
         list.unshift(card);
         _enforceLimit();
@@ -276,7 +289,7 @@
         const isMine = card.author === 'me';
         const authorLabel = isMine
             ? (typeof settings !== 'undefined' && settings.myName || '我')
-            : (typeof settings !== 'undefined' && settings.partnerName || '梦角');
+            : (card.partnerName || settings.partnerName || '梦角');
         const unread = isUnread(card);
         const replyVisible = isReplyVisible(card);
 
@@ -297,11 +310,15 @@
 
         const replyBlock = (() => {
             if (isMine) {
-                if (!replyVisible) return '';
-                return `
+                const extra = (card.otherReplies || []).filter(reply => reply.text && reply.createdAt <= Date.now()).map(reply =>
+                    '<div class="mc-reply"><div class="mc-reply-header"><span class="mc-reply-author">' +
+                    escapeHtml(reply.partnerName) + '</span><span class="mc-reply-time">' + formatTime(reply.createdAt) +
+                    '</span></div><div class="mc-reply-text">' + escapeHtml(reply.text) + '</div></div>').join('');
+                if (!replyVisible) return extra;
+                return extra + `
                     <div class="mc-reply">
                         <div class="mc-reply-header">
-                            <span class="mc-reply-author">${escapeHtml(settings.partnerName || '梦角')}</span>
+                            <span class="mc-reply-author">${escapeHtml(card.reply.partnerName || settings.partnerName || '梦角')}</span>
                             <span class="mc-reply-time">${formatTime(card.reply.createdAt)}</span>
                             <button class="mc-action-btn" data-act="edit-reply" title="编辑回复" style="margin-left:auto;width:22px;height:22px;font-size:11px;">
                                 <i class="fas fa-pen"></i>

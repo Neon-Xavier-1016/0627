@@ -408,6 +408,10 @@ function showEmojiTab() {
 
     // 点击表情 → 发送
     function sendSticker(src) {
+        if (window.XavierConversations?.sendFromComposer({sender:'user', image:src, type:'sticker', isSticker:true})) {
+            document.getElementById('user-sticker-picker').classList.remove('active');
+            return;
+        }
         const isBatch = (typeof isBatchMode !== 'undefined') && isBatchMode;
         if (isBatch) {
             batchMessages.push({ id: Date.now() + batchMessages.length, text: '', image: src });
@@ -611,9 +615,14 @@ function showPokeTab() {
             btn.style.transform = '';
         });
         btn.onclick = () => {
+            const text = _formatPokeText(`${settings.myName} ${cleanPokeText}`);
+            if (window.XavierConversations?.sendFromComposer({sender: null, type: 'system', text})) {
+                document.getElementById('user-sticker-picker').classList.remove('active');
+                return;
+            }
             addMessage({
                 id: Date.now(),
-                text: _formatPokeText(`${settings.myName} ${cleanPokeText}`),
+                text,
                 timestamp: new Date(),
                 type: 'system'
             });
@@ -1036,7 +1045,7 @@ var statusPool = [
         localStorage.setItem('_dgUserSalt', userSalt);
     }
     var seed = 0;
-    var saltedKey = todayKey + userSalt;
+    var saltedKey = (window.XavierConversations?.homeKey(todayKey) || todayKey) + userSalt;
     for (var si = 0; si < saltedKey.length; si++) seed += saltedKey.charCodeAt(si) * (si + 1);
     function seededRandDg(s, offset) {
         var x = Math.sin(s * 9301 + offset * 49297 + 233) * 1000003;
@@ -1044,7 +1053,7 @@ var statusPool = [
     }
     var defaultWeather = weathers[Math.floor(seededRandDg(seed, 0) * weathers.length)];
     var customWeatherKey = 'customWeather_' + now.getFullYear() + '_' + month + '_' + day;
-    var weather = localStorage.getItem(customWeatherKey) || defaultWeather;
+    var weather = localStorage.getItem(window.XavierConversations?.homeKey(customWeatherKey) || customWeatherKey) || defaultWeather;
 
     // 混合系统预设 + 用户自定义状态池
     var userStatusPool = [];
@@ -1068,11 +1077,11 @@ function _buildDailyGreeting() {
         var now = new Date();
         var todayStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
 
-        var moodDataRaw = window.moodData || {};
-        var todayMood = moodDataRaw[todayStr];
+        checkPartnerDailyMood();
+        var todayMood = moodForHomeRole(todayStr) || {};
         var allMoods = (typeof getAllMoodOptions === 'function') ? getAllMoodOptions() : [];
 
-        var pName = (typeof settings !== 'undefined' && settings.partnerName) ? settings.partnerName : '梦角';
+        var pName = window.XavierConversations?.homeProfile()?.partnerName || settings.partnerName || '梦角';
         var mName = (typeof settings !== 'undefined' && settings.myName) ? settings.myName : '我';
 
         var partnerMoodText = pName + ' 今天还没有记录';
@@ -1101,7 +1110,8 @@ function _buildDailyGreeting() {
         var now2 = new Date();
         var dailySeed = now2.getFullYear() * 10000 + (now2.getMonth()+1) * 100 + now2.getDate();
         function seededRandom(seed) { return (Math.abs(Math.sin(seed * 9301 + 49297) * 233280) % 233280) / 233280; }
-        var todaySeedForText = dailySeed;
+        var roleSalt = window.XavierConversations?.homeKey('') || '';
+        var todaySeedForText = dailySeed + Array.from(roleSalt).reduce((sum, ch, index) => sum + ch.charCodeAt(0) * (index + 1), 0);
 
         var defaultTitles = festival ? [(festival.name + '快乐')] : [timeLabel, '今天也要开心哦', '你在我心里呀', '想你'];
         var defaultNotes = festival ? [festival.note] : ['今天也要元气满满，我在这里陪着你 ✦', '每一天都因为有你而特别 ✦', '想到你就觉得很安心 ✦', '你是我最喜欢的人 ✦'];

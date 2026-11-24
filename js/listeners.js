@@ -1400,6 +1400,7 @@ if (_miEl) _miEl.classList.toggle('active', settings.musicInviteEnabled !== fals
                         renderBackgroundGallery();
                         applyBackground(base64);
                         localforage.setItem(getStorageKey('chatBackground'), base64);
+                        window.XavierConversations?.defaultBackgroundChanged(base64);
                         showNotification('新背景已添加并应用', 'success');
                     };
                     reader.readAsDataURL(file);
@@ -3130,6 +3131,7 @@ playlist.style.top = (rect.top + (player.classList.contains('collapsed') ? 65 : 
 
 
             DOMElements.attachmentBtn.addEventListener('click', () => {
+                const conversationId = window.XavierConversations?.openConversationId();
 
                 const modal = document.createElement('div');
                 modal.className = 'modal image-upload-modal';
@@ -3288,6 +3290,12 @@ playlist.style.top = (rect.top + (player.classList.contains('collapsed') ? 65 : 
                 sendBtn.addEventListener('click',
                     () => {
                         if (currentImageData) {
+                            if (window.XavierConversations?.sendFromComposer(
+                                {sender: 'user', text: '', image: currentImageData, status: 'sent'}, conversationId
+                            )) {
+                                closeModal();
+                                return;
+                            }
 
                             addMessage({
                                 id: Date.now(),
