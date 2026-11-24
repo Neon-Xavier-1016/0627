@@ -488,9 +488,7 @@
    --hs-wallpaper-wash:rgba(var(--primary-bg-rgb),calc(.53 * var(--hs-glass-strength)));
   }
   #hs-home{
-   bottom:0;padding-top:calc(24px + env(safe-area-inset-top,0px));
-   padding-bottom:calc(var(--hs-nav-height) + 32px);
-   touch-action:pan-y pinch-zoom;
+   bottom:0;padding:0;overflow:hidden;
    background:
     linear-gradient(var(--hs-wallpaper-wash),var(--hs-wallpaper-wash)) center / cover no-repeat,
     var(--hs-wallpaper, radial-gradient(ellipse at 6% 7%,rgba(var(--accent-color-rgb),.31),transparent 56%),

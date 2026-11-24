@@ -9,6 +9,40 @@
     let currentType = 'anniversary';
     let activeAnnId = null;
     let anniversariesReady = false;
+    let savingEditor = false;
+
+    function repairDuplicateIds(list) {
+        const usedIds = new Set(list.map(item => String(item.id)));
+        const recordsById = new Map();
+        let nextId = Date.now();
+        return list.flatMap(item => {
+            const id = String(item.id);
+            const signature = JSON.stringify([item.name, item.date, item.type || 'anniversary',
+                item.remindRules || [], item.customMessages || [], item.reminderEnabled !== false]);
+            const records = recordsById.get(id) || new Map();
+            const existing = records.get(signature);
+            if (existing) {
+                existing.pinned ||= item.pinned;
+                return [];
+            }
+            const record = { ...item };
+            if (records.size) {
+                while (usedIds.has(String(nextId))) nextId++;
+                record.id = nextId++;
+                usedIds.add(String(record.id));
+            }
+            records.set(signature, record);
+            recordsById.set(id, records);
+            return [record];
+        });
+    }
+
+    function newAnniversaryId() {
+        const used = new Set(window.anniversaries.map(item => String(item.id)));
+        let id = Date.now();
+        while (used.has(String(id))) id++;
+        return id;
+    }
 
     // ===== 辅助函数 =====
     function escapeHtml(str) {
@@ -493,6 +527,7 @@
 
     // ===== 保存（保留 pinned 字段） =====
     async function saveAnniversary() {
+        if (savingEditor || !anniversariesReady) return;
         const nameInput = document.getElementById('ann-input-name');
         const dateInput = document.getElementById('ann-input-date');
         const name = nameInput ? nameInput.value.trim() : '';
@@ -556,7 +591,7 @@
         }
 
         const newAnn = {
-            id: currentEditId || Date.now(),
+            id: currentEditId || newAnniversaryId(),
             name: name,
             date: date,
             type: type,
@@ -565,6 +600,7 @@
             pinned: pinned
         };
 
+        const previousList = window.anniversaries.map(item => ({ ...item }));
         if (currentEditId) {
             const idx = window.anniversaries.findIndex(a => a.id === currentEditId);
             if (idx !== -1) window.anniversaries[idx] = newAnn;
@@ -572,7 +608,19 @@
             window.anniversaries.push(newAnn);
         }
 
-        await saveAnniversaries();
+        const saveBtn = document.getElementById('save-ann-btn');
+        savingEditor = true;
+        if (saveBtn) saveBtn.disabled = true;
+        try {
+            await saveAnniversaries();
+        } catch {
+            window.anniversaries = previousList;
+            normalizeSelection();
+            return;
+        } finally {
+            savingEditor = false;
+            if (saveBtn) saveBtn.disabled = false;
+        }
         renderList();
         closeEditor();
         if (typeof showNotification === 'function') showNotification('重要日已保存', 'success');
@@ -581,16 +629,30 @@
 
     // ===== 删除 =====
     async function deleteAnniversary(id) {
+        if (savingEditor || !anniversariesReady) return;
+        const index = window.anniversaries.findIndex(item => String(item.id) === String(id));
+        if (index === -1) return;
         if (!confirm('确定要删除这个重要日吗？')) return;
-        window.anniversaries = window.anniversaries.filter(a => a.id !== id);
+        const previousList = window.anniversaries.map(item => ({ ...item }));
+        window.anniversaries.splice(index, 1);
         if (activeAnnId === id) activeAnnId = null;
-        await saveAnniversaries();
+        savingEditor = true;
+        try {
+            await saveAnniversaries();
+        } catch {
+            window.anniversaries = previousList;
+            normalizeSelection();
+            return;
+        } finally {
+            savingEditor = false;
+        }
         renderList();
         if (typeof showNotification === 'function') showNotification('已删除', 'success');
     }
 
     // ===== 置顶切换（新增） =====
     window._togglePin = async function(id) {
+        if (savingEditor) return;
         normalizeSelection(id);await saveAnniversaries();renderList();
         if(typeof showNotification==='function')showNotification('已置顶并选中这个重要日','success');
     };
@@ -748,7 +810,7 @@
                     let stored = await localforage.getItem(getStorageKey('anniversaries'));
                     const migrated=await localforage.getItem(getStorageKey('annV2Migrated'));
                     if(!migrated){const legacy=await localforage.getItem('my_anniversaries');const list=Array.isArray(stored)?stored:[];const ids=new Set(list.map(a=>String(a.id)));for(const a of Array.isArray(legacy)?legacy:[]){if(!ids.has(String(a.id))){list.push(a);ids.add(String(a.id));}}stored=list;}
-                    window.anniversaries=Array.isArray(stored)?stored:[];
+                    window.anniversaries=Array.isArray(stored)?repairDuplicateIds(stored):[];
                     normalizeSelection();await saveAnniversaries();await localforage.setItem(getStorageKey('annV2Migrated'),true);
                     anniversariesReady=true;
                 }

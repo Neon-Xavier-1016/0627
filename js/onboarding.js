@@ -869,17 +869,6 @@ function initAnniversaryModule() {
         };
     }
 
-    const saveBtn = document.getElementById('save-ann-btn');
-    if (saveBtn) {
-        const newSave = saveBtn.cloneNode(true);
-        saveBtn.parentNode.replaceChild(newSave, saveBtn);
-        
-        newSave.addEventListener('click', () => {
-            addAnniversary(); 
-            if (editorSlide) editorSlide.classList.remove('active');
-        });
-    }
-
     const annBgInput = document.getElementById('ann-header-bg-input');
     if (annBgInput) {
         annBgInput.addEventListener('change', async (e) => {

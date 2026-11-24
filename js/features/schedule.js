@@ -29,7 +29,8 @@
         birthday: { glyph: '★', label: '生日' }
     };
 
-    let home, firstScreen, secondScreen, pageDots, inlineCalendar, dialog;
+    let home, track, panes, pageDots, inlineCalendar, dialog;
+    let calendarVisible = false;
     let data = empty();
     let importantDays = [];
     let periods = [];
@@ -143,14 +144,25 @@
         }
     }
 
-    function showScreen(calendar) {
-        if (secondScreen.hidden === !calendar) return;
-        firstScreen.hidden = calendar;
-        secondScreen.hidden = !calendar;
+    function syncScreen() {
+        if (!track.clientWidth) return;
+        const calendar = track.scrollLeft >= track.clientWidth / 2;
+        if (calendar === calendarVisible) return;
+        calendarVisible = calendar;
+        panes[0].inert = calendar;
+        panes[1].inert = !calendar;
         pageDots.querySelector('[data-sc-action="home"]').setAttribute('aria-pressed', String(!calendar));
         pageDots.querySelector('[data-sc-action="open-calendar"]').setAttribute('aria-pressed', String(calendar));
-        home.scrollTop = 0;
         if (calendar) refresh();
+    }
+
+    function showScreen(calendar, animate = true) {
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        track.scrollTo({
+            left: calendar ? track.clientWidth : 0,
+            behavior: animate && !reduceMotion ? 'smooth' : 'instant'
+        });
+        syncScreen();
     }
 
     function openDialog(nextView) {
@@ -439,10 +451,9 @@
 
     function mount(homeNode) {
         home = homeNode;
-        firstScreen = home.querySelector('.hs-content');
-        secondScreen = document.createElement('div');
+        const firstScreen = home.querySelector('.hs-content');
+        const secondScreen = document.createElement('div');
         secondScreen.className = 'hs-content sc-screen';
-        secondScreen.hidden = true;
         secondScreen.innerHTML = `<header class="sc-screen-header"><h2>日历</h2></header>
             <section class="sc-calendar-card" aria-label="月历"><div class="sc-inline-calendar"></div>
             <div class="sc-legend"><span><b class="sc-schedule">●</b> 日程</span><span><b class="sc-anniversary">♥</b> 纪念日</span>
@@ -453,7 +464,18 @@
         pageDots.setAttribute('aria-label', '首页分页');
         pageDots.innerHTML = `<button type="button" data-sc-action="home" aria-label="首页第一屏" aria-pressed="true"></button>
             <button type="button" data-sc-action="open-calendar" aria-label="首页第二屏 · 日历" aria-pressed="false"></button>`;
-        home.append(secondScreen, pageDots);
+        track = document.createElement('div');
+        track.className = 'sc-home-track';
+        panes = [firstScreen, secondScreen].map((screen, index) => {
+            const pane = document.createElement('div');
+            pane.className = 'sc-home-pane';
+            pane.inert = index !== 0;
+            pane.append(screen);
+            track.append(pane);
+            return pane;
+        });
+        home.append(track, pageDots);
+        track.addEventListener('scroll', syncScreen, { passive: true });
         inlineCalendar = secondScreen.querySelector('.sc-inline-calendar');
 
         dialog = document.createElement('dialog');
@@ -468,24 +490,6 @@
             if (event.target.id === 'sc-partner-note') draft.partnerNote = event.target.value;
         });
         dialog.addEventListener('submit', saveCategory);
-
-        let touch;
-        home.addEventListener('touchstart', event => {
-            const point = event.touches[0];
-            touch = event.touches.length === 1 && !event.target.closest('.hs-home-functions')
-                ? { id: point.identifier, x: point.clientX, y: point.clientY } : null;
-        }, { passive: true });
-        home.addEventListener('touchcancel', () => { touch = null; }, { passive: true });
-        home.addEventListener('touchend', event => {
-            const start = touch;
-            touch = null;
-            const point = [...event.changedTouches].find(item => item.identifier === start?.id);
-            if (!point || event.touches.length) return;
-            const dx = point.clientX - start.x;
-            const dy = point.clientY - start.y;
-            if (Math.abs(dx) < Math.max(55, Math.abs(dy) * 1.6)) return;
-            showScreen(dx < 0);
-        }, { passive: true });
 
         const checkDate = () => {
             if (document.hidden) return;
@@ -512,7 +516,7 @@
     window.HomeSchedule = {
         mount,
         showHome() {
-            showScreen(false);
+            showScreen(false, false);
             resetForSession();
             refresh();
         }

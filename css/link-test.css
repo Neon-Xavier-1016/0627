@@ -1,0 +1,135 @@
+.lt-dialog {
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    width: min(calc(100% - 28px), 520px);
+    height: fit-content;
+    max-height: calc(100dvh - 32px);
+    padding: clamp(15px, 5vw, 26px);
+    border: 1px solid var(--border-color);
+    border-radius: 22px;
+    background: var(--secondary-bg);
+    color: var(--text-primary);
+    box-shadow: 0 16px 50px #15102040;
+    overflow: auto;
+    overscroll-behavior: contain;
+    font: inherit;
+}
+
+.lt-dialog::backdrop { background: #17172180; backdrop-filter: blur(5px); }
+.lt-dialog h2 { font-size: 21px; }
+.lt-dialog h3 { font-size: 15px; }
+.lt-dialog h2:focus { outline: none; }
+
+.lt-header, .lt-section-heading, .lt-list-item, .lt-row, .lt-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.lt-header, .lt-section-heading, .lt-list-item { justify-content: space-between; }
+.lt-header { margin-bottom: 13px; }
+.lt-row, .lt-section-heading { flex-wrap: wrap; }
+
+.lt-close, .lt-option-remove, .lt-list-item button {
+    padding: 5px 9px;
+    border: 0;
+    border-radius: 9px;
+    background: var(--primary-bg);
+    color: var(--text-primary);
+    font: inherit;
+    cursor: pointer;
+}
+
+.lt-close, .lt-option-remove { font: 22px/1 system-ui, sans-serif; }
+.lt-close { min-width: 34px; min-height: 34px; }
+.lt-list-item button { font-size: 12px; }
+.lt-dialog .modal-btn { flex: 0 0 auto; font-size: 13px; padding: 8px 10px; }
+.lt-dialog button:disabled { opacity: .4; cursor: default; }
+.lt-dialog :focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
+
+.lt-summary {
+    display: grid;
+    gap: 8px;
+    padding: 15px;
+    border-radius: 15px;
+    background: rgba(var(--accent-color-rgb), .13);
+    overflow-wrap: anywhere;
+}
+
+.lt-last-score b { color: var(--text-primary); }
+.lt-muted, .lt-section h3 small { color: var(--text-secondary); font-size: 12px; }
+.lt-dialog:has(.lt-overview) { background: var(--primary-bg); }
+.lt-overview { display: grid; gap: 12px; }
+.lt-card {
+    min-width: 0;
+    padding: 14px 15px;
+    background: var(--secondary-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 15px;
+}
+.lt-connection { display: grid; gap: 8px; overflow-wrap: anywhere; }
+.lt-connection h3 { font-weight: 400; }
+.lt-connection h3 strong { font-weight: 700; }
+.lt-connection-result { display: flex; align-items: center; gap: 13px; }
+.lt-connection-result > b { flex-shrink: 0; color: var(--accent-color); font-size: 27px; font-variant-numeric: tabular-nums; }
+.lt-connection-result p { margin-top: 2px; }
+.lt-more-toggle {
+    display: block;
+    width: 100%;
+    padding: 10px 4px 2px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+.lt-more-toggle::before { content: '▾'; margin-inline-end: 5px; }
+.lt-more-toggle[aria-expanded="true"]::before { content: '▴'; }
+.lt-section > .lt-muted { margin-top: 6px; }
+.lt-list-item, .lt-review { padding: 9px 0; border-bottom: 1px solid var(--border-color); }
+.lt-list-item > div:first-child { min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
+.lt-list-item .lt-row { flex-shrink: 0; }
+.lt-list-item p, .lt-review p { margin-top: 3px; }
+.lt-field { display: grid; gap: 5px; margin-bottom: 8px; }
+
+.lt-dialog input[type="text"], .lt-dialog textarea, .lt-dialog select {
+    min-width: 0;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 9px;
+    background: var(--primary-bg);
+    color: var(--text-primary);
+    font: inherit;
+}
+
+.lt-dialog textarea { resize: vertical; }
+.lt-dialog input[type="radio"], .lt-dialog progress { accent-color: var(--accent-color); }
+.lt-dialog progress { display: block; width: 100%; margin: 5px 0 12px; }
+.lt-options { display: grid; gap: 6px; margin: 8px 0; }
+.lt-option-row { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 7px; }
+.lt-option-row input[type="radio"] { width: 17px; height: 17px; }
+.lt-actions { justify-content: flex-end; flex-wrap: wrap; margin-top: 13px; }
+.lt-feedback { color: var(--text-secondary); margin-top: 8px; font-size: 13px; }
+.lt-feedback:empty { display: none; }
+.lt-question, .lt-review { overflow-wrap: anywhere; }
+.lt-answers { display: grid; gap: 6px; padding: 0; margin: 9px 0; list-style: none; }
+.lt-answers li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 9px; overflow-wrap: anywhere; }
+.lt-answers li.lt-chosen {
+    background: rgba(var(--accent-color-rgb), .15);
+    border-color: var(--accent-color);
+    animation: lt-reveal .35s ease-out;
+}
+@keyframes lt-reveal {
+    from { transform: scale(.97); background: transparent; border-color: var(--border-color); }
+    to { transform: scale(1); background: rgba(var(--accent-color-rgb), .15); border-color: var(--accent-color); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .lt-answers li.lt-chosen { animation: none; }
+}
+.lt-answers small { flex-shrink: 0; }
+.lt-dialog #lt-partner { max-width: 100%; }
+.lt-result { text-align: center; }
+.lt-result > strong { font-size: 31px; font-variant-numeric: tabular-nums; }

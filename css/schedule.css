@@ -1,5 +1,27 @@
-.sc-screen[hidden] {
-    display: none;
+.sc-home-track {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+}
+
+.sc-home-track::-webkit-scrollbar { display: none; }
+
+.sc-home-pane {
+    flex: 0 0 100%;
+    min-width: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scroll-snap-align: start;
+    padding: calc(24px + env(safe-area-inset-top, 0px)) 20px calc(var(--hs-nav-height, 65px) + 32px);
+}
+
+@media (max-width: 360px) {
+    .sc-home-pane { padding-inline: 13px; }
 }
 
 #hs-home #hs-apps {
