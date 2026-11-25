@@ -575,6 +575,7 @@ function isChangeTabActive() {
 }
 
 function renderChangeButtons(area) {
+  area.removeAttribute('style');
   area.innerHTML = '';
   area.style.display = 'flex';
   area.style.flexDirection = 'column';

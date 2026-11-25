@@ -1,4 +1,18 @@
 .xv-page { padding-top: max(18px, env(safe-area-inset-top)); }
+html:has(> body.hs-enabled[data-hs-page="messages"]),
+body.hs-enabled[data-hs-page="messages"],
+#xv-messages {
+    --xv-message-gutter: 20px;
+    --xv-content-edge: max(var(--xv-message-gutter), calc((100% - 650px) / 2));
+    padding-inline: 0;
+    overscroll-behavior-y: none;
+}
+@media (max-width: 360px) {
+    #xv-messages { --xv-message-gutter: 13px; }
+}
+#xv-messages > .hs-content { max-width: none; }
+#xv-messages .xv-top { margin-inline: var(--xv-content-edge); }
+body.hs-enabled[data-hs-page="messages"]::before { display: none; }
 body.hs-enabled[data-hs-page=messages] > .header,
 body.hs-enabled[data-hs-page=messages] > .main-chat-area { display: none !important; }
 .xv-top { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 12px; min-height: 54px; background: var(--primary-bg); }
@@ -17,7 +31,21 @@ body.hs-enabled[data-hs-page=messages] > .main-chat-area { display: none !import
 .xv-menu[hidden], .xv-page [hidden] { display: none; }
 .xv-list { display: grid; gap: 8px; margin-top: 12px; }
 .xv-row { width: 100%; min-width: 0; min-height: 70px; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 16px; background: var(--secondary-bg); color: var(--text-primary); text-align: left; font: inherit; cursor: pointer; }
-.xv-row[data-pinned] { border-color: var(--accent-color); }
+#xv-messages .xv-list { gap: 0; }
+#xv-messages .xv-row {
+    border: 0;
+    border-radius: 0;
+    padding-inline: calc(var(--xv-content-edge) + 12px);
+}
+#xv-messages .xv-row + .xv-row { border-top: 1px solid var(--border-color); }
+#xv-messages .xv-row:focus-visible { outline-offset: -2px; }
+#xv-messages .xv-row[data-pinned] { background: #f3f3f4; }
+html[data-theme="dark"] #xv-messages .xv-row[data-pinned] { background: #303033; }
+.xv-row-avatar { position: relative; flex: 0 0 44px; }
+.xv-row-avatar .xv-unread {
+    position: absolute; top: -4px; right: -5px; display: grid; place-items: center;
+    min-width: 17px; height: 17px; padding: 0 4px; line-height: 1;
+}
 .xv-copy { flex: 1; min-width: 0; display: grid; gap: 4px; }
 .xv-copy > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .xv-row small, .xv-hint, .xv-meta { color: var(--text-secondary); font-size: .82rem; }
@@ -72,3 +100,5 @@ body[data-xv-thread] .header .user-info:has(> #partner-avatar-container), body[d
 html[data-theme="dark"] body.with-background #xv-thread .message-meta { color: #e9e9e9; opacity: 1; text-shadow: 0 1px 3px #000; }
 #xv-thread .group-sender-name { color: var(--text-secondary); font-weight: 400; }
 body[data-xv-thread=group] #chat-media-panel > :not(#attachment-btn) { display: none !important; }
+body[data-xv-thread=group] #user-sticker-picker .combo-tab-btn:not([data-tab="my-sticker"]),
+body[data-xv-thread=group] #user-sticker-picker button[title="管理表情库"] { display: none !important; }

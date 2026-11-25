@@ -364,6 +364,15 @@
     };
 })();
 
+function sendPokeAction(text, delay) {
+    const message = { sender: null, type: 'system', text: _formatPokeText(text) };
+    if (window.XavierConversations?.sendFromComposer(message)) return;
+    addMessage({ id: Date.now(), timestamp: new Date(), ...message });
+    if (typeof playSound === 'function') playSound('poke');
+    const delayRange = settings.replyDelayMax - settings.replyDelayMin;
+    setTimeout(simulateReply, delay ?? (settings.replyDelayMin + Math.random() * delayRange));
+}
+
 function renderComboMenu() {
     const area = document.getElementById('combo-content-area');
     if (!area) {
@@ -374,7 +383,7 @@ function renderComboMenu() {
     area.innerHTML = '';
 
     const activeBtn = document.querySelector('.combo-tab-btn.active');
-    const tabName = activeBtn ? activeBtn.dataset.tab : 'my-sticker';
+    const tabName = document.body.dataset.xvThread === 'group' ? 'my-sticker' : (activeBtn?.dataset.tab || 'my-sticker');
 
     if (tabName === 'poke') {
         if (typeof showPokeTab === 'function') showPokeTab();
@@ -391,6 +400,7 @@ function showEmojiTab() {
     }
 
     // ── 用 flex 布局替代 grid，更稳 ──
+    area.removeAttribute('style');
     area.innerHTML = '';
     area.style.display = 'flex';
     area.style.flexWrap = 'wrap';
@@ -401,7 +411,7 @@ function showEmojiTab() {
     area.style.alignContent = 'flex-start';
 
     const activeBtn = document.querySelector('.combo-tab-btn.active');
-    const tabName = activeBtn ? activeBtn.dataset.tab : 'my-sticker';
+    const tabName = document.body.dataset.xvThread === 'group' ? 'my-sticker' : (activeBtn?.dataset.tab || 'my-sticker');
 
     // 统一尺寸，5 个一行
     const ITEM_SIZE = '52px';
@@ -525,6 +535,7 @@ function showPokeTab() {
     if (!area) return;
 
     // 基础布局
+    area.removeAttribute('style');
     area.innerHTML = '';
     area.style.display = 'flex';
     area.style.flexDirection = 'column';
@@ -615,21 +626,8 @@ function showPokeTab() {
             btn.style.transform = '';
         });
         btn.onclick = () => {
-            const text = _formatPokeText(`${settings.myName} ${cleanPokeText}`);
-            if (window.XavierConversations?.sendFromComposer({sender: null, type: 'system', text})) {
-                document.getElementById('user-sticker-picker').classList.remove('active');
-                return;
-            }
-            addMessage({
-                id: Date.now(),
-                text,
-                timestamp: new Date(),
-                type: 'system'
-            });
+            sendPokeAction(`${settings.myName} ${cleanPokeText}`);
             document.getElementById('user-sticker-picker').classList.remove('active');
-            const delayRange = settings.replyDelayMax - settings.replyDelayMin;
-            const randomDelay = settings.replyDelayMin + Math.random() * delayRange;
-            setTimeout(simulateReply, randomDelay);
         };
         area.appendChild(btn);
     });

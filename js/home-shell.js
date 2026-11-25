@@ -51,9 +51,13 @@
   activeNote?.remove();activeNote=null;
  }
  function clearNotes(){noteQueue.length=0;removeNote();}
- function read(){unread=[];config.lastRead=Date.now();save().catch(console.warn);badges();}
+ function setUnread(entries=[]){unread=entries.map(m=>String(m.id));config.lastRead=Date.now();save().catch(console.warn);badges();}
+ function read(){setUnread();}
  function badges(){
-  for(const id of ['hs-chat-badge','hs-preview-badge']){const n=$(id);if(n){n.textContent=unread.length>99?'99+':unread.length;n.hidden=!unread.length;}}
+  const total=unread.length+(window.XavierConversations?.otherUnreadCount?.()||0);
+  for(const [id,count] of [['hs-chat-badge',total],['hs-preview-badge',unread.length]]){
+   const n=$(id);if(n){n.textContent=count>99?'99+':count;n.hidden=!count;}
+  }
   if($('hs-new-messages'))$('hs-new-messages').hidden=!(page==='chat'&&unread.length);
  }
  function navigate(next){
@@ -69,7 +73,7 @@
   update();badges();showNote();
   if(next==='chat'&&!window.XavierConversations?.isViewingAdditionalConversation()){
    scrollLatest();
-   if(bottom()&&!document.hidden&&!modalOpen())read();
+   if(!document.hidden&&!modalOpen())read();
   }
  }
  const settingPages={'custom-replies-modal':'自定义回复','chat-modal':'聊天设置','appearance-modal':'外观设置','data-modal':'数据管理','session-modal':'会话管理','hs-chat-display':'聊天选项','xv-manage':'会话管理','xv-conversation-settings':'会话设置','xv-create-role':'创建角色','xv-add-members':'选择群成员'};
@@ -262,7 +266,8 @@
  }
  function onMessage(m,atBottom=bottom()){
   if(!ready){if(incoming(m))earlyMessages.push(m);return;}update();if(!incoming(m))return;
-  noteQueue.push(messageNotice(m));showNote();
+  const note=messageNotice(m);
+  if(!isViewingNotice(note.id)){noteQueue.push(note);showNote();}
   const wasVisible=page==='chat'&&atBottom&&!document.hidden&&!modalOpen()&&!window.XavierConversations?.isViewingAdditionalConversation();
   if(wasVisible){read();return;}
   const id=String(m.id);
@@ -278,13 +283,25 @@
   return {name:member?.name||profile().partnerName||'Ta',avatar:src,text:m.image?'[图片]':m.type==='voice'?'[语音]':m.text};
  }
  function onConversationMessage(m,descriptor){
-  if(!incoming(m))return;
+  if(!incoming(m)||isViewingNotice(descriptor.id))return;
   noteQueue.push(descriptor);showNote();
  }
+ function isViewingNotice(id){
+  if(page!=='chat'||document.hidden)return false;
+  const conversations=window.XavierConversations;
+  const primary=conversations?.primaryId()||'';
+  const active=conversations?.openConversationId()||primary;
+  return (id||primary)===active;
+ }
  function showNote(){
-  if(!ready||activeNote||!noteQueue.length||document.hidden)return;
+  if(!ready||document.hidden)return;
+  if(activeNote&&isViewingNotice(activeNote.dataset.conversationId))removeNote();
+  if(activeNote)return;
+  while(noteQueue.length&&isViewingNotice(noteQueue[0]?.id))noteQueue.shift();
+  if(!noteQueue.length)return;
   const {id,name,avatar:src,text}=noteQueue.shift();
   const b=document.createElement('button');b.id='hs-banner';b.type='button';b.setAttribute('aria-label','查看新消息');
+  b.dataset.conversationId=id||'';
   b.innerHTML=`<span class="hs-notice-avatar" aria-hidden="true"></span><span><strong>${esc(name)}</strong><span class="hs-note-text">${esc(String(text||'发来了一条消息').slice(0,70))}</span></span><small>查看 →</small>`;
   const icon=b.querySelector('.hs-notice-avatar');
   avatar(icon,src||'');
@@ -685,7 +702,8 @@
   ready=true;document.body.classList.add('hs-enabled');navigate('home');
   document.documentElement.removeAttribute('data-hs-boot');
  }
- window.HomeShell={navigate,routeModal,onMessage,onConversationMessage,openChatDisplay,refresh:update,isChat:()=>!ready||page==='chat'};
+ window.HomeShell={navigate,routeModal,onMessage,onConversationMessage,openChatDisplay,refresh:update,isChat:()=>!ready||page==='chat',
+  isIncoming:incoming,nativeUnreadCount:()=>unread.length,refreshUnread:badges,setNativeUnread:setUnread};
  let booting=false;
  async function tryBoot(){
   if(ready||booting||typeof SESSION_ID==='undefined'||!SESSION_ID)return;

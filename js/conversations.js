@@ -21,6 +21,8 @@
     const name = item => item?.members ? item.name : (isPrimary(item?.id) ? settings.partnerName : item?.name) || '梦角';
     const avatar = item => isPrimary(item?.id) ? settings.partnerAvatar || DOMElements.partner.avatar.querySelector('img')?.getAttribute('src') || '' : item?.avatar || '';
     const history = item => isPrimary(item.id) ? messages : item.messages;
+    const storedUnread = item => Number.isSafeInteger(item.unread) && item.unread > 0 ? item.unread : 0;
+    const unreadCount = item => isPrimary(item.id) ? (window.HomeShell?.nativeUnreadCount?.() || 0) : storedUnread(item);
     const bg = item => item?.background || defaultBackground;
     const notice = (message, type = 'info') => showNotification(message, type);
     const fail = error => { console.error('[消息]', error); notice('操作未完成，请重试。', 'error'); };
@@ -94,6 +96,7 @@
         document.body.append(page);
         screen = el('div', 'hs-content');
         page.append(screen);
+        document.addEventListener('visibilitychange', markActiveRead);
         page.addEventListener('pointerdown', event => {
             if (event.target.closest('.xv-menu, .xv-create-toggle')) return;
             const menu = page.querySelector('.xv-menu');
@@ -263,7 +266,16 @@
             if (item.pinned) row.dataset.pinned = '';
             const copy = el('span', 'xv-copy');
             copy.append(el('strong', '', name(item)), el('small', '', preview(item, last)));
-            row.append(imageBadge(item), copy, el('small', '', time(last?.timestamp)));
+            const portrait = el('span', 'xv-row-avatar');
+            portrait.append(imageBadge(item));
+            const count = unreadCount(item);
+            if (count) {
+                const badge = el('span', 'hs-badge xv-unread', count > 99 ? '99+' : count);
+                badge.setAttribute('role', 'img');
+                badge.setAttribute('aria-label', count + ' 条未读消息');
+                portrait.append(badge);
+            }
+            row.append(portrait, copy, el('small', '', time(last?.timestamp)));
             list.append(row);
         }
         screen.append(list);
@@ -354,6 +366,7 @@
             renderTitle(item);
             renderThread();
             scrollThreadToEnd();
+            markActiveRead();
         }
         applyThreadBackground();
     }
@@ -425,10 +438,23 @@
         thread.scrollTo({top: thread.scrollHeight, behavior: 'instant'});
     }
 
+    function markActiveRead() {
+        const item = conversation(active);
+        if (document.hidden || document.body.dataset.hsPage !== 'chat' || !item || isPrimary(item.id) || !storedUnread(item)) return;
+        item.unread = 0;
+        window.HomeShell?.refreshUnread?.();
+        persist().catch(fail);
+    }
+
     async function append(item, message) {
         if (conversation(item.id) !== item) return;
         const entry = {id: uid(), timestamp: new Date().toISOString(), type: 'normal', ...message};
         item.messages.push(entry);
+        const shown = active === item.id && document.body.dataset.hsPage === 'chat' && !document.hidden;
+        if (!shown && window.HomeShell?.isIncoming?.(entry)) {
+            item.unread = storedUnread(item) + 1;
+            window.HomeShell.refreshUnread?.();
+        }
         window.HomeShell?.onConversationMessage?.(entry, describeMessage(entry, item));
         if (active === item.id) renderThread();
         if (listVisible && listScreen) renderList();
@@ -675,11 +701,14 @@
                 window._pendingReplyTimer = null;
                 window.cancelPartnerReply?.();
                 messages = [];
+                window.HomeShell?.setNativeUnread?.();
                 displayedMessageCount = HISTORY_BATCH_SIZE;
                 renderMessages();
                 await saveData();
             } else {
                 item.messages = [];
+                item.unread = 0;
+                window.HomeShell?.refreshUnread?.();
                 await persist();
                 renderThread();
             }
@@ -710,6 +739,7 @@
         stop(id);
         drafts.delete(id);
         data.groups = data.groups.filter(item => item.id !== id);
+        window.HomeShell?.refreshUnread?.();
     }
 
     function openManager() {
@@ -761,11 +791,15 @@
         if (promote) {
             const next = primary();
             messages = next.messages || [];
+            const count = storedUnread(next);
+            window.HomeShell?.setNativeUnread?.(count ? messages.filter(window.HomeShell.isIncoming).slice(-count) : []);
+            delete next.unread;
             displayedMessageCount = HISTORY_BATCH_SIZE;
             await updatePrimary(next.name, next.avatar || '');
             delete next.messages;
         }
         drafts.delete(item.id);
+        window.HomeShell?.refreshUnread?.();
         await persist();
         show('settings');
         window.HomeShell.refresh();
@@ -835,6 +869,10 @@
         homeKey: value => current()?.id && current().id !== SESSION_ID ? value + ':' + current().id : value,
         defaultBackgroundChanged: value => { defaultBackground = value; applyThreadBackground(); },
         onNativeMessage: () => { if (listVisible && listScreen) renderList(); },
+        otherUnreadCount: () => {
+            if (!data) return 0;
+            return [...data.roles.slice(1), ...data.groups].reduce((sum, item) => sum + storedUnread(item), 0);
+        },
         describeMessage,
         openById: id => { const item = conversation(id); if (!item) return false; openThread(item); return true; },
         isViewingAdditionalConversation: () => Boolean(active && !isPrimary(active)),

@@ -247,16 +247,15 @@ if (target.classList.contains('delete-btn')) {
                 DOMElements.editModal.save.disabled = !DOMElements.editModal.input.value.trim();
             });
             DOMElements.pokeModal.save.addEventListener('click', () => {
-                let pokeText = DOMElements.pokeModal.input.value.trim() || `${settings.myName} 拍了拍 ${settings.partnerName}`;
+                const conversations = window.XavierConversations;
+                const target = conversations?.profile(conversations.openConversationId())?.name || settings.partnerName;
+                let pokeText = DOMElements.pokeModal.input.value.trim() || `${settings.myName} 拍了拍 ${target}`;
                 if (typeof window._sanitizePokeTextForDisplay === 'function') {
                     pokeText = window._sanitizePokeTextForDisplay(pokeText);
                 }
                 const pokeSaveChecked = document.getElementById('poke-save-to-library');
                 const shouldSaveToLibrary = pokeSaveChecked ? !!pokeSaveChecked.checked : false;
-                addMessage({
-                    id: Date.now(), text: _formatPokeText(pokeText), timestamp: new Date(), type: 'system'
-                });
-                if (typeof playSound === 'function') playSound('poke');
+                sendPokeAction(pokeText);
 
                 if (shouldSaveToLibrary) {
                     try {
@@ -273,9 +272,6 @@ if (target.classList.contains('delete-btn')) {
                 }
                 hideModal(DOMElements.pokeModal.modal);
                 DOMElements.pokeModal.input.value = '';
-                const delayRange = settings.replyDelayMax - settings.replyDelayMin;
-                const randomDelay = settings.replyDelayMin + Math.random() * delayRange;
-                setTimeout(simulateReply, randomDelay);
             });
 
 

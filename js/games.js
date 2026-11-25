@@ -1214,7 +1214,7 @@ function initComboMenu() {
     const picker = document.getElementById('user-sticker-picker');
     const contentArea = document.getElementById('combo-content-area');
     
-    if (!comboBtn || !picker) return;
+    if (!comboBtn || !picker || !contentArea) return;
     
     if (comboBtn.dataset.initialized) return;
     
@@ -1253,6 +1253,9 @@ function initComboMenu() {
     }
 
     function switchTab(tabId) {
+        if (document.body.dataset.xvThread === 'group') tabId = 'my-sticker';
+        contentArea.removeAttribute('style');
+        contentArea.scrollTop = 0;
         tabs.forEach(b => b.classList.remove('active'));
         const activeBtn = Array.from(tabs).find(b => b.dataset.tab === tabId);
         if (activeBtn) activeBtn.classList.add('active');
@@ -1285,6 +1288,16 @@ function initComboMenu() {
         return item;
     }
 
+    function sendSticker(src) {
+        picker.classList.remove('active');
+        const message = { sender: 'user', text: '', image: src, status: 'sent', type: 'normal' };
+        if (window.XavierConversations?.sendFromComposer(message)) return;
+        addMessage({ id: Date.now(), timestamp: new Date(), ...message });
+        playSound('send');
+        const delayRange = settings.replyDelayMax - settings.replyDelayMin;
+        setTimeout(simulateReply, settings.replyDelayMin + Math.random() * delayRange);
+    }
+
     function renderMyStickerLibrary() {
         contentArea.innerHTML = '';
         if (!myStickerLibrary || myStickerLibrary.length === 0) {
@@ -1300,13 +1313,7 @@ function initComboMenu() {
         const grid = document.createElement('div');
         grid.className = 'sticker-grid-view';
         myStickerLibrary.forEach((src, idx) => {
-            const item = makeDeletableStickerItem(src, () => {
-                addMessage({ id: Date.now(), sender: 'user', text: '', timestamp: new Date(), image: src, status: 'sent', type: 'normal' });
-                playSound('send');
-                picker.classList.remove('active');
-                const delayRange = settings.replyDelayMax - settings.replyDelayMin;
-                setTimeout(simulateReply, settings.replyDelayMin + Math.random() * delayRange);
-            }, () => {
+            const item = makeDeletableStickerItem(src, () => sendSticker(src), () => {
                 myStickerLibrary.splice(idx, 1);
                 localforage.setItem(getStorageKey('myStickerLibrary'), myStickerLibrary);
                 showNotification('✓ 已删除', 'success');
@@ -1333,13 +1340,7 @@ function initComboMenu() {
         const grid = document.createElement('div');
         grid.className = 'sticker-grid-view';
         availableStickers.forEach(src => {
-            const item = makeStickerItem(src, () => {
-                addMessage({ id: Date.now(), sender: 'user', text: '', timestamp: new Date(), image: src, status: 'sent', type: 'normal' });
-                playSound('send');
-                picker.classList.remove('active');
-                const delayRange = settings.replyDelayMax - settings.replyDelayMin;
-                setTimeout(simulateReply, settings.replyDelayMin + Math.random() * delayRange);
-            });
+            const item = makeStickerItem(src, () => sendSticker(src));
             grid.appendChild(item);
         });
         contentArea.appendChild(grid);
@@ -1384,15 +1385,8 @@ function initComboMenu() {
             item.innerText = text;
             item.onclick = (e) => {
                 e.stopPropagation();
-                addMessage({
-                    id: Date.now(),
-                    text: _formatPokeText(`${settings.myName} ${text}`), 
-                    timestamp: new Date(),
-                    type: 'system' 
-                });
+                sendPokeAction(`${settings.myName} ${text}`, 1500);
                 picker.classList.remove('active');
-                
-                setTimeout(simulateReply, 1500);
             };
             wrapper.appendChild(item);
         });
