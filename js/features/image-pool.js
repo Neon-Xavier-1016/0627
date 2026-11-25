@@ -225,8 +225,11 @@ function renderAvatarPool(container, target, list) {
       const img = document.createElement('img');
       img.dataset.ipHash = hash;
       img.alt = '';
+      img.draggable = false;
       select.appendChild(img);
       let lastTap = null;
+      let touchStart = null;
+      let lastTouchEnd = -Infinity;
       const apply = () => {
         if (!img.hasAttribute('src')) return;
         const value = img.getAttribute('src');
@@ -235,15 +238,31 @@ function renderAvatarPool(container, target, list) {
         applyChange('avatar', target === 'partner' ? 'partner' : 'me', value, roleId);
         toast('头像已更换');
       };
-      select.addEventListener('dblclick', apply);
-      select.addEventListener('click', event => {
-        if (event.detail === 0) { apply(); return; }
-        if (event.pointerType !== 'touch' && !event.sourceCapabilities?.firesTouchEvents) return;
-        const { clientX: x, clientY: y, timeStamp: time } = event;
-        if (lastTap && time - lastTap.time < 350 && Math.hypot(x - lastTap.x, y - lastTap.y) < 28) {
+      select.addEventListener('touchstart', event => {
+        touchStart = event.touches.length === 1 ? event.changedTouches[0] : null;
+        if (!touchStart) lastTap = null;
+      }, { passive: true });
+      select.addEventListener('touchcancel', () => { touchStart = lastTap = null; }, { passive: true });
+      select.addEventListener('touchend', event => {
+        lastTouchEnd = event.timeStamp;
+        const start = touchStart;
+        touchStart = null;
+        const end = Array.from(event.changedTouches).find(touch => touch.identifier === start?.identifier);
+        if (!end || event.touches.length || Math.hypot(end.clientX - start.clientX, end.clientY - start.clientY) > 14) {
+          lastTap = null;
+          return;
+        }
+        const tap = { x: end.clientX, y: end.clientY, time: event.timeStamp };
+        if (lastTap && tap.time - lastTap.time <= 500 && Math.hypot(tap.x - lastTap.x, tap.y - lastTap.y) <= 30) {
           lastTap = null;
           apply();
-        } else lastTap = { x, y, time };
+        } else lastTap = tap;
+      }, { passive: true });
+      select.addEventListener('dblclick', event => {
+        if (event.timeStamp - lastTouchEnd > 650) apply();
+      });
+      select.addEventListener('click', event => {
+        if (event.detail === 0 && event.timeStamp - lastTouchEnd > 650) apply();
       });
       cell.appendChild(select);
       const del = document.createElement('button');
