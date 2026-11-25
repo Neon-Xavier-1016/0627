@@ -156,7 +156,7 @@ function loadMoreHistory() {
                 nextStatusChange: 1 + Math.random() * 7,
                 fontSize: 16,
                 bubbleStyle: 'standard',
-                messageFontFamily: "'Noto Serif SC', serif",
+                messageFontFamily: DEFAULT_MESSAGE_FONT_FAMILY,
                 messageFontWeight: 400,
                 messageLineHeight: 1.5,
                 musicPlayerEnabled: false,
@@ -883,7 +883,7 @@ function manageAutoSendTimer() {
             if (typeof window.updateDynamicNames === 'function') window.updateDynamicNames();
             document.documentElement.style.setProperty('--font-size', `${settings.fontSize}px`);
             
-            const fontToUse = settings.messageFontFamily || "'Noto Serif SC', serif";
+            const fontToUse = settings.messageFontFamily || DEFAULT_MESSAGE_FONT_FAMILY;
             
             document.documentElement.style.setProperty('--message-font-family', fontToUse);
             document.documentElement.style.setProperty('--font-family', fontToUse);

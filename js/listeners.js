@@ -667,54 +667,33 @@ if (_miEl) _miEl.classList.toggle('active', settings.musicInviteEnabled !== fals
             });
 
             const fontUrlInput = document.getElementById('custom-font-url');
-            const applyFontBtn = document.getElementById('apply-font-btn');
-            
-            if (fontUrlInput) fontUrlInput.value = settings.customFontUrl || "";
+            if (fontUrlInput) fontUrlInput.value = settings.customFontUrl || '';
 
-            if (applyFontBtn) {
-                applyFontBtn.addEventListener('click', () => {
-                    const url = fontUrlInput.value.trim();
-                    settings.customFontUrl = url;
-                    
-                    showNotification('正在尝试加载字体...', 'info', 1000);
-                    applyCustomFont(url).then(() => {
-                        throttledSaveData();
-                        if(url) showNotification('字体已应用', 'success');
-                        else showNotification('已恢复默认字体', 'success');
-                    });
-                });
+            async function saveFontPreference(url, fallback, successMessage) {
+                if (url) showNotification('正在尝试加载字体…', 'info', 1000);
+                if (!await applyCustomFont(url, fallback)) return;
+                if (!url && fontUrlInput) fontUrlInput.value = '';
+                renderMessages(true);
+                try {
+                    await saveData();
+                    showNotification(successMessage, 'success');
+                } catch (error) {
+                    console.error('字体设置保存失败:', error);
+                    showNotification('字体设置保存失败，请重试', 'error');
+                }
             }
 
-            
-            const followSystemBtn = document.getElementById('follow-system-font-btn');
-            if (followSystemBtn) {
-                followSystemBtn.addEventListener('click', () => {
-                    
-                    const systemFontStack = 'system-ui, -apple-system, sans-serif';
-                    
-                    
-                    if (fontUrlInput) fontUrlInput.value = "";
-                    
-                    
-                    settings.customFontUrl = "";
-                    
-                    
-                    settings.messageFontFamily = systemFontStack;
-                    
-                    
-                    document.documentElement.style.setProperty('--font-family', systemFontStack);
-                    document.documentElement.style.setProperty('--message-font-family', systemFontStack);
-                    
-                    
-                    throttledSaveData();
-                    
-                    
-                    renderMessages(true);
-                    
-                    showNotification('已应用跟随系统字体', 'success');
-                });
-            }
-            
+            document.getElementById('apply-font-btn')?.addEventListener('click', () => {
+                const url = fontUrlInput?.value.trim() || '';
+                saveFontPreference(url, DEFAULT_MESSAGE_FONT_FAMILY, url ? '字体已应用' : '已恢复默认字体');
+            });
+            document.getElementById('reset-font-btn')?.addEventListener('click', () => {
+                saveFontPreference('', DEFAULT_MESSAGE_FONT_FAMILY, '已恢复默认字体');
+            });
+            document.getElementById('follow-system-font-btn')?.addEventListener('click', () => {
+                saveFontPreference('', SYSTEM_MESSAGE_FONT_FAMILY, '已应用跟随系统字体');
+            });
+
             const cssTextarea = document.getElementById('custom-bubble-css');
             const applyCssBtn = document.getElementById('apply-css-btn');
             const resetCssBtn = document.getElementById('reset-css-btn');

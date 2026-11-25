@@ -294,25 +294,39 @@ function deduplicateContentArray(arr, baseSystemArray = []) {
             }, 500);
         };
 
-async function applyCustomFont(url) {
-    if (!url || !url.trim()) {
-        document.documentElement.style.removeProperty('--font-family');
-        document.documentElement.style.removeProperty('--message-font-family');
-        return;
+const DEFAULT_MESSAGE_FONT_FAMILY = "'Noto Serif SC', serif";
+const SYSTEM_MESSAGE_FONT_FAMILY = 'system-ui, -apple-system, sans-serif';
+let fontRequestVersion = 0;
+let activeCustomFont;
+
+async function applyCustomFont(url, fallback = DEFAULT_MESSAGE_FONT_FAMILY) {
+    const requestVersion = ++fontRequestVersion;
+    const source = (url || '').trim();
+    let font = null;
+    let fontStack = fallback;
+    if (source) {
+        try {
+            font = await new FontFace('UserCustomFont', `url(${source})`).load();
+        } catch (error) {
+            if (requestVersion === fontRequestVersion) {
+                console.error('字体加载失败:', error);
+                showNotification('字体加载失败，请检查链接是否有效', 'error');
+            }
+            return false;
+        }
+        if (requestVersion !== fontRequestVersion) return false;
+        fontStack = `"UserCustomFont", ${DEFAULT_MESSAGE_FONT_FAMILY}`;
     }
-    const fontName = 'UserCustomFont';
-    try {
-        const font = new FontFace(fontName, `url(${url})`);
-        await font.load();
-        document.fonts.add(font);
-        const fontStack = `"${fontName}", 'Noto Serif SC', serif`;
-        document.documentElement.style.setProperty('--font-family', fontStack);
-        document.documentElement.style.setProperty('--message-font-family', fontStack);
-        if (typeof settings !== 'undefined') settings.messageFontFamily = fontStack;
-    } catch (e) {
-        console.error('字体加载失败:', e);
-        showNotification('字体加载失败，请检查链接是否有效', 'error');
-    }
+
+    if (activeCustomFont) document.fonts.delete(activeCustomFont);
+    if (font) document.fonts.add(font);
+    activeCustomFont = font;
+
+    settings.customFontUrl = source;
+    settings.messageFontFamily = fontStack;
+    document.documentElement.style.setProperty('--font-family', fontStack);
+    document.documentElement.style.setProperty('--message-font-family', fontStack);
+    return true;
 }
 
 function applyCustomBubbleCss(cssCode) {

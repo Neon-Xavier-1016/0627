@@ -603,13 +603,8 @@ function populateThemeSelector() {
                 }
             }
             
-            if (scheme.customFontUrl) {
-                try { applyCustomFont(scheme.customFontUrl); } catch(e) {}
-            } else {
-                document.documentElement.style.setProperty('--message-font-family', scheme.messageFontFamily || "'Noto Serif SC', serif");
-                document.documentElement.style.setProperty('--font-family', scheme.messageFontFamily || "'Noto Serif SC', serif");
-            }
-            
+            applyCustomFont(settings.customFontUrl, settings.messageFontFamily || DEFAULT_MESSAGE_FONT_FAMILY);
+
             if (scheme.customBubbleCss) {
                 try { applyCustomBubbleCss(scheme.customBubbleCss); } catch(e) {}
             }
