@@ -10882,6 +10882,22 @@ html[data-theme="dark"] .period-section-title { color: var(--accent-color-dark);
 .period-date-input:focus { border-color: var(--accent-color); outline: none; }
 .period-actions { display: flex; gap: 10px; justify-content: flex-end; }
 .period-btn { padding: 8px 16px; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: var(--transition); display: flex; align-items: center; gap: 6px; }
+#period-modal [hidden] { display: none !important; }
+#period-modal .period-quick-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+#period-modal .period-quick-actions .period-btn {
+    justify-content: center;
+    min-height: 40px;
+    padding-inline: 8px;
+    text-align: center;
+}
+#period-pick-end:not([hidden]) + #period-pick-dates { grid-column: 1 / -1; }
+#period-record-form .period-actions > .period-btn { flex: 1; justify-content: center; }
+#period-record-form { margin-top: 14px; }
+.period-record-feedback { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--text-secondary); }
+.period-record-feedback:has(button:not([hidden])), #period-record-feedback-text:not(:empty) { margin-top: 8px; }
 .period-btn-primary { background-color: var(--accent-color); color: var(--message-sent-text); }
 .period-btn-primary:hover { filter: brightness(1.1); }
 .period-btn-secondary { background-color: var(--message-received-bg); color: var(--text-primary); }

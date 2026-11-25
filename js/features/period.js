@@ -6,12 +6,16 @@
 
 (function() {
     // ==================== 私有状态 ====================
+    const INITIAL_CYCLE_LENGTH = 28;
     let records = [];                // 月经记录 { id, startDate, endDate, createdAt }
     let settings = {
-        averageCycleLength: 28,
         partnerName: '梦角'
     };
     let lastReminderCheckDate = null;
+    let reminderReady = false;
+    let reminderChecking = false;
+    let saving = false;
+    let undoRecords = null;
 
     // DOM 元素缓存
     const elements = {};
@@ -21,8 +25,7 @@
         records: 'periodRecords',
         settings: 'periodSettings',
         lastReminderCheck: 'lastPeriodReminderCheck',
-        suppressDate: 'periodRemindSuppressDate',
-        waitingManual: 'periodWaitingForManualRecord'
+        suppressDate: 'periodRemindSuppressDate'
     };
 
     // ==================== 工具函数 ====================
@@ -30,13 +33,13 @@
         return STORAGE_KEYS[key];
     }
 
-    function normalizeDate(dateInput) {
-        let d = dateInput instanceof Date ? dateInput : new Date(dateInput);
-        if (isNaN(d.getTime())) {
-            d = new Date(dateInput);
-        }
-        d.setHours(0, 0, 0, 0);
-        return d;
+    function normalizeDate(value) {
+        const dateOnly = typeof value === 'string' && /^(\d{4,})-(\d{2})-(\d{2})$/.exec(value);
+        const date = dateOnly
+            ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+            : new Date(value);
+        date.setHours(0, 0, 0, 0);
+        return date;
     }
 
     function formatDate(date) {
@@ -47,86 +50,48 @@
         return `${year}-${month}-${day}`;
     }
 
-    function calculateCycleLength(prevStart, nextStart) {
-        return Math.round((nextStart - prevStart) / (1000 * 60 * 60 * 24));
+    function differenceInDays(start, end) {
+        const day = date => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+        return (day(end) - day(start)) / 86400000;
     }
 
-    function calculateDuration(record) {
-        if (!record.endDate) return 0;
-        const start = normalizeDate(record.startDate);
-        const end = normalizeDate(record.endDate);
-        return Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+    function calculateDuration(record, end = record.endDate) {
+        return differenceInDays(record.startDate, end) + 1;
     }
 
-    // ==================== 周期计算与预测 ====================
-    function recalcAverageCycle() {
-        const completed = records.filter(r => r.endDate);
-        if (completed.length < 2) return settings.averageCycleLength;
-
-        const sorted = [...completed].sort((a, b) => b.startDate - a.startDate).slice(0, 5);
-        const ascending = sorted.sort((a, b) => a.startDate - b.startDate);
-        let total = 0, count = 0;
-
-        for (let i = 1; i < ascending.length; i++) {
-            const cycle = calculateCycleLength(ascending[i - 1].startDate, ascending[i].startDate);
-            if (cycle >= 20 && cycle <= 45) {
-                total += cycle;
-                count++;
-            }
-        }
-
-        if (count > 0) {
-            const newAvg = Math.round(total / count);
-            settings.averageCycleLength = newAvg;
-            saveData();
-            return newAvg;
-        }
-        return settings.averageCycleLength;
+    function sortedRecords() {
+        return [...records].sort((a, b) => b.startDate - a.startDate);
     }
 
-    function getNextPeriodDate() {
-        if (records.length === 0) return null;
-        const completed = records.filter(r => r.endDate);
-        if (completed.length === 0) return null;
-
-        const sorted = [...completed].sort((a, b) => b.startDate - a.startDate);
-        const lastComplete = sorted[0];
-        const avgCycle = recalcAverageCycle();
-
-        const nextDate = new Date(lastComplete.startDate);
-        nextDate.setDate(nextDate.getDate() + avgCycle);
-        return nextDate;
-    }
-
-    function getDaysUntilNextPeriod() {
-        const nextDate = getNextPeriodDate();
-        if (!nextDate) return null;
-        const today = normalizeDate(new Date());
-        return Math.ceil((nextDate - today) / (1000 * 60 * 60 * 24));
+    function averageCycleLength(sorted) {
+        const starts = [...new Set(sorted.map(record => +record.startDate))].slice(0, 5);
+        if (starts.length < 2) return null;
+        return Math.round(differenceInDays(new Date(starts.at(-1)), new Date(starts[0])) / (starts.length - 1));
     }
 
     function getCurrentCycleStatus() {
-        if (records.length === 0) return { status: 'no_record' };
+        if (!records.length) return { status: 'no_record', average: null };
 
-        const sorted = [...records].sort((a, b) => b.startDate - a.startDate);
-        const latest = sorted[0];
+        const sorted = sortedRecords();
+        const active = sorted.find(record => !record.endDate);
+        const latest = active || sorted[0];
         const today = normalizeDate(new Date());
-
-        if (!latest.endDate) {
-            const daysInto = Math.ceil((today - latest.startDate) / (1000 * 60 * 60 * 24)) + 1;
-            return { status: 'during', daysIntoCycle: daysInto, record: latest };
+        const average = averageCycleLength(sorted);
+        if (active) {
+            return { status: 'during', daysIntoCycle: Math.max(1, calculateDuration(active, today)), record: active, average };
         }
 
-        const endDate = normalizeDate(latest.endDate);
-        const daysSinceEnd = Math.ceil((today - endDate) / (1000 * 60 * 60 * 24));
-        const daysUntilNext = getDaysUntilNextPeriod();
-        const isDelayed = daysUntilNext !== null && daysUntilNext <= 0;
+        const nextDate = new Date(latest.startDate);
+        nextDate.setDate(nextDate.getDate() + (average ?? INITIAL_CYCLE_LENGTH));
+        const daysUntilNext = differenceInDays(today, nextDate);
         return {
             status: 'after',
-            daysSinceEnd,
+            daysSinceEnd: differenceInDays(latest.endDate, today),
             daysUntilNext,
-            isDelayed,
-            record: latest
+            nextDate,
+            isDelayed: daysUntilNext !== null && daysUntilNext < 0,
+            record: latest,
+            average
         };
     }
 
@@ -178,9 +143,10 @@
                 records = savedRecords.map(record => ({
                     ...record,
                     id: record.id || (Date.now() + Math.random()),
-                    startDate: normalizeDate(new Date(record.startDate)),
-                    endDate: record.endDate ? normalizeDate(new Date(record.endDate)) : null
-                }));
+                    startDate: normalizeDate(record.startDate),
+                    endDate: record.endDate ? normalizeDate(record.endDate) : null
+                })).filter(record => Number.isFinite(+record.startDate) &&
+                    (!record.endDate || Number.isFinite(+record.endDate)));
             }
 
             const savedSettings = await localforage.getItem(getStorageKey('settings'));
@@ -197,19 +163,32 @@
         }
     }
 
-    function saveData() {
+    async function commitRecords(next, message, undo = null) {
+        if (saving) return false;
+        saving = true;
+        updateRecordActions();
         try {
-            localforage.setItem(getStorageKey('records'), records);
-            localforage.setItem(getStorageKey('settings'), settings);
-            if (lastReminderCheckDate) {
-                localforage.setItem(getStorageKey('lastReminderCheck'), lastReminderCheckDate);
-            }
-        } catch (e) {
-            console.error('保存月经数据失败:', e);
-            if (e.name === 'QuotaExceededError' && typeof showNotification === 'function') {
-                showNotification('存储空间不足，建议清理一些旧记录', 'warning', 3000);
-            }
+            await localforage.setItem(getStorageKey('records'), next.map(record => ({
+                ...record,
+                startDate: formatDate(record.startDate),
+                endDate: record.endDate ? formatDate(record.endDate) : null
+            })));
+        } catch (error) {
+            console.error('保存月经数据失败:', error);
+            const feedback = document.getElementById('period-record-feedback-text');
+            if (feedback) feedback.textContent = '保存失败，请重试';
+            if (typeof showNotification === 'function') showNotification('月经记录保存失败，请重试', 'error');
+            return false;
+        } finally {
+            saving = false;
+            updateRecordActions();
         }
+        records = next;
+        undoRecords = undo;
+        closeRecordForm();
+        fullRefreshUI();
+        document.getElementById('period-record-feedback-text').textContent = message;
+        return true;
     }
 
     // ==================== UI 更新 ====================
@@ -224,60 +203,33 @@
         });
     }
 
-    function updateCurrentStatus() {
-        if (!elements['period-current-status']) return;
-        if (records.length === 0) {
-            elements['period-current-status'].textContent = '未记录';
-            elements['period-current-status'].style.color = 'var(--text-secondary)';
-            return;
-        }
-
-        const status = getCurrentCycleStatus();
-        if (status.status === 'during') {
-            elements['period-current-status'].textContent = `经期第${status.daysIntoCycle}天`;
-            elements['period-current-status'].style.color = '#e91e63';
-        } else if (status.status === 'after') {
-            const { daysSinceEnd, daysUntilNext, isDelayed } = status;
-            const nextDate = getNextPeriodDate();
-            const nextDateStr = nextDate ? formatDate(nextDate) : '无法预测';
-
-            if (daysUntilNext !== null && daysUntilNext > 0) {
-                elements['period-current-status'].textContent = `已结束${daysSinceEnd}天，预计下次：${nextDateStr}`;
-                elements['period-current-status'].style.color = 'var(--accent-color)';
-            } else if (isDelayed) {
-                const delayDays = Math.abs(daysUntilNext);
-                elements['period-current-status'].textContent = `已结束${daysSinceEnd}天，推迟${delayDays}天`;
-                elements['period-current-status'].style.color = '#ff9800';
-            } else {
-                elements['period-current-status'].textContent = `已结束${daysSinceEnd}天`;
-                elements['period-current-status'].style.color = 'var(--accent-color)';
-            }
-        }
+    function updateCurrentStatus(cycle) {
+        const value = elements['period-current-status'];
+        if (!value) return;
+        value.style.color = cycle.status === 'during' ? '#e91e63' : 'var(--text-secondary)';
+        if (cycle.status === 'no_record') value.textContent = '未记录';
+        else if (cycle.status === 'during') value.textContent = `经期第 ${cycle.daysIntoCycle} 天`;
+        else if (cycle.daysUntilNext === 0) value.textContent = '今天是预计日期';
+        else if (cycle.isDelayed) value.textContent = `已过预计日期 ${-cycle.daysUntilNext} 天`;
+        else value.textContent = `预计下次：${formatDate(cycle.nextDate)}`;
     }
 
-    function updateStatistics() {
-        if (elements['period-cycle-length']) {
-            const avg = recalcAverageCycle();
-            elements['period-cycle-length'].textContent = `${avg}天`;
+    function updateStatistics(cycle) {
+        const average = elements['period-cycle-length'];
+        const next = elements['period-days-until-next'];
+        const duration = elements['period-duration'];
+        if (average) average.textContent = cycle.average === null ? '记录不足' : `${cycle.average} 天`;
+        if (next) {
+            next.textContent = cycle.status === 'during' ? '经期中' :
+                cycle.nextDate ? formatDate(cycle.nextDate) : '记录不足';
+            const label = next.parentElement.querySelector('.period-stat-label');
+            if (label) label.textContent = cycle.nextDate && cycle.average === null
+                ? `预计下次（按 ${INITIAL_CYCLE_LENGTH} 天暂估）`
+                : '预计下次';
         }
-
-        if (elements['period-days-until-next']) {
-            const value = elements['period-days-until-next'];
-            const label = value.parentElement.querySelector('.period-stat-label');
-            const isDuring = getCurrentCycleStatus().status === 'during';
-            const nextDate = isDuring ? null : getNextPeriodDate();
-            value.textContent = isDuring ? '经期中' : (nextDate ? formatDate(nextDate) : '-');
-            if (label) label.textContent = isDuring ? '当前状态' : '距离下次';
-        }
-
-        if (elements['period-duration']) {
-            const completed = records.filter(r => r.endDate);
-            if (completed.length) {
-                const latest = completed.sort((a, b) => b.startDate - a.startDate)[0];
-                elements['period-duration'].textContent = `${calculateDuration(latest)}天`;
-            } else {
-                elements['period-duration'].textContent = '-';
-            }
+        if (duration) {
+            duration.textContent = cycle.status === 'during' ? `已记录 ${cycle.daysIntoCycle} 天` :
+                cycle.record ? `${calculateDuration(cycle.record)} 天` : '—';
         }
     }
 
@@ -347,15 +299,8 @@
     }
 
     function deleteRecordById(id) {
-        const index = records.findIndex(r => r.id === id);
-        if (index !== -1) {
-            records.splice(index, 1);
-            saveData();
-            fullRefreshUI();
-            if (typeof showNotification === 'function') {
-                showNotification('记录已删除', 'success', 2000);
-            }
-        }
+        const next = records.filter(record => Number(record.id) !== Number(id));
+        if (next.length !== records.length) commitRecords(next, '记录已删除');
     }
 
     function updateCareMessage() {
@@ -366,73 +311,104 @@
     }
 
     function fullRefreshUI() {
-        updateCurrentStatus();
-        updateStatistics();
+        const cycle = getCurrentCycleStatus();
+        updateCurrentStatus(cycle);
+        updateStatistics(cycle);
+        updateRecordActions();
         updateHistoryList();
         updateCareMessage();
     }
 
     // ==================== 用户操作 ====================
-    function startPeriod() {
-        const startInput = elements['period-start-date'];
-        if (!startInput || !startInput.value) {
-            if (typeof showNotification === 'function') showNotification('请选择开始日期', 'warning', 3000);
-            return;
-        }
-
-        const startDate = normalizeDate(startInput.value);
-        if (records.some(r => !r.endDate)) {
-            if (typeof showNotification === 'function') showNotification('已有进行中的记录，请先结束当前记录', 'warning', 3000);
-            return;
-        }
-
-        const newRecord = {
-            id: Date.now(),
-            startDate: startDate,
-            endDate: null,
-            createdAt: new Date()
-        };
-        records.push(newRecord);
-        saveData();
-        fullRefreshUI();
-
-        // 清除静默等待期，这样刷新页面后会触发“求安慰”弹窗
-        clearWaitingForManual();
-
-        if (typeof showNotification === 'function') showNotification('月经开始记录已保存', 'success', 2000);
+    function getActiveRecord() {
+        return sortedRecords().find(record => !record.endDate);
     }
 
-    function endPeriod() {
-        const endInput = elements['period-end-date'];
-        if (!endInput || !endInput.value) {
-            if (typeof showNotification === 'function') showNotification('请选择结束日期', 'warning', 3000);
+    function updateRecordActions() {
+        const active = getActiveRecord();
+        const quick = document.getElementById('period-quick-record');
+        const backfill = document.getElementById('period-pick-dates');
+        const end = document.getElementById('period-pick-end');
+        const undo = document.getElementById('period-undo');
+        if (!quick || !backfill || !end || !undo) return;
+        quick.textContent = active ? '今天结束' : '今天开始';
+        end.hidden = !active;
+        quick.disabled = backfill.disabled = end.disabled = undo.disabled = saving;
+        undo.hidden = !undoRecords;
+        document.getElementById('period-save-dates').disabled = saving;
+    }
+
+    function closeRecordForm() {
+        const form = document.getElementById('period-record-form');
+        if (!form) return;
+        form.hidden = true;
+        delete form.dataset.mode;
+        document.getElementById('period-pick-dates').setAttribute('aria-expanded', 'false');
+        document.getElementById('period-pick-end').setAttribute('aria-expanded', 'false');
+    }
+
+    function openRecordForm(mode) {
+        const form = document.getElementById('period-record-form');
+        if (!form.hidden && form.dataset.mode === mode) {
+            closeRecordForm();
             return;
         }
+        const active = mode === 'end' ? getActiveRecord() : null;
+        if (mode === 'end' && !active) return;
+        closeRecordForm();
+        form.dataset.mode = mode;
+        const start = elements['period-start-date'];
+        const end = elements['period-end-date'];
+        const today = formatDate(new Date());
+        start.parentElement.hidden = Boolean(active);
+        start.disabled = Boolean(active);
+        start.max = end.max = today;
+        start.value = '';
+        end.value = '';
+        end.min = active ? formatDate(active.startDate) : '';
+        form.hidden = false;
+        document.getElementById(active ? 'period-pick-end' : 'period-pick-dates').setAttribute('aria-expanded', 'true');
+        (active ? end : start).focus();
+    }
 
-        const endDate = normalizeDate(endInput.value);
+    function recordPeriod(start, end, active = null) {
+        if (saving) return false;
         const today = normalizeDate(new Date());
-        if (endDate > today) {
-            if (typeof showNotification === 'function') showNotification('结束日期不能晚于今天', 'error', 3000);
-            return;
+        let error;
+        if (!Number.isFinite(+start) || (end && !Number.isFinite(+end))) error = '请选择有效日期';
+        else if (start > today || end > today) error = '记录日期不能晚于今天';
+        else if (end && end < start) error = '结束日期不能早于开始日期';
+        else if (records.some(record => record !== active &&
+            start <= (record.endDate || today) && (end || today) >= record.startDate)) {
+            error = '这段日期与已有经期重叠';
+        }
+        if (error) {
+            document.getElementById('period-record-feedback-text').textContent = error;
+            if (typeof showNotification === 'function') showNotification(error, 'warning');
+            return false;
         }
 
-        const activeIndex = records.findIndex(r => !r.endDate);
-        if (activeIndex === -1) {
-            if (typeof showNotification === 'function') showNotification('没有找到进行中的月经记录', 'warning', 3000);
-            return;
-        }
+        const next = active
+            ? records.map(record => record === active ? { ...active, endDate: end } : record)
+            : [...records, { id: Date.now(), startDate: start, endDate: end, createdAt: new Date() }];
+        const message = active ? '已记录结束' : end ? '已补记这段经期' : '已记录开始';
+        return commitRecords(next, message, records);
+    }
 
-        const startDate = records[activeIndex].startDate;
-        if (endDate < startDate) {
-            if (typeof showNotification === 'function') showNotification('结束日期不能早于开始日期', 'error', 3000);
-            return;
-        }
+    function quickRecord() {
+        const today = normalizeDate(new Date());
+        const active = getActiveRecord();
+        return active ? recordPeriod(active.startDate, today, active) : recordPeriod(today, null);
+    }
 
-        records[activeIndex].endDate = endDate;
-        saveData();
-        fullRefreshUI();
-        const duration = calculateDuration(records[activeIndex]);
-        if (typeof showNotification === 'function') showNotification(`月经结束记录已保存，本次持续${duration}天`, 'success', 3000);
+    function submitRecordForm(event) {
+        event.preventDefault();
+        const mode = event.currentTarget.dataset.mode;
+        const active = mode === 'end' ? getActiveRecord() : null;
+        if (!mode || (mode === 'end' && !active)) return;
+        const start = active?.startDate || normalizeDate(elements['period-start-date'].value);
+        const end = normalizeDate(elements['period-end-date'].value);
+        recordPeriod(start, end, active);
     }
 
     function openModal() {
@@ -443,15 +419,8 @@
         if (!periodModal) return;
 
         fullRefreshUI();
-        const todayStr = formatDate(new Date());
-        if (elements['period-start-date']) elements['period-start-date'].value = todayStr;
-        if (elements['period-end-date']) elements['period-end-date'].value = todayStr;
-
-        if (typeof showModal === 'function') {
-            showModal(periodModal);
-        } else if (periodModal.style) {
-            periodModal.style.display = 'flex';
-        }
+        if (typeof showModal === 'function') showModal(periodModal);
+        else periodModal.style.display = 'flex';
     }
 
     // ==================== 弹窗样式注入 ====================
@@ -634,41 +603,13 @@
         return fallback;
     }
 
-    function autoRecordPeriodStart() {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        if (records.some(r => !r.endDate)) return;
-
-        const newRecord = {
-            id: Date.now(),
-            startDate: today,
-            endDate: null,
-            createdAt: new Date()
-        };
-        records.push(newRecord);
-        saveData();
-        fullRefreshUI();
-
-        if (typeof showNotification === 'function') {
-            showNotification('已为您自动记录：月经开始', 'success', 3000);
-        }
-    }
-
     async function setSuppressToday() {
-        const todayStr = formatDate(new Date());
-        await localforage.setItem(getStorageKey('suppressDate'), todayStr);
-        if (typeof showNotification === 'function') {
-            showNotification('今天将不再提醒', 'info', 2000);
+        try {
+            await localforage.setItem(getStorageKey('suppressDate'), formatDate(new Date()));
+            if (typeof showNotification === 'function') showNotification('今天将不再提醒', 'info', 2000);
+        } catch (error) {
+            console.error('保存经期提醒设置失败:', error);
         }
-    }
-
-    async function setWaitingForManual() {
-        await localforage.setItem(getStorageKey('waitingManual'), true);
-    }
-
-    async function clearWaitingForManual() {
-        await localforage.removeItem(getStorageKey('waitingManual'));
     }
 
     // ==================== 求安慰：原地换字（防重复、防连点） ====================
@@ -710,110 +651,57 @@
     }
 
     // ==================== 每日提醒逻辑 ====================
+    function showDuringReminder() {
+        const msg = getRandomMsg('during', '这几天要好好休息，我会陪着你');
+        lastComfortMsg = msg;
+        showPeriodDialog({
+            title: '月经提醒', content: msg,
+            btnLeft: '今天不再提醒', btnRight: '求安慰', keepOpenOnRight: true,
+            onLeft: setSuppressToday, onRight: showComfortInDialog
+        });
+    }
+
     async function checkDailyReminder() {
-        const todayStr = formatDate(new Date());
-
-        // 1. 今天点过“不再提醒”
-        const suppressDate = await localforage.getItem(getStorageKey('suppressDate'));
-        if (suppressDate === todayStr) {
-            console.log('【经期提醒】今天已点击不再提醒，跳过所有弹窗');
-            return;
-        }
-
-        // 2. 静默等待期（用户点了“没有开始”，等待手动记录）
-        const isWaiting = await localforage.getItem(getStorageKey('waitingManual'));
-        if (isWaiting) {
-            console.log('【经期提醒】静默等待期，等待用户手动记录');
-            return;
-        }
-
-        if (records.length === 0) return;
-
-        const status = getCurrentCycleStatus();
-        const partner = settings.partnerName || '梦角';
-
-        // ====== 状态 A：月经前3天 ======
-        if (status.status === 'after' && status.daysUntilNext > 0 && status.daysUntilNext <= 3) {
-            const msg = getRandomMsg('approaching', '月经快来了，注意休息');
-            setTimeout(() => {
+        const today = formatDate(new Date());
+        if (!reminderReady || reminderChecking || lastReminderCheckDate === today) return;
+        reminderChecking = true;
+        try {
+            if (await localforage.getItem(getStorageKey('suppressDate')) === today) return;
+            const cycle = getCurrentCycleStatus();
+            const daysUntil = cycle.daysUntilNext;
+            if (cycle.status !== 'during' && (daysUntil == null || daysUntil > 3)) return;
+            lastReminderCheckDate = today;
+            try {
+                await localforage.setItem(getStorageKey('lastReminderCheck'), today);
+            } catch (error) {
+                console.error('保存经期提醒日期失败:', error);
+            }
+            if (cycle.status === 'during') {
+                showDuringReminder();
+            } else if (daysUntil > 0) {
                 showPeriodDialog({
-                    title: '月经提醒',
-                    content: msg,
-                    btnLeft: '不再提醒',
-                    btnRight: '知道啦',
-                    onLeft: () => setSuppressToday(),
-                    onRight: () => {}
+                    title: '月经提醒', content: getRandomMsg('approaching', '月经快来了，注意休息'),
+                    btnLeft: '今天不再提醒', btnRight: '知道啦', onLeft: setSuppressToday
                 });
-            }, 1500);
-            return;
-        }
-
-        // ====== 状态 B：预测日 / 已推迟 ======
-        if (status.status === 'after' && status.daysUntilNext <= 0) {
-            setTimeout(() => {
+            } else {
                 showPeriodDialog({
-                    title: '月经提醒',
-                    content: `预期日子到了，月经来了吗？`,
-                    btnLeft: '没有开始',
-                    btnRight: '已经开始',
-                    onLeft: async () => {
-                        await setWaitingForManual();
-                        const delayMsg = getRandomMsg('delayed', '最近累到了吗，没关系，月经本来就不是固定时间的');
-                        setTimeout(() => {
-                            showPeriodDialog({
-                                title: '月经提醒',
-                                content: delayMsg,
-                                onlyKnow: true,
-                                onRight: () => {}
-                            });
-                        }, 300);
-                    },
-                    onRight: () => {
-                        autoRecordPeriodStart();
-                        setTimeout(() => {
-                            const duringMsg = getRandomMsg('during', '这几天要好好休息，我会陪着你');
-                            lastComfortMsg = duringMsg;
-                            showPeriodDialog({
-                                title: '月经提醒',
-                                content: duringMsg,
-                                btnLeft: '不再提醒',
-                                btnRight: '求安慰',
-                                keepOpenOnRight: true,
-                                onLeft: () => setSuppressToday(),
-                                onRight: () => {
-                                    showComfortInDialog();
-                                }
-                            });
-                        }, 300);
+                    title: '月经提醒', content: '预计日期到了，今天来了吗？',
+                    btnLeft: '今天还没来', btnRight: '已经开始', onLeft: setSuppressToday,
+                    onRight: async () => {
+                        if (!getActiveRecord() && await recordPeriod(normalizeDate(new Date()), null)) showDuringReminder();
                     }
                 });
-            }, 1500);
-            return;
-        }
-
-        // ====== 状态 C：经期中 ======
-        if (status.status === 'during') {
-            const msg = getRandomMsg('during', '这几天要好好休息，我会陪着你');
-            lastComfortMsg = msg;   // ← 新增
-            setTimeout(() => {
-                showPeriodDialog({
-                    title: '月经提醒',
-                    content: msg,
-                    btnLeft: '不再提醒',
-                    btnRight: '求安慰',
-                    keepOpenOnRight: true,
-                    onLeft: () => setSuppressToday(),
-                    onRight: () => {
-                        showComfortInDialog();
-                    }
-                });
-            }, 1500);
-            return;
+            }
+        } catch (error) {
+            console.error('读取经期提醒设置失败:', error);
+        } finally {
+            reminderChecking = false;
         }
     }
 
     // ==================== 事件绑定 ====================
     function bindEvents() {
+        cacheElements();
         const periodBtn = document.getElementById('period-function');
         if (periodBtn && !periodBtn.dataset.periodBound) {
             periodBtn.dataset.periodBound = 'true';
@@ -830,32 +718,44 @@
             });
         }
 
-        const startBtn = document.getElementById('start-period-record');
-        if (startBtn && !startBtn.dataset.periodBound) {
-            startBtn.dataset.periodBound = 'true';
-            startBtn.addEventListener('click', startPeriod);
+        const quick = document.getElementById('period-quick-record');
+        const startDateInput = elements['period-start-date'];
+        const endDateInput = elements['period-end-date'];
+        if (!quick || quick.dataset.periodBound || !startDateInput || !endDateInput) return;
+        quick.addEventListener('click', quickRecord);
+        document.getElementById('period-pick-dates').addEventListener('click', () => openRecordForm('backfill'));
+        document.getElementById('period-pick-end').addEventListener('click', () => openRecordForm('end'));
+        const syncBackfillEndDate = () => {
+            if (startDateInput.form.dataset.mode !== 'backfill' || !startDateInput.validity.valid) return;
+            const start = startDateInput.value;
+            if (!endDateInput.value || endDateInput.value === endDateInput.min || endDateInput.value < start) {
+                endDateInput.value = start;
+            }
+            endDateInput.min = start;
+        };
+        for (const event of ['input', 'change', 'blur']) {
+            startDateInput.addEventListener(event, syncBackfillEndDate);
         }
-
-        const endBtn = document.getElementById('end-period-record');
-        if (endBtn && !endBtn.dataset.periodBound) {
-            endBtn.dataset.periodBound = 'true';
-            endBtn.addEventListener('click', endPeriod);
-        }
-
-        const todayStr = formatDate(new Date());
-        if (elements['period-start-date']) elements['period-start-date'].max = todayStr;
-        if (elements['period-end-date']) elements['period-end-date'].max = todayStr;
+        endDateInput.addEventListener('focus', syncBackfillEndDate);
+        document.getElementById('period-cancel-dates').addEventListener('click', closeRecordForm);
+        document.getElementById('period-record-form').addEventListener('submit', submitRecordForm);
+        document.getElementById('period-undo').addEventListener('click', () => {
+            if (undoRecords) commitRecords(undoRecords, '已撤销上次记录');
+        });
+        quick.dataset.periodBound = 'true';
     }
 
     // ==================== 对外暴露的初始化方法 ====================
     window.initPeriodData = async function() {
         injectPeriodDialogStyle();
-        cacheElements();
+        bindEvents();
         await loadData();
         fullRefreshUI();
-        bindEvents();
+        reminderReady = true;
         setTimeout(checkDailyReminder, 6000);
     };
+
+    window.triggerPeriodReminder = checkDailyReminder;
 
     window.initPeriodListeners = function() {
         bindEvents();
