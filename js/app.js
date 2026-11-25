@@ -295,10 +295,6 @@
                 e.preventDefault();
                 if (DOM.momentsModal) {
                     DOM.momentsModal.style.display = 'flex';
-                    // 强制刷新朋友圈头像（打开时）
-                    setTimeout(function() {
-                        forceRefreshMoments();
-                    }, 300);
                     if (typeof window.moments?.onEnter === 'function') {
                         window.moments.onEnter();
                     } else {

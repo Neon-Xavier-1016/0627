@@ -280,7 +280,8 @@
   if(descriptor)return descriptor;
   const member=typeof getGroupMemberForMessage==='function'?getGroupMemberForMessage(m.id):null;
   const src=member?member.avatar:($('partner-avatar')?.querySelector('img')?.getAttribute('src')||profile().partnerAvatar);
-  return {name:member?.name||profile().partnerName||'Ta',avatar:src,text:m.image?'[图片]':m.type==='voice'?'[语音]':m.text};
+  const isSticker=m.type==='sticker'||m.isSticker===true;
+  return {name:member?.name||profile().partnerName||'Ta',avatar:src,text:isSticker?'表情包':m.image?'[图片]':m.type==='voice'?'[语音]':m.text};
  }
  function onConversationMessage(m,descriptor){
   if(!incoming(m)||isViewingNotice(descriptor.id))return;

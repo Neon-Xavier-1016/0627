@@ -221,7 +221,8 @@
             }
             if (template.content.firstElementChild) return '[互动卡片]';
         }
-        const content = message.image ? '[图片]' : message.type === 'voice' ? '[语音]' : message.text || '[消息]';
+        const isSticker = message.type === 'sticker' || message.isSticker === true;
+        const content = isSticker ? '表情包' : message.image ? '[图片]' : message.type === 'voice' ? '[语音]' : message.text || '[消息]';
         if (!item.members || !message.sender || message.sender === 'system') return content;
         return (message.sender === 'user' ? settings.myName || '我' : message.author || message.sender) + '：' + content;
     }

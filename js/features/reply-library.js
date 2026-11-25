@@ -56,7 +56,6 @@ function _tabHasGroups(tab) {
 
 let _batchSelectedIndices = new Set();
 let _batchModeActive = false;
-let _batchModeTarget = 'custom'; // 'custom' or 'stickers' (depends on currentSubTab when batch mode enabled)
 let _searchVisible = false;
 let _searchQuery = '';
 let _searchDebounceTimer = null;
@@ -195,6 +194,9 @@ function _renderListContentOnly() {
 
     const q = _searchQuery.toLowerCase().trim();
     const filtered = q ? itemsToRender.filter(item => item.toLowerCase().includes(q)) : itemsToRender;
+    if (_batchModeActive && currentSubTab === 'dreamfree') {
+        _syncDreamFreeSelectAll(document.getElementById('batch-select-all-btn'), _getGroupCtx());
+    }
 
     if (filtered.length === 0) {
         const empty = document.createElement('div');
@@ -346,12 +348,35 @@ function renderReplyLibrary() {
     }
 }
 
+function _getVisibleDreamFreeIndices(ctx) {
+    const query = _searchQuery.trim().toLowerCase();
+    const ungrouped = _activeGroupFilter === 'ungrouped';
+    const group = ctx.groups.find(item => item.id === _activeGroupFilter);
+    const grouped = new Set(ungrouped ? ctx.groups.flatMap(item => item.items || []) : group?.items || []);
+    const indices = [];
+    ctx.items.forEach((text, index) => {
+        if (_activeGroupFilter !== null && grouped.has(text) === ungrouped) return;
+        if (!query || text.toLowerCase().includes(query)) indices.push(index);
+    });
+    return indices;
+}
+
+function _syncDreamFreeSelectAll(button, ctx) {
+    if (!button) return;
+    const visible = _getVisibleDreamFreeIndices(ctx);
+    const allSelected = visible.length > 0 && visible.every(index => _batchSelectedIndices.has(index));
+    button.disabled = !visible.length;
+    button.querySelector('.batch-select-all-label').textContent =
+        allSelected ? '取消全选' : `全选 (${visible.length})`;
+}
+
 function _renderModernToolbar() {
     let toolbar = document.getElementById('batch-ops-toolbar');
     const isMainCustom = currentMajorTab === 'reply' && currentSubTab === 'custom';
     const isStickersTab = currentMajorTab === 'reply' && currentSubTab === 'stickers';
     const hasGroupSupport = _tabHasGroups();
-    const canBatch = isMainCustom || isStickersTab;
+    const isDreamFree = currentMajorTab === 'reply' && currentSubTab === 'dreamfree';
+    const canBatch = isMainCustom || isStickersTab || isDreamFree;
 
     if (!toolbar) {
         toolbar = document.createElement('div');
@@ -363,7 +388,8 @@ function _renderModernToolbar() {
 
     const disabledSet = _getDisabledItemsSet();
     const ctx = _getGroupCtx();
-    const totalItems = isMainCustom ? customReplies.length : (isStickersTab ? stickerLibrary.length : 0);
+    const batchItems = isStickersTab ? stickerLibrary : ctx.items;
+    const totalItems = batchItems.length;
     const selectedCount = _batchSelectedIndices.size;
     const batchLabel = _batchModeActive ? '退出批量' : (isStickersTab ? '批量分配' : '批量管理');
     const batchButton = canBatch ? `
@@ -425,19 +451,21 @@ function _renderModernToolbar() {
                     display:flex;align-items:center;gap:5px;
                 ">
                     ${ICONS.check}
-                    ${selectedCount === totalItems ? '取消全选' : `全选 (${totalItems})`}
+                    <span class="batch-select-all-label">${selectedCount === totalItems ? '取消全选' : `全选 (${totalItems})`}</span>
                 </button>
                 <span style="font-size:12px;color:var(--text-secondary);flex:1;min-width:60px;">
-                    ${selectedCount > 0 ? `已选 <strong style="color:var(--text-primary);">${selectedCount}</strong> 条` : (isStickersTab ? '点选要分配的表情' : '点击字卡以选择')}
+                    ${selectedCount > 0 ? `已选 <strong style="color:var(--text-primary);">${selectedCount}</strong> 条` : (isStickersTab ? '点选要分配的表情' : `点击${ctx.itemLabel}以选择`)}
                 </span>
                 ${showGroupBtn ? `
                     <button id="batch-group-btn" class="batch-act-pill ${selectedCount === 0 ? 'batch-act-disabled' : ''}" data-tip="分配分组">
                         ${ICONS.tag} 分组
                     </button>
                 ` : ''}
-                <button id="batch-disable-btn" class="batch-act-pill ${selectedCount === 0 ? 'batch-act-disabled' : ''}" data-tip="屏蔽/启用">
-                    ${ICONS.eyeOff} 屏蔽
-                </button>
+                ${isDreamFree ? '' : `
+                    <button id="batch-disable-btn" class="batch-act-pill ${selectedCount === 0 ? 'batch-act-disabled' : ''}" data-tip="屏蔽/启用">
+                        ${ICONS.eyeOff} 屏蔽
+                    </button>
+                `}
                 <button id="batch-delete-btn" class="batch-act-pill batch-act-danger ${selectedCount === 0 ? 'batch-act-disabled' : ''}" data-tip="删除">
                     ${ICONS.trash} 删除
                 </button>
@@ -564,7 +592,6 @@ function _renderModernToolbar() {
         tbBatch.onclick = () => {
             if (!canBatch) return;
             _batchModeActive = !_batchModeActive;
-            _batchModeTarget = isStickersTab ? 'stickers' : 'custom';
             _batchSelectedIndices.clear();
             renderReplyLibrary();
         };
@@ -594,16 +621,25 @@ function _renderModernToolbar() {
     });
 
     if (_batchModeActive) {
-        toolbar.querySelector('#batch-select-all-btn')?.addEventListener('click', () => {
-            if (_batchSelectedIndices.size === totalItems) _batchSelectedIndices.clear();
-            else {
-                const pool = isMainCustom ? customReplies : stickerLibrary;
-                pool.forEach((_, i) => _batchSelectedIndices.add(i));
+        const selectAll = toolbar.querySelector('#batch-select-all-btn');
+        if (isDreamFree) _syncDreamFreeSelectAll(selectAll, ctx);
+        selectAll?.addEventListener('click', () => {
+            if (isDreamFree) {
+                const visible = _getVisibleDreamFreeIndices(ctx);
+                const allSelected = visible.every(index => _batchSelectedIndices.has(index));
+                visible.forEach(index => {
+                    if (allSelected) _batchSelectedIndices.delete(index);
+                    else _batchSelectedIndices.add(index);
+                });
+            } else if (_batchSelectedIndices.size === totalItems) {
+                _batchSelectedIndices.clear();
+            } else {
+                batchItems.forEach((_, index) => _batchSelectedIndices.add(index));
             }
             renderReplyLibrary();
         });
         toolbar.querySelector('#batch-group-btn')?.addEventListener('click', () => {
-            if (!isMainCustom) return;
+            if (!isMainCustom && !isDreamFree) return;
             if (_batchSelectedIndices.size === 0) return;
             _showBatchGroupPicker();
         });
@@ -628,13 +664,12 @@ function _renderModernToolbar() {
                 renderReplyLibrary();
                 showNotification(`已删除 ${indices.length} 个贴纸`, 'success');
             } else {
-                const deletedTexts = indices.map(i => customReplies[i]);
-                indices.forEach(i => customReplies.splice(i, 1));
-                if (customReplyGroups) {
-                    customReplyGroups.forEach(g => {
-                        if (g.items) g.items = g.items.filter(t => !deletedTexts.includes(t));
-                    });
-                }
+                const deletedTexts = new Set(indices.map(i => batchItems[i]));
+                indices.forEach(i => batchItems.splice(i, 1));
+                const remaining = new Set(batchItems);
+                ctx.groups.forEach(group => {
+                    if (group.items) group.items = group.items.filter(text => !deletedTexts.has(text) || remaining.has(text));
+                });
                 _batchSelectedIndices.clear();
                 throttledSaveData();
                 renderReplyLibrary();
@@ -652,10 +687,11 @@ function _renderCardViewWithGroups(list, items) {
     // 预建索引 Map，避免 indexOf 的 O(n²) 查找
     const replyIndexMap = new Map();
     sourceItems.forEach((r, i) => { if (!replyIndexMap.has(r)) replyIndexMap.set(r, i); });
-    const itemsWithIdx = items.map(text => ({
-        text,
-        idx: replyIndexMap.has(text) ? replyIndexMap.get(text) : -1
-    }));
+    const isDreamFree = currentSubTab === 'dreamfree';
+    const visibleTexts = new Set(items);
+    const itemsWithIdx = isDreamFree
+        ? sourceItems.map((text, idx) => ({ text, idx })).filter(row => visibleTexts.has(row.text))
+        : items.map(text => ({ text, idx: replyIndexMap.get(text) ?? -1 }));
 
     if (_activeGroupFilter === null) {
         if (!groups || groups.length === 0) {
@@ -665,9 +701,11 @@ function _renderCardViewWithGroups(list, items) {
 
         const inGroup = new Set();
         groups.forEach(g => {
-            const groupItems = (g.items || [])
-                .map(t => ({ text: t, idx: sourceItems.indexOf(t) }))
-                .filter(x => x.idx >= 0 && items.includes(x.text));
+            const groupItems = isDreamFree
+                ? itemsWithIdx.filter(row => (g.items || []).includes(row.text))
+                : (g.items || [])
+                    .map(t => ({ text: t, idx: sourceItems.indexOf(t) }))
+                    .filter(x => x.idx >= 0 && visibleTexts.has(x.text));
             groupItems.forEach(x => inGroup.add(x.idx));
             _renderGroupBlock(list, g, groupItems, disabledSet);
         });
@@ -677,12 +715,8 @@ function _renderCardViewWithGroups(list, items) {
             _renderGroupBlock(list, { id: '__ungrouped', name: '未分组', color: '#868E96', disabled: false }, ungrouped, disabledSet, true);
         }
     } else if (_activeGroupFilter === 'ungrouped') {
-        const inGroup = new Set();
-        if (groups) groups.forEach(g => (g.items || []).forEach(t => {
-            const i = sourceItems.indexOf(t);
-            if (i >= 0) inGroup.add(i);
-        }));
-        const ungrouped = itemsWithIdx.filter(x => !inGroup.has(x.idx));
+        const groupedTexts = new Set(groups.flatMap(group => group.items || []));
+        const ungrouped = itemsWithIdx.filter(row => !groupedTexts.has(row.text));
         if (ungrouped.length === 0) {
             list.innerHTML = renderEmptyState('所有内容均已分组');
         } else {
@@ -1382,7 +1416,9 @@ function _showBatchGroupPicker() {
         if (confirm('还没有分组，是否立即创建？')) { _showGroupEditor(null, ctx); return; }
         return;
     }
-    const selectedItems = [..._batchSelectedIndices].map(i => sourceItems[i]);
+    const selectedItems = [..._batchSelectedIndices].map(i => sourceItems[i]).filter(item => item !== undefined);
+    if (!selectedItems.length) return;
+    const selectedTexts = new Set(selectedItems);
     const overlay = _makeOverlay();
 
     const panel = document.createElement('div');
@@ -1423,7 +1459,7 @@ function _showBatchGroupPicker() {
     panel.querySelector('#bgp-save').onclick = () => {
         const checked = panel.querySelector('input[name="bgp"]:checked');
         if (!checked) return;
-        groups.forEach(g => { if (g.items) g.items = g.items.filter(t => !selectedItems.includes(t)); });
+        groups.forEach(g => { if (g.items) g.items = g.items.filter(t => !selectedTexts.has(t)); });
         if (checked.value !== '') {
             const idx = parseInt(checked.value);
             if (!groups[idx].items) groups[idx].items = [];
@@ -1531,6 +1567,7 @@ function _libraryAssetModules() {
             count:()=>window.dreamFreeReplies?.length || 0, measure:data=>data.items.length,
             read:()=>({items:window.dreamFreeReplies||[],groups:window.dreamFreeGroups||[]}),
             restore:(data,overwrite)=>{
+                if (currentSubTab === 'dreamfree') _batchSelectedIndices.clear();
                 window.dreamFreeReplies=lists(window.dreamFreeReplies||[],data.items,overwrite);
                 const groups=new Map((overwrite?[]:window.dreamFreeGroups||[]).map(group=>[group.name,group]));
                 for(const group of data.groups||[]){
@@ -2242,24 +2279,20 @@ function _showBatchAddDialog() {
     panel.querySelector('#ba-confirm').onclick = () => {
         const lines = ta.value.split('\n').map(l => l.trim()).filter(Boolean);
         if (!lines.length) { showNotification('请输入内容', 'warning'); return; }
-        let added = 0, skipped = 0;
+        const existing = new Set(ctx.items.map(normalizeStringStrict));
+        if (currentSubTab === 'custom') {
+            CONSTANTS.REPLY_MESSAGES.forEach(text => existing.add(normalizeStringStrict(text)));
+        }
         const newItems = [];
-        lines.forEach(val => {
-            const norm = normalizeStringStrict(val);
-            const isDup = currentSubTab === 'custom'
-                ? (customReplies.some(r => normalizeStringStrict(r) === norm) || CONSTANTS.REPLY_MESSAGES.some(r => normalizeStringStrict(r) === norm))
-                : currentSubTab === 'pokes'
-                ? customPokes.some(r => normalizeStringStrict(r) === norm)
-                : currentSubTab === 'statuses'
-                ? customStatuses.some(r => normalizeStringStrict(r) === norm)
-                : false;
-            if (isDup) { skipped++; return; }
-            if (currentSubTab === 'custom') { customReplies.push(val); newItems.push(val); }
-            else if (currentSubTab === 'pokes') { customPokes.push(val); newItems.push(val); }
-            else if (currentSubTab === 'statuses') { customStatuses.push(val); newItems.push(val); }
-            else if (currentSubTab === 'mottos') customMottos.push(val);
-            added++;
-        });
+        for (const text of lines) {
+            const normalized = normalizeStringStrict(text);
+            if (existing.has(normalized)) continue;
+            existing.add(normalized);
+            newItems.push(text);
+        }
+        newItems.forEach(text => ctx.items.push(text));
+        const added = newItems.length;
+        const skipped = lines.length - added;
         if (_selectedGroupIdx >= 0 && newItems.length > 0 && groups) {
             const targetGroup = groups[_selectedGroupIdx];
             if (targetGroup) {
@@ -2356,7 +2389,7 @@ function initReplyLibraryListeners() {
                 }
                 return;
             }
-            if (currentSubTab === 'custom' || currentSubTab === 'pokes' || currentSubTab === 'statuses') {
+            if (_tabHasGroups()) {
                 _showBatchAddDialog(); return;
             }
             let input;

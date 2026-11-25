@@ -417,6 +417,77 @@
         return String(text ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[character]));
     }
 
+    function commentComposer(placeholder, hidden) {
+        return '<div class="moment-comment-input"' + (hidden ? ' hidden' : '') + '>' +
+            '<div class="moment-comment-controls">' +
+                '<textarea class="comment-input-field" rows="3" aria-label="' + placeholder + '" placeholder="' + placeholder + '"></textarea>' +
+                '<button type="button" class="moment-sticker-toggle" aria-label="表情包" aria-expanded="false">' +
+                    '<i class="far fa-smile" aria-hidden="true"></i></button>' +
+                '<button type="button" class="comment-send-btn" disabled>发送</button>' +
+            '</div>' +
+            '<div class="moment-sticker-selection" hidden><img alt="已选表情包">' +
+                '<button type="button" class="moment-sticker-remove" aria-label="移除已选表情包">×</button></div>' +
+            '<div class="moment-sticker-panel" hidden></div>' +
+        '</div>';
+    }
+
+    function commentStickerLibrary(tab, roleId) {
+        if (tab === 'mine') return window.myStickerLibrary || [];
+        return window.StickerAssets?.available(roleId) || getStickerLibrary();
+    }
+
+    function renderStickerPicker(area, tab) {
+        const moment = moments.find(m => m.id === area.closest('.moment-card').dataset.momentId);
+        const parent = moment?.comments?.find(c => c.id === area._commentAction?.commentId);
+        const library = commentStickerLibrary(tab, parent?.partnerId || moment?.partnerId);
+        area._stickerTab = tab;
+        area._stickerChoices = library;
+        area.querySelector('.moment-sticker-panel').innerHTML = '<div class="moment-sticker-tabs">' +
+            '<button type="button" data-sticker-tab="mine" aria-pressed="' + (tab === 'mine') + '">我的</button>' +
+            '<button type="button" data-sticker-tab="partner" aria-pressed="' + (tab === 'partner') + '">对方的</button>' +
+            '</div>' +
+            (library.length ? '<div class="moment-sticker-grid">' + library.map(function(src, index) {
+                return '<button type="button" data-sticker-index="' + index + '" aria-pressed="' +
+                    (src === area._selectedSticker) + '" aria-label="选择表情包 ' + (index + 1) + '">' +
+                    '<img alt="" loading="lazy" src="' + escapeMomentText(src) + '"></button>';
+            }).join('') + '</div>' : '<p>这个表情库还是空的</p>');
+    }
+
+    function updateCommentComposer(area) {
+        const selected = area._selectedSticker;
+        const preview = area.querySelector('.moment-sticker-selection');
+        preview.hidden = !selected;
+        const img = preview.querySelector('img');
+        if (selected) {
+            if (img.getAttribute('src') !== selected) img.src = selected;
+        } else {
+            img.removeAttribute('src');
+        }
+        area.querySelector('.comment-send-btn').disabled =
+            area._sending || (!selected && !area.querySelector('textarea').value.trim());
+    }
+
+    function toggleStickerPicker(area, open) {
+        const panel = area.querySelector('.moment-sticker-panel');
+        panel.hidden = !open;
+        area.querySelector('.moment-sticker-toggle').setAttribute('aria-expanded', String(open));
+        if (open) renderStickerPicker(area, area._stickerTab || 'mine');
+        else panel.replaceChildren();
+    }
+
+    function closeCommentComposer(area) {
+        if (area._commentAction) {
+            area.previousElementSibling.hidden = false;
+            area.remove();
+            return;
+        }
+        area.hidden = true;
+        area.querySelector('textarea').value = '';
+        area._selectedSticker = null;
+        toggleStickerPicker(area, false);
+        updateCommentComposer(area);
+    }
+
     function renderMomentCard(moment) {
         var avStyle = getMomentAvatarStyle(moment.publisher);
         var isMe = moment.publisher === 'me';
@@ -524,36 +595,18 @@
                 commentsHtml += '<div class="moment-comment" data-comment-id="' + comment.id + '" style="display:flex;align-items:flex-start;padding:6px 0 2px 0;font-size:13px;line-height:1.5;">' +
                     '<div class="moment-comment-trigger" tabindex="0" role="button" aria-haspopup="dialog" style="flex:1;min-width:0;color:' + textColor + ';overflow-wrap:anywhere;touch-action:manipulation;cursor:pointer;">' +
                         prefix + '<span style="white-space:pre-wrap;">' + escapeText(comment.text) + '</span>' +
+                        (comment.sticker ? '<img class="moment-comment-sticker" src="' + escapeMomentText(comment.sticker) + '" alt="表情包" loading="lazy">' : '') +
                     '</div>' +
                     '</div>';
             });
             commentsHtml += '</div>';
         }
 
-        // 5. 互动容器
-        var interactionHtml = '';
-        if (likes.length > 0 || comments.length > 0) {
-            interactionHtml = '<div class="moment-interaction-box" style="position:relative; background:' + interactionBg + '; border-radius:6px; padding:10px 12px 12px 12px; margin-top:8px; margin-bottom:8px;">';
-            interactionHtml += '<div style="position:absolute; top:4px; right:4px; z-index:10;">' + actionMenuHtml + '</div>';
-            if (likes.length > 0) interactionHtml += likesHtml;
-            if (comments.length > 0) {
-                interactionHtml += '<div style="' + (likes.length > 0 ? 'margin-top:6px;' : '') + '">' + commentsHtml + '</div>';
-            }
-            interactionHtml += '</div>';
-        } else {
-            interactionHtml = '<div class="moment-footer" style="display:flex;justify-content:flex-end;align-items:center;padding:4px 0 0 0;margin-top:4px;">' +
-                '<div class="moment-footer-right" style="flex-shrink:0;display:flex;align-items:center;">' + actionMenuHtml + '</div>' +
-            '</div>';
-        }
-
-        // 6. 评论输入框
-        var commentInputHtml =
-            '<div class="moment-comment-input" data-moment-id="' + moment.id + '" style="display:none;margin-top:8px;width:100%;box-sizing:border-box;">' +
-                '<div style="display:flex;align-items:flex-end;gap:8px;background:' + interactionBg + ';border-radius:8px;padding:6px 10px;width:100%;box-sizing:border-box;">' +
-                    '<textarea placeholder="写评论..." class="comment-input-field" rows="3" style="flex:1;min-width:0;padding:8px 12px;border:1px solid ' + (isDark ? 'rgba(255,255,255,0.1)' : 'var(--border-color)') + ';border-radius:10px;font-size:12px;background:' + (isDark ? 'rgba(0,0,0,0.2)' : 'var(--primary-bg)') + ';color:' + textColor + ';outline:none;font-family:var(--font-family);box-sizing:border-box;resize:none;line-height:1.5;max-height:120px;overflow-y:auto;"></textarea>' +
-                    '<button class="comment-send-btn" style="padding:8px 14px;background:var(--accent-color);color:#fff;border:none;border-radius:10px;font-size:12px;cursor:pointer;font-weight:600;flex-shrink:0;box-sizing:border-box;margin-bottom:1px;">发送</button>' +
-                '</div>' +
-            '</div>';
+        var hasInteraction = likes.length > 0 || comments.length > 0;
+        var interactionHtml = '<div class="moment-interaction' + (hasInteraction ? ' moment-interaction-box' : ' moment-footer') + '"' +
+            (hasInteraction ? ' style="background:' + interactionBg + '"' : '') + '>' +
+            actionMenuHtml + likesHtml +
+            (commentsHtml || '<div class="moment-comments" hidden></div>') + '</div>';
 
         // 7. 整体
         return '<div class="moment-card" data-moment-id="' + moment.id + '" style="padding:12px 16px 8px;border-bottom:1px solid ' + (isDark ? 'rgba(255,255,255,0.06)' : 'var(--border-color)') + ';">' +
@@ -572,7 +625,7 @@
             (moment.content ? '<div class="moment-content" style="font-size:14px;line-height:1.7;color:' + textColor + ';margin-bottom:4px;word-break:break-word;">' + moment.content + '</div>' : '') +
             imagesHtml +
             interactionHtml +
-            commentInputHtml +
+            commentComposer('写评论…', true) +
             '</div>';
     }
 
@@ -624,6 +677,55 @@
     }
 
     // ==================== 渲染入口 ====================
+    const renderedParts = new WeakMap();
+
+    function syncMomentChildren(parent, next) {
+        const key = element => element.dataset.commentId || element.classList[0];
+        const existing = new Map(Array.from(parent.children, child => [key(child), child]));
+        const wanted = new Set(Array.from(next.children, key));
+        for (const [id, child] of existing) {
+            if (!wanted.has(id)) child.remove();
+        }
+        let position = parent.firstElementChild;
+        for (const candidate of Array.from(next.children)) {
+            const previous = existing.get(key(candidate));
+            let current = previous;
+            if (previous?.matches('.moment-interaction, .moment-comments')) {
+                if (previous.className !== candidate.className) previous.className = candidate.className;
+                if (previous.hidden !== candidate.hidden) previous.hidden = candidate.hidden;
+                if (previous.style.cssText !== candidate.style.cssText) previous.style.cssText = candidate.style.cssText;
+                syncMomentChildren(previous, candidate);
+            } else if (!previous?.matches('.moment-comment-input') && !previous?.querySelector('.moment-comment-input')) {
+                const markup = candidate.outerHTML;
+                if (!previous || (renderedParts.get(previous) || previous.outerHTML) !== markup) {
+                    current = candidate;
+                    if (previous) {
+                        if (position === previous) position = candidate;
+                        previous.replaceWith(candidate);
+                    }
+                }
+                renderedParts.set(current, markup);
+            }
+            if (current !== position) parent.insertBefore(current, position);
+            position = current.nextElementSibling;
+        }
+    }
+
+    function updateMomentCard(moment, existing) {
+        const template = document.createElement('template');
+        template.innerHTML = renderMomentCard(moment);
+        const next = template.content.firstElementChild;
+        if (!existing) return next;
+        if (existing.style.cssText !== next.style.cssText) existing.style.cssText = next.style.cssText;
+        syncMomentChildren(existing, next);
+        return existing;
+    }
+
+    function refreshMomentCard(moment) {
+        const card = Array.from(dom.list?.children || []).find(el => el.dataset.momentId === moment.id);
+        if (card) updateMomentCard(moment, card);
+    }
+
     function renderMoments() {
         var myName = localStorage.getItem('myName') || (window.settings ? window.settings.myName : '我');
         var partnerName = localStorage.getItem('partnerName') || (window.settings ? window.settings.partnerName : '梦角');
@@ -639,14 +741,22 @@
         }
 
         if (!dom.list) return;
-        var filtered = getFilteredMoments();
-        if (filtered.length === 0) {
-            dom.list.innerHTML = '<div class="moments-empty">✦ 暂无动态，发布第一条吧 ✦</div>';
+        const filtered = getFilteredMoments();
+        const current = new Map(Array.from(dom.list.children, card => [card.dataset.momentId, card]));
+        if (!filtered.length) {
+            if (!dom.list.querySelector('.moments-empty')) dom.list.innerHTML = '<div class="moments-empty">✦ 暂无动态，发布第一条吧 ✦</div>';
             return;
         }
-        var html = '';
-        filtered.forEach(function(m) { html += renderMomentCard(m); });
-        dom.list.innerHTML = html;
+        const ids = new Set(filtered.map(moment => moment.id));
+        for (const [id, card] of current) {
+            if (!ids.has(id)) card.remove();
+        }
+        let position = dom.list.firstElementChild;
+        for (const moment of filtered) {
+            const card = updateMomentCard(moment, current.get(moment.id));
+            if (card !== position) dom.list.insertBefore(card, position);
+            position = card.nextElementSibling;
+        }
         bindCardEvents();
     }
 
@@ -658,7 +768,47 @@
         var lastCommentClick;
         container._momentsListener = function(e) {
             var target = e.target;
+            var area = target.closest('.moment-comment-input');
+            if (area) {
+                if (area._sending) return;
+                if (e.type === 'keydown') {
+                    if (e.key === 'Escape') {
+                        e.preventDefault();
+                        if (!area.querySelector('.moment-sticker-panel').hidden) toggleStickerPicker(area, false);
+                        else closeCommentComposer(area);
+                    } else if (target.matches('textarea') && e.key === 'Enter' && !e.shiftKey &&
+                               !e.isComposing && e.keyCode !== 229 &&
+                               (!area._commentAction || e.ctrlKey || e.metaKey)) {
+                        e.preventDefault();
+                        area.querySelector('.comment-send-btn').click();
+                    }
+                    return;
+                }
+                if (target.closest('.moment-sticker-toggle')) {
+                    toggleStickerPicker(area, area.querySelector('.moment-sticker-panel').hidden);
+                } else if (target.closest('[data-sticker-tab]')) {
+                    renderStickerPicker(area, target.closest('[data-sticker-tab]').dataset.stickerTab);
+                } else if (target.closest('[data-sticker-index]')) {
+                    area._selectedSticker = area._stickerChoices[Number(target.closest('[data-sticker-index]').dataset.stickerIndex)];
+                    toggleStickerPicker(area, false);
+                    updateCommentComposer(area);
+                    area.querySelector('.comment-send-btn').focus({ preventScroll: true });
+                } else if (target.closest('.moment-sticker-remove')) {
+                    area._selectedSticker = null;
+                    updateCommentComposer(area);
+                    if (!area.querySelector('.moment-sticker-panel').hidden) renderStickerPicker(area, area._stickerTab);
+                } else if (target.closest('.comment-send-btn')) {
+                    sendCommentComposer(area);
+                }
+                return;
+            }
             var commentTrigger = target.closest('.moment-comment-trigger');
+            if (e.type === 'keydown' && !commentTrigger) return;
+            if (e.type === 'click' && target.matches('.moment-comment-sticker')) {
+                lastCommentClick = null;
+                showImagePreview(target.getAttribute('src'));
+                return;
+            }
             if (commentTrigger) {
                 var comment = commentTrigger.closest('.moment-comment');
                 var momentId = comment.closest('.moment-card')?.dataset.momentId;
@@ -712,43 +862,12 @@
                 e.stopPropagation();
                 var id = commentBtn.dataset.momentId;
                 if (id) {
-                    var inputArea = container.querySelector('.moment-comment-input[data-moment-id="' + id + '"]');
-                    if (inputArea) {
-                        var isHidden = inputArea.style.display === 'none' || getComputedStyle(inputArea).display === 'none';
-                        if (isHidden) {
-                            inputArea.style.display = 'flex';
-                            var inputField = inputArea.querySelector('.comment-input-field');
-                            if (inputField) setTimeout(function() { inputField.focus(); }, 100);
-                        } else {
-                            inputArea.style.display = 'none';
-                        }
-                    }
+                    var inputArea = commentBtn.closest('.moment-card').querySelector(':scope > .moment-comment-input');
+                    inputArea.hidden = false;
+                    inputArea.querySelector('textarea').focus({ preventScroll: true });
                     var popup = commentBtn.closest('.moment-menu-popup');
                     if (popup) popup.style.display = 'none';
                 }
-                return;
-            }
-
-            var sendBtn = target.closest('.comment-send-btn');
-            if (sendBtn) {
-                var inputArea = sendBtn.closest('.moment-comment-input');
-                var id = inputArea ? inputArea.dataset.momentId : null;
-                var input = inputArea ? inputArea.querySelector('.comment-input-field') : null;
-                var text = input ? input.value.trim() : '';
-                if (id && text) {
-                    addComment(id, text);
-                    input.value = '';
-                    inputArea.style.display = 'none';
-                }
-                return;
-            }
-
-            var inputField = target.closest('.comment-input-field');
-            if (inputField && e.key === 'Enter') {
-                e.preventDefault();
-                var area = inputField.closest('.moment-comment-input');
-                var sendBtn = area ? area.querySelector('.comment-send-btn') : null;
-                if (sendBtn) sendBtn.click();
                 return;
             }
 
@@ -777,6 +896,11 @@
 
         container._momentsLeaveListener = function(e) {
             if (!e.target.closest('.moment-comment-trigger')) lastCommentClick = null;
+            container.querySelectorAll('.moment-comment-input:not([hidden])').forEach(function(area) {
+                if (area._sending || area.contains(e.target)) return;
+                if (!area.querySelector('.moment-sticker-panel').hidden) toggleStickerPicker(area, false);
+                if (!area.querySelector('textarea').value.trim() && !area._selectedSticker) closeCommentComposer(area);
+            });
             var popup = e.target.closest('.moment-menu-popup');
             var trigger = e.target.closest('.moment-menu-trigger');
             if (!popup && !trigger) {
@@ -788,7 +912,10 @@
 
         container.addEventListener('click', container._momentsListener);
         container.addEventListener('keydown', container._momentsListener);
-        document.addEventListener('click', container._momentsLeaveListener);
+        container.addEventListener('input', function(e) {
+            if (e.target.matches('.comment-input-field')) updateCommentComposer(e.target.closest('.moment-comment-input'));
+        });
+        document.addEventListener('click', container._momentsLeaveListener, true);
     }
 
     // ==================== 核心操作 ====================
@@ -932,27 +1059,34 @@
         var idx = moment.likes.indexOf('me');
         if (idx > -1) moment.likes.splice(idx, 1);
         else moment.likes.push('me');
-        saveMoments().then(function() { renderMoments(); });
+        saveMoments().then(function() { refreshMomentCard(moment); });
     }
 
-    function addComment(momentId, text, replyToCommentId) {
+    async function addComment(momentId, text, replyToCommentId, sticker) {
         replyToCommentId = replyToCommentId || null;
+        if (!String(text ?? '').trim() && !sticker) return;
         var moment = moments.find(function(m) { return m.id === momentId; });
         if (!moment) return;
         var comment = {
             id: generateCommentId(),
             sender: 'me',
             senderName: (window.settings && window.settings.myName) || '我',
-            text: text,
+            text: text || '',
+            ...(sticker ? { sticker } : {}),
             timestamp: Date.now(),
             replyToCommentId: replyToCommentId,
             isAutoReply: false,
         };
         moment.comments.push(comment);
-        saveMoments().then(function() {
-            renderMoments();
-            schedulePartnerReplyToComment(momentId, comment.id);
-        });
+        try {
+            await saveMoments();
+        } catch (error) {
+            moment.comments = moment.comments.filter(item => item !== comment);
+            refreshMomentCard(moment);
+            throw error;
+        }
+        refreshMomentCard(moment);
+        schedulePartnerReplyToComment(momentId, comment.id);
     }
 
     function deleteMoment(momentId) {
@@ -1001,29 +1135,37 @@
     }
 
     function deleteComment(momentId, commentId) {
-        var moment = moments.find(function(m) { return m.id === momentId; });
-        if (!moment) return;
-        var idx = moment.comments.findIndex(function(c) { return c.id === commentId; });
-        if (idx > -1) {
-            moment.comments.splice(idx, 1);
-            saveMoments().then(function() { renderMoments(); });
-        }
+        const moment = moments.find(m => m.id === momentId);
+        const index = moment?.comments.findIndex(c => c.id === commentId) ?? -1;
+        if (index < 0) return;
+        moment.comments.splice(index, 1);
+        saveMoments().then(function() { refreshMomentCard(moment); });
     }
 
-    function editComment(momentId, commentId, newText) {
-        var moment = moments.find(function(m) { return m.id === momentId; });
-        if (!moment) return;
-        var comment = moment.comments.find(function(c) { return c.id === commentId; });
-        if (comment) {
-            comment.text = newText;
-            comment.timestamp = Date.now();
-            comment.isEdited = true;
-            saveMoments().then(function() { renderMoments(); });
+    async function editComment(momentId, commentId, newText, sticker) {
+        const moment = moments.find(m => m.id === momentId);
+        const index = moment?.comments.findIndex(c => c.id === commentId) ?? -1;
+        if (index < 0) return;
+        const original = moment.comments[index];
+        const selected = sticker === undefined ? original.sticker : sticker;
+        if (!String(newText ?? '').trim() && !selected) return;
+        if (newText === original.text && (selected || null) === (original.sticker || null)) return;
+        const updated = { ...original, text: newText || '', timestamp: Date.now(), isEdited: true };
+        if (selected) updated.sticker = selected;
+        else delete updated.sticker;
+        moment.comments[index] = updated;
+        try {
+            await saveMoments();
+        } catch (error) {
+            const updatedIndex = moment.comments.indexOf(updated);
+            if (updatedIndex >= 0) moment.comments[updatedIndex] = original;
+            throw error;
         }
+        refreshMomentCard(moment);
     }
 
-    function replyToComment(momentId, replyToCommentId, text) {
-        addComment(momentId, text, replyToCommentId);
+    function replyToComment(momentId, replyToCommentId, text, sticker) {
+        return addComment(momentId, text, replyToCommentId, sticker);
     }
 
     // ==================== 延迟回复 / 延迟点赞 ====================
@@ -1039,10 +1181,7 @@
     function queueMomentReply(momentId, person) {
         var moment = moments.find(function(m) { return m.id === momentId; });
         if (!moment) return;
-        if (getReplyLibrary().length === 0) {
-            console.log('[朋友圈] 字卡库为空，跳过对方点赞+评论调度');
-            return;
-        }
+        if (!getReplyLibrary().length && !commentStickerLibrary('partner', person?.id).length) return;
         var autoReplyCount = moment.autoReplyCount || 0;
         var pendingAutoReply = moment.pendingAutoReply || 0;
         if (autoReplyCount + pendingAutoReply >= Math.max(CONFIG.MAX_AUTO_REPLY_ROUNDS, window.XavierConversations?.profiles().length || 1)) return;
@@ -1075,7 +1214,12 @@
     function schedulePartnerReplyToComment(momentId, commentId) {
         var moment = moments.find(function(m) { return m.id === momentId; });
         if (!moment) return;
-        if (getReplyLibrary().length === 0) return;
+        const parent = moment.comments.find(comment => comment.id === commentId);
+        const repliedTo = moment.comments.find(comment => comment.id === parent?.replyToCommentId);
+        const roleId = repliedTo?.partnerId || moment.partnerId ||
+            window.XavierConversations?.primaryId();
+        const role = window.XavierConversations?.profile(roleId);
+        if (!getReplyLibrary().length && !commentStickerLibrary('partner', roleId).length) return;
 
         var autoReplyCount = moment.autoReplyCount || 0;
         var pendingAutoReply = moment.pendingAutoReply || 0;
@@ -1090,6 +1234,8 @@
             id: generateTaskId(),
             type: 'partner_action',
             triggerType: 'comment',
+            partnerId: role?.id,
+            partnerName: role?.name,
             momentId: momentId,
             replyToCommentId: commentId,
             scheduledAt: scheduledAt,
@@ -1121,20 +1267,30 @@
         const likeId = task.partnerName || 'partner';
         if (task.shouldLike && moment.likes.indexOf(likeId) === -1) moment.likes.push(likeId);
 
-        var cardCount = randomInt(1, 5);
-        var cards = getRandomReplyCards(cardCount);
-        if (cards.length > 0) {
-            var replyText = cards.join(' ');
-            var replyComment = {
+        const primaryId = window.XavierConversations?.primaryId();
+        const roleId = author?.id || moment.partnerId || primaryId;
+        const lastReply = moments.flatMap(item => item.comments || []).reduce(function(latest, comment) {
+            if (!comment.isAutoReply || comment.sender !== 'partner' ||
+                (comment.partnerId || primaryId) !== roleId) return latest;
+            const time = comment.sentAt || comment.timestamp;
+            return !latest || time >= (latest.sentAt || latest.timestamp) ? comment : latest;
+        }, null);
+        let replyText = getRandomReplyCards(randomInt(1, 5)).join(' ');
+        const sticker = !lastReply?.sticker && Math.random() < 0.15 ? getRandomSticker(roleId) : null;
+        if (sticker && Math.random() < 0.35) replyText = '';
+        if (replyText || sticker) {
+            moment.comments.push({
                 id: generateCommentId(),
                 sender: 'partner',
-                senderName: task.partnerName || (window.settings && window.settings.partnerName) || '梦角',
+                senderName: author?.name || task.partnerName || moment.publisherName || (window.settings && window.settings.partnerName) || '梦角',
+                ...(roleId ? { partnerId: roleId } : {}),
                 text: replyText,
+                ...(sticker ? { sticker } : {}),
                 timestamp: task.scheduledAt || Date.now(),
+                sentAt: Date.now(),
                 replyToCommentId: task.replyToCommentId || null,
                 isAutoReply: true,
-            };
-            moment.comments.push(replyComment);
+            });
         }
 
         moment.autoReplyCount = (moment.autoReplyCount || 0) + 1;
@@ -1143,7 +1299,7 @@
         setRedDot(true);
         saveMoments().then(function() {
             removeTask(task.id);
-            renderMoments();
+            refreshMomentCard(moment);
         });
     }
 
@@ -1403,42 +1559,13 @@
 
         container.scrollTop = 0;
         nav.classList.remove('scrolled');
-        nav.style.backgroundColor = '';
-        nav.style.backdropFilter = '';
-        nav.style.webkitBackdropFilter = '';
 
-        var isDarkMode = false;
-        try {
-            var bg = window.getComputedStyle(document.body).backgroundColor;
-            var rgb = bg.match(/\d+/g);
-            if (rgb && rgb.length >= 3) {
-                if (parseInt(rgb[0]) + parseInt(rgb[1]) + parseInt(rgb[2]) < 384) isDarkMode = true;
-            }
-        } catch (e) {}
-
-        container.onscroll = function() {
-            if (container.scrollTop > 100) {
-                nav.classList.add('scrolled');
-                if (isDarkMode) {
-                    nav.style.backgroundColor = 'rgba(0,0,0,0.95)';
-                    nav.style.backdropFilter = 'blur(15px) saturate(180%)';
-                    nav.style.webkitBackdropFilter = 'blur(15px) saturate(180%)';
-                    nav.querySelectorAll('.moments-nav-btn, .moments-nav-title').forEach(function(el) {
-                        el.style.color = '#ffffff';
-                    });
-                }
-            } else {
-                nav.classList.remove('scrolled');
-                if (isDarkMode) {
-                    nav.style.backgroundColor = 'transparent';
-                    nav.style.backdropFilter = '';
-                    nav.style.webkitBackdropFilter = '';
-                    nav.querySelectorAll('.moments-nav-btn, .moments-nav-title').forEach(function(el) {
-                        el.style.color = '';
-                    });
-                }
-            }
+        const update = function() {
+            const scrolled = container.scrollTop > 100;
+            if (nav.classList.contains('scrolled') !== scrolled) nav.classList.toggle('scrolled', scrolled);
         };
+        container.onscroll = update;
+        update();
     }
 
     // ==================== 菜单 ====================
@@ -1452,103 +1579,53 @@
     }
 
     function inlineCommentAction(momentId, commentId, mode) {
-        var moment = moments.find(function(m) { return m.id === momentId; });
-        if (!moment) return;
-        var comment = moment.comments.find(function(c) { return c.id === commentId; });
-        if (!comment) return;
-
-        var commentEl = document.querySelector('.moment-comment[data-comment-id="' + commentId + '"]');
-        if (!commentEl) return;
-
-        var originalHTML = commentEl.innerHTML;
-        var originalText = (mode === 'edit') ? (comment.text || '') : '';
-        var isDark = false;
-        try {
-            var bg = window.getComputedStyle(document.body).backgroundColor;
-            var rgb = bg.match(/\d+/g);
-            if (rgb && rgb.length >= 3) {
-                isDark = (parseInt(rgb[0]) + parseInt(rgb[1]) + parseInt(rgb[2]) < 384);
-            }
-        } catch (e) {}
-
-        var placeholder = (mode === 'edit') ? '编辑评论...' : '回复评论...';
-
-        commentEl.innerHTML =
-            '<div style="display:flex;align-items:flex-end;gap:8px;width:100%;box-sizing:border-box;">' +
-                '<textarea class="inline-comment-field" rows="3" placeholder="' + placeholder + '" style="flex:1;min-width:0;padding:8px 12px;border:1px solid ' + (isDark ? 'rgba(255,255,255,0.1)' : 'var(--border-color)') + ';border-radius:10px;font-size:12px;background:' + (isDark ? 'rgba(0,0,0,0.2)' : 'var(--primary-bg)') + ';color:' + (isDark ? '#d1d1d1' : 'var(--text-primary)') + ';outline:none;font-family:var(--font-family);resize:none;line-height:1.5;max-height:120px;overflow-y:auto;box-sizing:border-box;">' + originalText.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</textarea>' +
-                '<button class="inline-comment-send" style="padding:8px 14px;background:var(--accent-color);color:#fff;border:none;border-radius:10px;font-size:12px;cursor:pointer;font-weight:600;flex-shrink:0;box-sizing:border-box;margin-bottom:1px;">发送</button>' +
-            '</div>';
-
-        var textarea = commentEl.querySelector('.inline-comment-field');
-        var sendBtn = commentEl.querySelector('.inline-comment-send');
-
-        var autoResize = function() {
-            textarea.style.height = 'auto';
-            textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
-        };
-        textarea.addEventListener('input', autoResize);
-        setTimeout(function() {
-            autoResize();
-            textarea.focus();
-            if (mode === 'edit' && textarea.setSelectionRange) {
-                textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-            }
-        }, 30);
-
-        var closed = false;
-        var restore = function() {
-            if (closed) return;
-            closed = true;
-            document.removeEventListener('click', onOutsideClick, true);
-            document.removeEventListener('touchstart', onOutsideTouch, true);
-            commentEl.innerHTML = originalHTML;
-            bindCardEvents();
-        };
-
-        var save = function() {
-            if (closed) return;
-            var newText = textarea.value.trim();
-            if (!newText) { restore(); return; }
-            closed = true;
-            document.removeEventListener('click', onOutsideClick, true);
-            document.removeEventListener('touchstart', onOutsideTouch, true);
+        const moment = moments.find(m => m.id === momentId);
+        const comment = moment?.comments.find(c => c.id === commentId);
+        const card = Array.from(dom.list.children).find(el => el.dataset.momentId === momentId);
+        const row = Array.from(card?.querySelectorAll('.moment-comment') || []).find(el => el.dataset.commentId === commentId);
+        if (!row || !comment) return;
+        let area = row.querySelector('.moment-comment-input');
+        if (!area) {
+            row.insertAdjacentHTML('beforeend', commentComposer(mode === 'edit' ? '编辑评论…' : '回复评论…', false));
+            row.firstElementChild.hidden = true;
+            area = row.lastElementChild;
+            area._commentAction = { mode, commentId };
             if (mode === 'edit') {
-                if (newText !== originalText) editComment(momentId, commentId, newText);
-                else restore();
-            } else {
-                replyToComment(momentId, commentId, newText);
+                area.querySelector('textarea').value = comment.text || '';
+                area._selectedSticker = comment.sticker || null;
             }
-        };
+            updateCommentComposer(area);
+        }
+        area.querySelector('textarea').focus({ preventScroll: true });
+    }
 
-        var onOutsideClick = function(e) {
-            if (!commentEl.contains(e.target)) restore();
-        };
-        var onOutsideTouch = function(e) {
-            if (!commentEl.contains(e.target)) restore();
-        };
-
-        setTimeout(function() {
-            document.addEventListener('click', onOutsideClick, true);
-            document.addEventListener('touchstart', onOutsideTouch, true);
-        }, 50);
-
-        sendBtn.onclick = function(e) {
-            e.stopPropagation();
-            save();
-        };
-
-        textarea.onkeydown = function(e) {
-            if (e.key === 'Escape') {
-                e.stopPropagation();
-                restore();
+    async function sendCommentComposer(area) {
+        if (area._sending) return;
+        const field = area.querySelector('textarea');
+        const text = field.value.trim();
+        const sticker = area._selectedSticker || null;
+        if (!text && !sticker) return;
+        const id = area.closest('.moment-card').dataset.momentId;
+        const action = area._commentAction;
+        area._sending = true;
+        area.querySelector('.comment-send-btn').disabled = true;
+        field.readOnly = true;
+        try {
+            if (action?.mode === 'edit') await editComment(id, action.commentId, text, sticker);
+            else await addComment(id, text, action?.commentId, sticker);
+            closeCommentComposer(area);
+            if (action?.mode === 'edit') {
+                const moment = moments.find(m => m.id === id);
+                if (moment) refreshMomentCard(moment);
             }
-            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-                e.preventDefault();
-                save();
-            }
-        };
-
-        commentEl.addEventListener('click', function(e) { e.stopPropagation(); });
+        } catch (error) {
+            console.error('[朋友圈] 评论保存失败', error);
+            showToast('评论保存失败，请重试');
+        } finally {
+            area._sending = false;
+            field.readOnly = false;
+            updateCommentComposer(area);
+        }
     }
 
     function showContextMenu(items) {
@@ -1883,16 +1960,16 @@
     function updateCover() {
         if (dom.userAvatar) {
             var avatar = localStorage.getItem('myAvatar') || (window.settings ? window.settings.myAvatar : '') || '';
-            dom.userAvatar.src = avatar || 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'%23ccc\'%3E%3Ccircle cx=\'12\' cy=\'12\' r=\'10\'/%3E%3C/svg%3E';
+            const source = avatar || 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'%23ccc\'%3E%3Ccircle cx=\'12\' cy=\'12\' r=\'10\'/%3E%3C/svg%3E';
+            if (dom.userAvatar.getAttribute('src') !== source) dom.userAvatar.src = source;
         }
         if (dom.userName) {
             dom.userName.textContent = (window.settings && window.settings.myName) || '我';
         }
         if (dom.coverImg) {
-            dom.coverImg.src = 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 800 200\'%3E%3Crect width=\'800\' height=\'200\' fill=\'%23cccccc\'/%3E%3C/svg%3E';
             return localforage.getItem('momentsCover').then(function(cover) {
                 if (cover) {
-                    dom.coverImg.src = cover;
+                    if (dom.coverImg.getAttribute('src') !== cover) dom.coverImg.src = cover;
                     var hint = document.getElementById('moments-cover-hint');
                     if (hint) hint.style.display = 'none';
                 }
@@ -2036,19 +2113,11 @@
         if (localMy && window.settings) window.settings.myAvatar = localMy;
         if (localPartner && window.settings) window.settings.partnerAvatar = localPartner;
 
-        if (!dom.list) return;
-        var filtered = getFilteredMoments();
-        if (filtered.length === 0) {
-            dom.list.innerHTML = '<div class="moments-empty">✦ 暂无动态，发布第一条吧 ✦</div>';
-        } else {
-            var html = '';
-            filtered.forEach(function(m) { html += renderMomentCard(m); });
-            dom.list.innerHTML = html;
-            bindCardEvents();
-        }
+        renderMoments();
         if (dom.userAvatar) {
             var avatar = localStorage.getItem('myAvatar') || (window.settings ? window.settings.myAvatar : '') || '';
-            dom.userAvatar.src = avatar || 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'%23ccc\'%3E%3Ccircle cx=\'12\' cy=\'12\' r=\'10\'/%3E%3C/svg%3E';
+            const source = avatar || 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'%23ccc\'%3E%3Ccircle cx=\'12\' cy=\'12\' r=\'10\'/%3E%3C/svg%3E';
+            if (dom.userAvatar.getAttribute('src') !== source) dom.userAvatar.src = source;
         }
         console.log('✅ 朋友圈强制刷新完成');
     }

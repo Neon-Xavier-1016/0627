@@ -11432,7 +11432,7 @@ html[data-theme="dark"] body.with-background #chat-container .message-meta {
     background: rgba(255, 255, 255, 0); /* 初始完全透明 */
     backdrop-filter: blur(0px);
     -webkit-backdrop-filter: blur(0px);
-    transition: background 0.3s ease, backdrop-filter 0.3s ease;
+    transition: background-color 0.3s ease;
 }
 
 /* 下滑后的毛玻璃效果 (浅色模式默认) */
@@ -11490,6 +11490,103 @@ html[data-theme="dark"] body.with-background #chat-container .message-meta {
 .moments-nav.scrolled .moments-nav-title {
     opacity: 1;
 }
+
+/* 朋友圈评论与表情包 */
+.moment-interaction-box {
+    position: relative;
+    border-radius: 6px;
+    padding: 10px 38px 12px 12px;
+    margin: 8px 0;
+    min-height: 32px;
+}
+.moment-interaction-box > .moment-action-menu {
+    position: absolute !important;
+    top: 4px;
+    right: 4px;
+    z-index: 10;
+}
+.moment-interaction.moment-footer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 4px;
+}
+.moment-likes-row + .moment-comments { padding-top: 6px; }
+
+#moments-list .moment-comment-input {
+    display: block;
+    min-width: 0;
+    padding: 8px;
+    border-radius: 8px;
+    background: var(--primary-bg);
+}
+#moments-list [hidden] { display: none !important; }
+#moments-list .moment-comment .moment-comment-input { margin-top: 0; }
+.moment-comment-controls {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+}
+.moment-comment-controls textarea {
+    flex: 1;
+    min-width: 0;
+    max-height: 120px;
+    padding: 8px 10px;
+    resize: vertical;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--secondary-bg);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 16px;
+    line-height: 1.4;
+}
+#moments-list .comment-send-btn {
+    flex: none;
+    min-height: 34px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+}
+#moments-list .comment-send-btn:disabled { opacity: 0.5; cursor: default; }
+#moments-list .moment-sticker-toggle,
+#moments-list .moment-sticker-remove,
+#moments-list .moment-sticker-panel button {
+    border: 1px solid transparent;
+    border-radius: 8px;
+    color: var(--text-primary);
+    background: var(--secondary-bg);
+}
+#moments-list .moment-sticker-toggle {
+    flex: none;
+    width: 36px;
+    height: 34px;
+    padding: 0;
+    font-size: 19px;
+}
+#moments-list .moment-sticker-toggle[aria-expanded="true"],
+#moments-list .moment-sticker-panel button[aria-pressed="true"] {
+    border-color: var(--accent-color);
+    color: var(--text-primary);
+}
+.moment-sticker-selection { display: flex; align-items: flex-start; gap: 4px; margin-top: 8px; }
+.moment-sticker-selection img { width: 48px; height: 48px; object-fit: contain; }
+#moments-list .moment-sticker-remove { padding: 2px 8px; }
+.moment-sticker-panel { margin-top: 8px; }
+.moment-sticker-panel p { margin: 8px 0 4px; font-size: 13px; color: var(--text-secondary); }
+.moment-sticker-tabs { display: flex; gap: 6px; }
+.moment-sticker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
+    gap: 6px;
+    margin-top: 8px;
+    max-height: 170px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+#moments-list .moment-sticker-grid button { aspect-ratio: 1; min-width: 0; padding: 3px; }
+.moment-sticker-grid img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.moment-comment-sticker { display: inline-block; width: 32px; height: 32px; margin-inline-start: 4px; vertical-align: middle; object-fit: contain; cursor: zoom-in; }
+
 
 /* 让朋友圈的文字、图片、评论区整体向右偏移，与用户名对齐 */
 .moment-card .moment-content,

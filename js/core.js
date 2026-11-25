@@ -2058,7 +2058,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                                 status: 'received',
                                 favorited: false,
                                 note: null,
-                                type: 'normal'
+                                type: 'sticker'
                             });
                             playSound('message');
                             if (typeof window._sendPartnerNotification === 'function') {
