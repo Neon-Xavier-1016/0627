@@ -162,6 +162,10 @@ function _renderListContentOnly() {
     Array.from(list.children).forEach(child => {
         if (child !== toolbar) child.remove();
     });
+    if (currentMajorTab === 'reply' && currentSubTab === 'my-stickers') {
+        _renderMyStickerTab(list);
+        return;
+    }
 
     let itemsToRender = [];
     let renderType = 'text';
@@ -229,7 +233,7 @@ function setReplyLibraryPanel(major) {
     const visibility = {
         'custom-replies-list': library,
         'cr-sub-tabs': library,
-        'batch-ops-toolbar': library && !period,
+        'batch-ops-toolbar': library && !period && currentSubTab !== 'my-stickers',
         'add-custom-reply': library && !period,
         'announcement-panel': major === 'announcement',
         'imagepool-panel': major === 'imagepool'
@@ -300,6 +304,10 @@ function renderReplyLibrary() {
 
     if (currentMajorTab === 'reply' && currentSubTab === 'period') {
         window._renderPeriodCareTab?.(list);
+        return;
+    }
+    if (currentMajorTab === 'reply' && currentSubTab === 'my-stickers') {
+        _renderMyStickerTab(list);
         return;
     }
     _renderModernToolbar();
@@ -987,6 +995,43 @@ function _renderEmojiTab(list, itemsToRender) {
             list.appendChild(div);
         });
     }
+}
+
+function _renderMyStickerTab(list) {
+    const stickers = window.myStickerLibrary || [];
+    if (!stickers.length) {
+        list.innerHTML = renderEmptyState('还没有自己的表情包');
+        return;
+    }
+    stickers.forEach((src, index) => {
+        const item = document.createElement('div');
+        item.className = 'sticker-item rl-my-sticker';
+        const img = document.createElement('img');
+        img.alt = `我的表情包 ${index + 1}`;
+        img.loading = 'lazy';
+        img.src = src;
+        const remove = document.createElement('button');
+        remove.className = 'sticker-delete-btn';
+        remove.type = 'button';
+        remove.textContent = '×';
+        remove.setAttribute('aria-label', `删除表情包 ${index + 1}`);
+        remove.addEventListener('click', async () => {
+            if (remove.disabled || !confirm('从我的表情库删除这张表情包？')) return;
+            remove.disabled = true;
+            try {
+                await window.StickerAssets.removeMine(src);
+                if (typeof renderComboMenu === 'function') renderComboMenu();
+                if (currentMajorTab === 'reply' && currentSubTab === 'my-stickers') renderReplyLibrary();
+                showNotification('已删除', 'success');
+            } catch (error) {
+                console.error('删除我的表情包失败:', error);
+                showNotification('删除失败，请重试', 'error');
+                remove.disabled = false;
+            }
+        });
+        item.append(img, remove);
+        list.appendChild(item);
+    });
 }
 
 function _renderStickerTab(list, itemsToRender) {
@@ -2375,6 +2420,10 @@ function initReplyLibraryListeners() {
     const addBtn = document.getElementById('add-custom-reply');
     if (addBtn) {
         addBtn.addEventListener('click', () => {
+            if (currentSubTab === 'my-stickers') {
+                document.getElementById('my-sticker-quick-upload')?.click();
+                return;
+            }
             if (currentSubTab === 'stickers') {
                 const input = document.getElementById('sticker-file-input');
                 if (input) window.StickerAssets.prepareUpload(input);

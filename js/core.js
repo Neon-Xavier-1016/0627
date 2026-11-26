@@ -483,7 +483,8 @@ const LIBRARY_CONFIG = {
             { id: 'dreamfree', name: '组词库', mode: 'list' },   // ← 新增
             { id: 'voice',     name: '语音库',  mode: 'voice' },
             { id: 'emojis', name: 'Emoji', mode: 'grid' },
-            { id: 'stickers', name: '表情库', mode: 'grid' },
+            { id: 'stickers', name: '对方表情', mode: 'grid' },
+            { id: 'my-stickers', name: '我的表情', mode: 'grid' },
             { id: 'period', name: '月经关怀', mode: 'list' }   // ✅ 新增
         ]
     },
@@ -502,7 +503,7 @@ let currentAnnType = 'anniversary';
 window.openMyStickerSettings = function() {
     const picker = document.getElementById('user-sticker-picker');
     if (picker) picker.classList.remove('active');
-    selectReplyLibraryTab('reply', 'stickers');
+    selectReplyLibraryTab('reply', 'my-stickers');
     var modal = document.getElementById('custom-replies-modal');
     if (modal && typeof showModal === 'function') showModal(modal);
 };
@@ -836,7 +837,7 @@ function manageAutoSendTimer() {
         
         autoSendTimer = setInterval(() => {
             if (!document.body.classList.contains('batch-favorite-mode')) {
-                simulateReply(); 
+                simulateReply('', { proactive: true });
             }
         }, intervalMs);
     }
@@ -1673,6 +1674,7 @@ const addMessage = (message) => {
                     text: text || '',
                     timestamp: new Date(),
                     image: imgSrc,
+                    ...(imgSrc ? { isSticker: false } : {}),
                     status: 'sent',
                     favorited: false,
                     note: null,
@@ -1771,7 +1773,7 @@ const addMessage = (message) => {
                         : '';
                     const label = msg.text
                         ? `<span class="batch-preview-text">${msg.text}</span>`
-                        : `<span class="batch-preview-text" style="color:var(--text-secondary);font-style:italic;">图片</span>`;
+                        : `<span class="batch-preview-text" style="color:var(--text-secondary);font-style:italic;">${isStickerMessage(msg) ? '表情包' : '图片'}</span>`;
                     return `<div class="batch-preview-item" data-index="${index}">${preview}${label}<button class="batch-preview-edit" title="编辑"><i class="fas fa-pencil-alt"></i></button><button class="batch-preview-remove"><i class="fas fa-times"></i></button></div>`;
                 }).join('');
             } else {
@@ -1808,7 +1810,8 @@ const addMessage = (message) => {
             batchMessages.forEach((msg, index) => {
                 setTimeout(() => {
                     addMessage({
-                        id: Date.now() + index, sender: 'user', text: msg.text || '', image: msg.image || null, timestamp: new Date(), status: 'sent', favorited: false, type: 'normal'
+                        id: Date.now() + index, sender: 'user', text: msg.text || '', image: msg.image || null, timestamp: new Date(), status: 'sent',
+                        favorited: false, type: msg.type || 'normal', isSticker: msg.type === 'sticker'
                     });
                     playSound('send');
                 }, index * 300);
@@ -1856,11 +1859,13 @@ const addMessage = (message) => {
             if (indicator) indicator.style.display = 'none';
         };
 
-        window.simulateReply = function(preferredReply) {
+        window.simulateReply = function(preferredReply, { proactive = false } = {}) {
+            const gameBlocksReply = () => proactive && window.MemoryMatch?.isPlayingTogether();
+            if (gameBlocksReply()) return;
             const contextual = typeof preferredReply === 'string' && preferredReply.trim();
             const activeSession = SESSION_ID;
             const generation = nativeReplyGeneration;
-            const cancelled = () => SESSION_ID !== activeSession || nativeReplyGeneration !== generation;
+            const cancelled = () => SESSION_ID !== activeSession || nativeReplyGeneration !== generation || gameBlocksReply();
             function showTypingIndicator() {
                 if (!settings.typingIndicatorEnabled) return;
                 const tiWrapper = document.getElementById('typing-indicator-wrapper');
@@ -1946,7 +1951,13 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                 const delayRange = settings.replyDelayMax - settings.replyDelayMin;
                 delay += settings.replyDelayMin + Math.random() * delayRange;
                 setTimeout(() => {
-                    if (cancelled()) return;
+                    if (cancelled()) {
+                        if (gameBlocksReply()) {
+                            const indicator = document.getElementById('typing-indicator-wrapper');
+                            if (indicator) indicator.style.display = 'none';
+                        }
+                        return;
+                    }
                     try {
                     const replyPool = replyPoolOnce;
                     // 被屏蔽或无效项直接换下一个，尽量保证每次都产出可用回复
@@ -2030,6 +2041,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                         id: Date.now() + i,
                         sender: settings.partnerName || '对方',
                         text: finalText,
+                        ...(contextual ? { automaticSource: 'status-moment' } : {}),
                         partnerEmotion,
                         timestamp: new Date(),
                         status: 'received',
@@ -2055,6 +2067,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                                 text: '',
                                 timestamp: new Date(),
                                 image: randomSticker,
+                                ...(contextual ? { automaticSource: 'status-moment' } : {}),
                                 status: 'received',
                                 favorited: false,
                                 note: null,
@@ -2074,6 +2087,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                                 id: Date.now() + i + 1000,
                                 sender: settings.partnerName || '对方',
                                 text: separateEmoji,
+                                ...(contextual ? { automaticSource: 'status-moment' } : {}),
                                 timestamp: new Date(),
                                 status: 'received',
                                 favorited: false,

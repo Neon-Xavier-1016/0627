@@ -1,17 +1,30 @@
-function renderStatsContent() {
+const nonChatStatsTypes = new Set([
+    'system', 'recall', 'call-event', 'location', 'status-moment', 'status-moment-question', 'qa-live', 'memory-match-result'
+]);
+const legacyMusicStatsReplies = new Set([
+    '我也来陪你听。', '那等下次再听吧。', '好的，那这次就算了。',
+    '换一首吧，这首听腻了。', '我给你换首歌。', '这首不太想听了，切一首。', '来，换首别的听听。', '让我切一首。',
+    '好呀，一起听。', '嗯，我陪你听。', '好啊，正想听这首。',
+    '等一下，待会儿听。', '稍后再听吧。', '先忙会儿，稍后。',
+    '这次先不听了。', '改天吧。', '换个时间吧。'
+]);
+
+function countsAsChatMessage(message) {
+    if (!message.sender || message.sender === 'system' || nonChatStatsTypes.has(message.type) ||
+        message.automaticSource || message.statusMoment || message.image ||
+        message.type === 'image' || isStickerMessage(message)) return false;
+    const text = typeof message.text === 'string' ? message.text.trim() : '';
+    if (/^(?:地点|位置)\s*[:：]/.test(text) || /^.{1,60}撤回了(?:一条)?消息[。！!]?$/u.test(text)) return false;
+    if (message.sender !== 'user' && (legacyMusicStatsReplies.has(text) || window.MomentStatus?.isLegacyReply(text))) return false;
+    return !!(text || message.type === 'voice');
+}
+
+        function renderStatsContent() {
             const statsContent = DOMElements.statsModal.content;
 
-            const partnerMessages = messages.filter(msg =>
-                msg.sender !== 'user' && msg.sender !== null &&
-                msg.text &&
-                msg.type !== 'system'
-            );
-            
-            const myMessages = messages.filter(msg =>
-                msg.sender === 'user' &&
-                msg.text &&
-                msg.type !== 'system'
-            );
+            const chatMessages = messages.filter(countsAsChatMessage);
+            const partnerMessages = chatMessages.filter(msg => msg.sender !== 'user');
+            const myMessages = chatMessages.filter(msg => msg.sender === 'user');
 
             if (partnerMessages.length === 0 && myMessages.length === 0) {
                 statsContent.innerHTML = `
@@ -24,9 +37,9 @@ function renderStatsContent() {
             }
 
             const getTopReplies = (msgs) => {
-                const countMap = {};
+                const countMap = Object.create(null);
                 msgs.forEach(msg => {
-                    const text = msg.text.trim();
+                    const text = typeof msg.text === 'string' ? msg.text.trim() : '';
                     if (text) {
                         countMap[text] = (countMap[text] || 0) + 1;
                     }
@@ -45,19 +58,20 @@ function renderStatsContent() {
                 const maxVal = list[0].count;
                 return list.map((item, index) => {
                     const percent = (item.count / maxVal) * 100;
+                    const label = item.text.replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
                     return `
                     <div class="rank-item">
                         <div class="rank-progress-bg" style="width: ${percent}%; opacity: 0.1; background-color: var(--text-primary);"></div>
                         <div class="rank-info">
                             <div class="rank-number">#${index + 1}</div>
-                            <div class="rank-text" title="${item.text}">${item.text}</div>
+                            <div class="rank-text" title="${label}">${label}</div>
                             <div class="rank-count">${item.count}次</div>
                         </div>
                     </div>`;
                 }).join('');
             };
 
-            const allMsgs = messages.filter(m => m.timestamp);
+            const allMsgs = chatMessages.filter(m => m.timestamp);
             const firstMsg = allMsgs.length > 0 ? allMsgs[0] : { timestamp: new Date() };
             const lastMsg = allMsgs.length > 0 ? allMsgs[allMsgs.length - 1] : { timestamp: new Date() };
 
@@ -71,7 +85,7 @@ function renderStatsContent() {
                 <div class="stats-dashboard">
                     <div class="stats-overview-grid">
                         <div class="overview-item overview-large">
-                            <div class="overview-value">${messages.length}</div>
+                            <div class="overview-value">${chatMessages.length}</div>
                             <div class="overview-label">总消息数</div>
                         </div>
                         <div class="overview-row-two">
@@ -898,7 +912,7 @@ window._runMsgSearch = function() {
         const ts = m.timestamp ? new Date(m.timestamp) : null;
         if (from && ts && ts < from) return false;
         if (to && ts && ts > to) return false;
-        if (q && m.text && m.text.toLowerCase().includes(q)) return true;
+        if (q && (isStickerMessage(m) ? '表情包' : m.text || '').toLowerCase().includes(q)) return true;
         if (q && !m.text && m.image) return false; 
         return !q; 
     });
@@ -934,8 +948,8 @@ window._runMsgSearch = function() {
         const ts = msg.timestamp ? new Date(msg.timestamp).toLocaleString('zh-CN', {
             month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
         }) : '';
-        const content = msg.text
-            ? highlight(msg.text, q)
+        const content = isStickerMessage(msg) ? highlight('表情包', q)
+            : msg.text ? highlight(msg.text, q)
             : (msg.image ? `<img src="${msg.image}" style="max-height:60px;border-radius:6px;display:block;margin-top:4px;" loading="lazy">` : '');
         return `<div style="display:flex;gap:10px;align-items:flex-start;padding:11px 12px;border-radius:12px;background:var(--primary-bg);border:1px solid var(--border-color);margin-bottom:8px;cursor:pointer;"
             onclick="if(typeof showNotification==='function')showNotification('已定位消息', 'info', 1500); if(typeof scrollToQuotedMessage==='function'){var el=document.createElement('div');el.dataset.replyId='${msg.id}';scrollToQuotedMessage(el);}">
@@ -1312,12 +1326,16 @@ function initComboMenu() {
         }
         const grid = document.createElement('div');
         grid.className = 'sticker-grid-view';
-        myStickerLibrary.forEach((src, idx) => {
-            const item = makeDeletableStickerItem(src, () => sendSticker(src), () => {
-                myStickerLibrary.splice(idx, 1);
-                localforage.setItem(getStorageKey('myStickerLibrary'), myStickerLibrary);
-                showNotification('✓ 已删除', 'success');
-                renderMyStickerLibrary();
+        myStickerLibrary.forEach(src => {
+            const item = makeDeletableStickerItem(src, () => sendSticker(src), async () => {
+                try {
+                    await window.StickerAssets.removeMine(src);
+                    showNotification('✓ 已删除', 'success');
+                    renderMyStickerLibrary();
+                } catch (error) {
+                    console.error('删除我的表情包失败:', error);
+                    showNotification('删除失败，请重试', 'error');
+                }
             });
             grid.appendChild(item);
         });
@@ -1617,9 +1635,7 @@ function initComboMenu() {
         var pName = (typeof settings !== 'undefined' && settings.partnerName) ? settings.partnerName : '对方';
         var mName = (typeof settings !== 'undefined' && settings.myName)      ? settings.myName      : '我';
 
-        var chatTexts = messages.filter(function(m) {
-            return m.text && m.sender !== 'system' && !['system', 'recall', 'call-event'].includes(m.type);
-        });
+        var chatTexts = messages.filter(m => countsAsChatMessage(m) && typeof m.text === 'string' && m.text.trim());
         var partnerMsgs = chatTexts.filter(function(m) { return m.sender !== 'user'; });
         var myMsgs = chatTexts.filter(function(m) { return m.sender === 'user'; });
 

@@ -34,6 +34,7 @@
     let data = empty();
     let importantDays = [];
     let periods = [];
+    let predictedPeriod = null;
     let activeKey, refreshVersion = 0, observedDay;
     let selectedDay = todayKey();
     let month = parseDate(selectedDay);
@@ -80,10 +81,7 @@
             activeKey = key;
             data = normalizeData(saved);
             importantDays = Array.isArray(dates) ? dates : [];
-            periods = Array.isArray(periodRecords) ? periodRecords.map(record => ({
-                start: dateKey(new Date(record.startDate)),
-                end: record.endDate ? dateKey(new Date(record.endDate)) : null
-            })) : [];
+            ({ recorded: periods, predicted: predictedPeriod } = window.getPeriodCalendarData(periodRecords));
             renderCalendars();
             observedDay = todayKey();
             return true;
@@ -95,16 +93,20 @@
     function cell(day, inMonth, now) {
         const key = dateKey(day);
         const hasPeriod = periods.some(range => key >= range.start && key <= (range.end || now));
+        const hasPredictedPeriod = !hasPeriod && predictedPeriod &&
+            key >= predictedPeriod.start && key <= predictedPeriod.end;
+        const periodClass = hasPeriod ? ' sc-period' : hasPredictedPeriod ? ' sc-period-predicted' : '';
         const items = itemsFor(key);
         const kinds = [...new Set(items.map(item => item.kind))];
         const markers = kinds.map(kind =>
             '<span class="sc-mark sc-' + kind + '">' + badge[kind].glyph + '</span>').join('');
-        const description = [dateLabel(day), key === now && '今天', hasPeriod && '经期',
+        const description = [dateLabel(day), key === now && '今天',
+            hasPeriod ? '经期' : hasPredictedPeriod && '预计经期',
             ...kinds.map(kind => badge[kind].label)].filter(Boolean).join('，');
         return '<button type="button" class="sc-day' + (inMonth ? '' : ' sc-outside') +
             '" data-sc-day="' + key + '" aria-label="' + description + '"' +
             (key === now ? ' aria-current="date"' : '') + ' aria-pressed="' + (key === selectedDay) + '">' +
-            '<span class="sc-number' + (hasPeriod ? ' sc-period' : '') + '">' + day.getDate() + '</span>' +
+            '<span class="sc-number' + periodClass + '">' + day.getDate() + '</span>' +
             '<span class="sc-marks" aria-hidden="true">' + markers + '</span></button>';
     }
 
@@ -498,6 +500,9 @@
         };
         document.addEventListener('visibilitychange', checkDate);
         window.addEventListener('pageshow', checkDate);
+        window.addEventListener('period-records-changed', () => {
+            if (calendarVisible || dialog.open) refresh();
+        });
         setInterval(checkDate, 30000);
         renderCalendars();
 

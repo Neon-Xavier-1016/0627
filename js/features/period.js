@@ -69,6 +69,40 @@
         return Math.round(differenceInDays(new Date(starts.at(-1)), new Date(starts[0])) / (starts.length - 1));
     }
 
+    function nextCycleStart(latestStart, average) {
+        const date = new Date(latestStart);
+        date.setDate(date.getDate() + (average ?? INITIAL_CYCLE_LENGTH));
+        return date;
+    }
+
+    function normalizePeriodRecords(saved) {
+        if (!Array.isArray(saved)) return [];
+        return saved.filter(record => record?.startDate).map(record => ({
+            ...record,
+            startDate: normalizeDate(record.startDate),
+            endDate: record.endDate ? normalizeDate(record.endDate) : null
+        })).filter(record => Number.isFinite(+record.startDate) &&
+            (!record.endDate || (Number.isFinite(+record.endDate) && record.endDate >= record.startDate)));
+    }
+
+    function getPeriodCalendarData(saved) {
+        const sorted = normalizePeriodRecords(saved).sort((a, b) => b.startDate - a.startDate);
+        const recorded = sorted.map(record => ({
+            start: formatDate(record.startDate),
+            end: record.endDate ? formatDate(record.endDate) : null
+        }));
+        if (!sorted.length) return { recorded, predicted: null };
+
+        const start = nextCycleStart(sorted[0].startDate, averageCycleLength(sorted));
+        const complete = sorted.filter(record => record.endDate).slice(0, 5);
+        const days = complete.length
+            ? Math.round(complete.reduce((sum, record) => sum + calculateDuration(record), 0) / complete.length)
+            : 1;
+        const end = new Date(start);
+        end.setDate(end.getDate() + days - 1);
+        return { recorded, predicted: { start: formatDate(start), end: formatDate(end) } };
+    }
+
     function getCurrentCycleStatus() {
         if (!records.length) return { status: 'no_record', average: null };
 
@@ -81,8 +115,7 @@
             return { status: 'during', daysIntoCycle: Math.max(1, calculateDuration(active, today)), record: active, average };
         }
 
-        const nextDate = new Date(latest.startDate);
-        nextDate.setDate(nextDate.getDate() + (average ?? INITIAL_CYCLE_LENGTH));
+        const nextDate = nextCycleStart(latest.startDate, average);
         const daysUntilNext = differenceInDays(today, nextDate);
         return {
             status: 'after',
@@ -139,15 +172,10 @@
     async function loadData() {
         try {
             const savedRecords = await localforage.getItem(getStorageKey('records'));
-            if (savedRecords && Array.isArray(savedRecords)) {
-                records = savedRecords.map(record => ({
-                    ...record,
-                    id: record.id || (Date.now() + Math.random()),
-                    startDate: normalizeDate(record.startDate),
-                    endDate: record.endDate ? normalizeDate(record.endDate) : null
-                })).filter(record => Number.isFinite(+record.startDate) &&
-                    (!record.endDate || Number.isFinite(+record.endDate)));
-            }
+            records = normalizePeriodRecords(savedRecords).map(record => ({
+                ...record,
+                id: record.id || (Date.now() + Math.random())
+            }));
 
             const savedSettings = await localforage.getItem(getStorageKey('settings'));
             if (savedSettings) {
@@ -188,6 +216,7 @@
         closeRecordForm();
         fullRefreshUI();
         document.getElementById('period-record-feedback-text').textContent = message;
+        window.dispatchEvent(new Event('period-records-changed'));
         return true;
     }
 
@@ -756,6 +785,7 @@
     };
 
     window.triggerPeriodReminder = checkDailyReminder;
+    window.getPeriodCalendarData = getPeriodCalendarData;
 
     window.initPeriodListeners = function() {
         bindEvents();

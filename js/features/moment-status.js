@@ -412,7 +412,8 @@
     let firstSeen = Date.now(), lastSession;
     const scheduleGap = cap => Math.max(30, 600 / cap) * minute;
     function tick() {
-        if (!SESSION_ID || document.visibilityState !== 'visible' || !document.body.classList.contains('hs-enabled')) return;
+        if (!SESSION_ID || document.visibilityState !== 'visible' || !document.body.classList.contains('hs-enabled') ||
+            window.MemoryMatch?.isPlayingTogether()) return;
         const now = Date.now();
         if (lastSession !== SESSION_ID) { lastSession = SESSION_ID; firstSeen = now; }
         const saved = prefs(), today = day();
@@ -473,6 +474,17 @@
         issueQuestion(ask);
     }
 
-    window.MomentStatus = { renderMessage, appendEmotion, pickReplyEmotion, syncEmotionSetting, testQuestion };
+    const legacyReplies = new Set([
+        ...Object.values(responses).flat(),
+        '嗯，我在听。你想说的时候，我都在。',
+        '知道你在哪儿了，等你有空我们再聊。'
+    ]);
+    function isLegacyReply(text) {
+        const placeReply = '知道你在哪儿了，等你有空我们再聊。';
+        return legacyReplies.has(text) ||
+            (text.endsWith(' ' + placeReply) && legacyReplies.has(text.slice(0, -placeReply.length).trim()));
+    }
+
+    window.MomentStatus = { renderMessage, appendEmotion, pickReplyEmotion, syncEmotionSetting, testQuestion, isLegacyReply };
     document.addEventListener('DOMContentLoaded', init, { once: true });
 })();

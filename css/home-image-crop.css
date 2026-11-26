@@ -1,0 +1,44 @@
+.hs-image-crop {
+    box-sizing: border-box;
+    width: min(92vw, 540px);
+    max-height: 92dvh;
+    padding: 18px;
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    background: var(--secondary-bg);
+    color: var(--text-primary);
+    overflow: auto;
+}
+.hs-image-crop::backdrop { background: rgb(0 0 0 / .48); }
+.hs-image-crop h2 { margin: 0 0 12px; font-size: 17px; }
+.hs-image-crop p { margin: 10px 0; font-size: 12px; color: var(--text-secondary); }
+.hs-crop-frame {
+    position: relative;
+    width: min(100%, calc(var(--hs-crop-aspect) * 54dvh));
+    aspect-ratio: var(--hs-crop-aspect);
+    margin-inline: auto;
+    overflow: hidden;
+    border-radius: 12px;
+    background: var(--primary-bg);
+    box-shadow: 0 0 0 1px var(--border-color);
+    touch-action: none;
+    user-select: none;
+    cursor: grab;
+}
+.hs-crop-frame:active { cursor: grabbing; }
+.hs-crop-frame img { position: absolute; max-width: none; max-height: none; pointer-events: none; }
+.hs-crop-zoom { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.hs-crop-zoom input { flex: 1; min-width: 0; accent-color: var(--accent-color); }
+.hs-crop-zoom output { min-width: 4ch; text-align: right; }
+.hs-crop-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.hs-crop-actions button {
+    padding: 8px 12px;
+    min-height: 40px;
+    border: 1px solid var(--border-color);
+    border-radius: 9px;
+    background: var(--primary-bg);
+    color: var(--text-primary);
+    font: inherit;
+    cursor: pointer;
+}
+.hs-crop-actions .hs-crop-save { background: var(--accent-color); color: #fff; }

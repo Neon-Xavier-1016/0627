@@ -49,6 +49,18 @@ html[data-theme="dark"] #xv-messages .xv-row[data-pinned] { background: #303033;
 .xv-copy { flex: 1; min-width: 0; display: grid; gap: 4px; }
 .xv-copy > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .xv-row small, .xv-hint, .xv-meta { color: var(--text-secondary); font-size: .82rem; }
+#xv-message-stats .xv-settings { gap: 8px; }
+.xv-stats-heading { font-size: .96rem; margin: 8px 0 2px; }
+.xv-stats-group { border: 1px solid var(--border-color); border-radius: 12px; }
+.xv-stats-group summary { cursor: pointer; padding: 10px 12px; overflow-wrap: anywhere; }
+.xv-stats-group summary .xv-hint { margin-inline-start: 8px; white-space: nowrap; }
+.xv-stats-members { list-style: none; margin: 0; padding: 0 12px 4px; }
+.xv-stats-members li, .xv-stats-single {
+    display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline;
+    gap: 4px 10px; padding: 8px 0; border-top: 1px solid var(--border-color);
+    overflow-wrap: anywhere;
+}
+.xv-stats-members .xv-hint, .xv-stats-single .xv-hint { white-space: nowrap; }
 .xv-avatar { flex: 0 0 44px; width: 44px; height: 44px; display: grid; place-items: center; overflow: hidden; border-radius: 50%; background: var(--primary-bg); color: var(--accent-color); }
 .xv-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .xv-square .xv-avatar { border-radius: 10px; }

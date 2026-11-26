@@ -52,7 +52,7 @@ function inMsg(text, isMe) {
   return addMsg({ id: Date.now() + Math.random(),
     sender: isMe ? 'user' : partnerName(),
     type: 'normal', text, timestamp: new Date(),
-    status: isMe ? 'sent' : 'received' });
+    automaticSource: 'music-invite', status: isMe ? 'sent' : 'received' });
 }
 
 /* ───────────── 安全播放 ───────────── */
@@ -163,6 +163,10 @@ async function maybeTaSwitchSong() {
 
   await loadSongs();
   if (!_songs.length) return;
+  if (window.MemoryMatch?.isPlayingTogether()) {
+    scheduleTaSwitch();
+    return;
+  }
 
   // 概率（默认 5%，可在 settings.musicSwitchProb 调整）
   const prob = S().musicSwitchProb ?? 5;
@@ -509,7 +513,7 @@ function taJoinNow(track) {
     playUrl(track.url, track.name);
     setListening(true, track.name, false, author);
     if (author && window.XavierConversations) {
-      window.XavierConversations.addToSingle(author.id, {sender:author.name, text:'我也来陪你听。', status:'received'});
+      window.XavierConversations.addToSingle(author.id, {sender:author.name, text:'我也来陪你听。', status:'received', automaticSource:'music-invite'});
       window.XavierConversations.addToSingle(author.id, {sender:'system', type:'system', text:'🎧 ' + author.name + ' 加入了你一起听《' + track.name + '》'});
     } else {
       inMsg('我也来陪你听。', false);

@@ -263,7 +263,24 @@
         return added;
     }
 
-    window.StickerAssets = {init, save, available, chooseScope, scopeLabel, scopeButton, summary, prepareUpload, addFiles,
+    async function removeMine(src) {
+        if (!ready) throw new Error('表情库尚未加载');
+        const pool = window.myStickerLibrary;
+        const index = pool.indexOf(src);
+        if (index === -1) return false;
+        pool.splice(index, 1);
+        try {
+            await save();
+            return true;
+        } catch (error) {
+            if (window.myStickerLibrary === pool && !pool.includes(src)) {
+                pool.splice(index, 0, src);
+            }
+            throw error;
+        }
+    }
+
+    window.StickerAssets = {init, save, available, chooseScope, scopeLabel, scopeButton, summary, prepareUpload, addFiles, removeMine,
         getDisabled: () => new Set(disabled),
         setDisabled: selection => { disabled = new Set(selection); save().catch(report); },
         exportPartner: () => stickerLibrary.map(src => ({src, roles:scopeFor(src), disabled:disabled.has(src)})),

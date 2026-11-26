@@ -15,6 +15,13 @@
             catch (e) { console.error('Error removing item:', e); }
         }
 
+function isStickerMessage(message) {
+    if (message.type === 'sticker' || message.isSticker === true) return true;
+    if (!message.image || message.isSticker === false || (message.type && message.type !== 'normal')) return false;
+    return window.myStickerLibrary?.includes(message.image) === true ||
+        window.stickerLibrary?.includes(message.image) === true;
+}
+
 function getRandomItem(arr) {
     if (!arr || arr.length === 0) return null;
     return arr[Math.floor(Math.random() * arr.length)];

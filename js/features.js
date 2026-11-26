@@ -299,7 +299,7 @@
             var ts = m.timestamp ? new Date(m.timestamp) : null;
             if (fd && ts && ts < fd) return false;
             if (td && ts && ts > td) return false;
-            if (q) return m.text && m.text.toLowerCase().indexOf(q) !== -1;
+            if (q) return (isStickerMessage(m) ? '表情包' : m.text || '').toLowerCase().includes(q);
             return true;
         });
 
@@ -336,7 +336,8 @@
         var html = '<div style="font-size:12px;color:var(--text-secondary);padding:0 2px 8px;">共 <b style="color:var(--accent-color)">'+res.length+'</b> 条</div>';
         html += res.slice(0,200).map(function(m){
             var isMe = m.sender==='user';
-            var preview = m.text?(m.text.length>100?m.text.slice(0,100)+'…':m.text):(m.image?'[图片]':'');
+            var preview = isStickerMessage(m) ? '表情包' :
+                m.text ? (m.text.length > 100 ? m.text.slice(0, 100) + '…' : m.text) : (m.image ? '[图片]' : '');
             return '<div class="search-result-item" onclick="window._scrollToMsg&&window._scrollToMsg('+m.id+')">'+
                 '<div class="sri-avatar '+(isMe?'sri-me':'sri-partner')+'">'+_avHtml(isMe)+'</div>'+
                 '<div class="sri-body">'+
@@ -424,7 +425,7 @@ function showEmojiTab() {
         }
         const isBatch = (typeof isBatchMode !== 'undefined') && isBatchMode;
         if (isBatch) {
-            batchMessages.push({ id: Date.now() + batchMessages.length, text: '', image: src });
+            batchMessages.push({ id: Date.now() + batchMessages.length, text: '', image: src, type: 'sticker' });
             updateBatchPreview();
             showNotification('已添加到批量发送', 'success', 1200);
         } else {

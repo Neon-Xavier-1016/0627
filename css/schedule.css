@@ -157,7 +157,7 @@
 }
 
 .sc-outside { color: var(--text-secondary); }
-.sc-outside .sc-number:not(.sc-period) { opacity: .65; }
+.sc-outside .sc-number:not(.sc-period, .sc-period-predicted) { opacity: .65; }
 
 .sc-number {
     display: grid;
@@ -176,6 +176,7 @@
 }
 
 .sc-number.sc-period { background: #f5a9c3; color: #431528; }
+.sc-number.sc-period-predicted { background: rgba(245, 169, 195, .34); }
 
 .sc-marks {
     display: flex;

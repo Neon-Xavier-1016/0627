@@ -221,8 +221,7 @@
             }
             if (template.content.firstElementChild) return '[互动卡片]';
         }
-        const isSticker = message.type === 'sticker' || message.isSticker === true;
-        const content = isSticker ? '表情包' : message.image ? '[图片]' : message.type === 'voice' ? '[语音]' : message.text || '[消息]';
+        const content = isStickerMessage(message) ? '[表情包]' : message.image ? '[图片]' : message.type === 'voice' ? '[语音]' : message.text || '[消息]';
         if (!item.members || !message.sender || message.sender === 'system') return content;
         return (message.sender === 'user' ? settings.myName || '我' : message.author || message.sender) + '：' + content;
     }
@@ -441,7 +440,8 @@
 
     function markActiveRead() {
         const item = conversation(active);
-        if (document.hidden || document.body.dataset.hsPage !== 'chat' || !item || isPrimary(item.id) || !storedUnread(item)) return;
+        if (document.hidden || document.body.dataset.hsPage !== 'chat' || !item || isPrimary(item.id) ||
+            window.HomeShell?.isViewingConversation?.(item.id) === false || !storedUnread(item)) return;
         item.unread = 0;
         window.HomeShell?.refreshUnread?.();
         persist().catch(fail);
@@ -451,7 +451,8 @@
         if (conversation(item.id) !== item) return;
         const entry = {id: uid(), timestamp: new Date().toISOString(), type: 'normal', ...message};
         item.messages.push(entry);
-        const shown = active === item.id && document.body.dataset.hsPage === 'chat' && !document.hidden;
+        const shown = window.HomeShell?.isViewingConversation?.(item.id) ??
+            (active === item.id && document.body.dataset.hsPage === 'chat' && !document.hidden);
         if (!shown && window.HomeShell?.isIncoming?.(entry)) {
             item.unread = storedUnread(item) + 1;
             window.HomeShell.refreshUnread?.();
@@ -807,12 +808,60 @@
         openManager();
     }
 
+    function groupStats(item) {
+        const me = { label: (settings.myName || '我') + '（我）', total: 0 };
+        const members = new Map(item.members.map(id => [id, {
+            label: role(id) ? name(role(id)) : '已移除成员', total: 0
+        }]));
+        const membersByName = new Map();
+        for (const member of members.values()) {
+            membersByName.set(member.label, membersByName.has(member.label) ? null : member);
+        }
+        const former = new Map();
+        const entries = history(item).filter(countsAsChatMessage);
+        for (const message of entries) {
+            let person = me;
+            if (message.sender !== 'user') {
+                const label = message.author || message.sender;
+                person = message.roleId ? members.get(message.roleId) : membersByName.get(label);
+                if (!person) {
+                    const key = message.roleId || label;
+                    if (!former.has(key)) former.set(key, { label, total: 0 });
+                    person = former.get(key);
+                }
+            }
+            person.total++;
+        }
+        return { total: entries.length, people: [me, ...members.values(), ...former.values()] };
+    }
+
     function openStats() {
-        const {root, body} = modal('xv-message-stats', '单聊消息统计');
+        const {root, body} = modal('xv-message-stats', '消息统计');
+        body.append(el('h3', 'xv-stats-heading', '群聊'));
+        if (!data.groups.length) body.append(el('p', 'xv-hint', '还没有群聊'));
+        for (const item of data.groups) {
+            const {total, people} = groupStats(item);
+            const details = el('details', 'xv-stats-group');
+            details.open = item.id === active || data.groups.length === 1;
+            const summary = el('summary');
+            summary.append(el('strong', '', name(item)), el('span', 'xv-hint', `共 ${total} 条`));
+            const list = el('ul', 'xv-stats-members');
+            for (const person of people) {
+                const row = el('li');
+                row.append(el('span', '', person.label), el('span', 'xv-hint', `${person.total} 条`));
+                list.append(row);
+            }
+            details.append(summary, list);
+            body.append(details);
+        }
+
+        body.append(el('h3', 'xv-stats-heading', '单聊'));
         for (const item of data.roles) {
-            const entries = history(item).filter(message => message.sender && !['system', 'call-event', 'recall', 'status-moment-question'].includes(message.type));
+            const entries = history(item).filter(countsAsChatMessage);
             const sent = entries.filter(message => message.sender === 'user').length;
-            body.append(el('strong', '', name(item)), el('p', 'xv-hint', '发出 ' + sent + ' 条 · 收到 ' + (entries.length - sent) + ' 条'));
+            const row = el('div', 'xv-stats-single');
+            row.append(el('strong', '', name(item)), el('span', 'xv-hint', `发出 ${sent} 条 · 收到 ${entries.length - sent} 条`));
+            body.append(row);
         }
         showModal(root);
     }

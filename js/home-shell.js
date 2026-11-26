@@ -5,10 +5,20 @@
  const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  let ready=false,page='home',config={},storageKey='',unread=[],activeNote=null,noteTimer=null,writing=Promise.resolve();
  let appliedWallpaper, syncHomeBackground;
+ function currentWallpaperCrop(image = config.homeBackground) {
+  const index = Array.isArray(config.homeBackgrounds) ? config.homeBackgrounds.indexOf(image) : -1;
+  return index < 0 ? null : config.homeBackgroundCrops?.[index] || null;
+ }
+ function applyBackgroundCrops(){
+  window.HomeImageCrop.apply($('hs-home'),currentWallpaperCrop());
+  window.HomeImageCrop.apply($('hs-relation'),config.backgroundCrop);
+  const preview=$('hs-home-glass-preview');
+  if(preview)window.HomeImageCrop.apply(preview,currentWallpaperCrop());
+ }
  const earlyMessages=[];
  const noteQueue=[];
  const noteEnterMs=280,noteHoldMs=5000,noteExitMs=240;
- const defaults=()=>({label:'我们在一起',date:'',annId:'',motto:'两颗缠绕的心，会走同一条路。',background:'',homeBackground:'',homeBackgrounds:[],homeGlassTransparency:37,showRelation:true,showCountdown:true,showMotto:true,unread:[],lastRead:null});
+ const defaults=()=>({label:'我们在一起',date:'',annId:'',motto:'两颗缠绕的心，会走同一条路。',background:'',backgroundCrop:null,homeBackground:'',homeBackgrounds:[],homeBackgroundCrops:[],homeGlassTransparency:37,showRelation:true,showCountdown:true,showMotto:true,unread:[],lastRead:null});
  const list=()=>typeof messages!=='undefined'?messages:[];
  const incoming=m=>!!m.sender&&m.sender!=='user'&&m.sender!=='system'&&!['system','recall','call-event','qa-live','status-moment-question'].includes(m.type);
  const profile=()=>typeof settings!=='undefined'?settings:{};
@@ -45,7 +55,7 @@
  }
  function toast(s){if(typeof showNotification==='function')showNotification(s,'info');}
  function bottom(){const c=$('chat-container');return c&&c.scrollHeight-c.scrollTop-c.clientHeight<90;}
- function modalOpen(){return [...document.querySelectorAll('.modal')].some(m=>getComputedStyle(m).display!=='none');}
+ function modalOpen(){return !!document.querySelector('dialog[open],.pd-overlay.show')||[...document.querySelectorAll('.modal')].some(m=>getComputedStyle(m).display!=='none');}
  function removeNote(){
   clearTimeout(noteTimer);noteTimer=null;
   activeNote?.remove();activeNote=null;
@@ -172,6 +182,7 @@
   home.style.setProperty('--hs-glass-opacity',opacity);
   $('hs-nav')?.style.setProperty('--hs-glass-opacity',opacity);
   syncHomeBackground?.();
+  applyBackgroundCrops();
   const now=new Date();$('hs-clock').textContent=now.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false});$('hs-date').textContent=now.toLocaleDateString('zh-CN',{month:'long',day:'numeric',weekday:'long'});
   if($('theme-toggle'))$('theme-toggle').setAttribute('aria-pressed',String(!!s.isDarkMode));
  }
@@ -280,19 +291,28 @@
   if(descriptor)return descriptor;
   const member=typeof getGroupMemberForMessage==='function'?getGroupMemberForMessage(m.id):null;
   const src=member?member.avatar:($('partner-avatar')?.querySelector('img')?.getAttribute('src')||profile().partnerAvatar);
-  const isSticker=m.type==='sticker'||m.isSticker===true;
-  return {name:member?.name||profile().partnerName||'Ta',avatar:src,text:isSticker?'表情包':m.image?'[图片]':m.type==='voice'?'[语音]':m.text};
+  return {name:member?.name||profile().partnerName||'Ta',avatar:src,text:isStickerMessage(m)?'[表情包]':m.image?'[图片]':m.type==='voice'?'[语音]':m.text};
  }
  function onConversationMessage(m,descriptor){
   if(!incoming(m)||isViewingNotice(descriptor.id))return;
   noteQueue.push(descriptor);showNote();
  }
  function isViewingNotice(id){
-  if(page!=='chat'||document.hidden)return false;
+  if(page!=='chat'||document.hidden||modalOpen())return false;
   const conversations=window.XavierConversations;
   const primary=conversations?.primaryId()||'';
   const active=conversations?.openConversationId()||primary;
   return (id||primary)===active;
+ }
+ function closeViewsForNotice(){
+  clearDetails();
+  for(const modal of document.querySelectorAll('.modal')){
+   if(getComputedStyle(modal).display==='none')continue;
+   clearTimeout(modal._hideTimeout);modal._hideTimeout=null;
+   modal.style.display='none';
+  }
+  document.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());
+  document.querySelectorAll('.pd-overlay.show .pd-close').forEach(button=>button.click());
  }
  function showNote(){
   if(!ready||document.hidden)return;
@@ -307,12 +327,16 @@
   const icon=b.querySelector('.hs-notice-avatar');
   avatar(icon,src||'');
   icon.querySelector('img')?.addEventListener('error',()=>avatar(icon,''),{once:true});
+  let gesture=null, dragged=false;
   b.onclick=()=>{
+   if(dragged||activeNote!==b||b.classList.contains('hs-note-exiting'))return;
    removeNote();
-   clearDetails();
-   if(id){if(!window.XavierConversations?.openById(id))navigate('messages');}
-   else if(window.XavierConversations?.primaryId())window.XavierConversations.openNative();
-   else navigate('chat');
+   closeViewsForNotice();
+   const conversations=window.XavierConversations;
+   if(!id||!conversations?.openById(id)){
+    if(conversations?.primaryId())conversations.openNative();
+    else navigate('chat');
+   }
    showNote();
   };
   const reduceMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -321,10 +345,44 @@
   b.style.setProperty('--hs-note-exit',exitMs+'ms');
   activeNote=b;
   document.body.appendChild(b);
-  noteTimer=setTimeout(()=>{
+  const dismiss=()=>{
+   if(activeNote!==b)return;
+   clearTimeout(noteTimer);
+   b.classList.remove('hs-note-dragging');
    b.classList.add('hs-note-exiting');
    noteTimer=setTimeout(()=>{removeNote();showNote();},exitMs);
-  },enterMs+noteHoldMs);
+  };
+  const hold=ms=>{noteTimer=setTimeout(dismiss,ms);};
+  b.addEventListener('pointerdown',event=>{
+   if(gesture||!event.isPrimary||event.button!==0||b.classList.contains('hs-note-exiting'))return;
+   dragged=false;
+   b.classList.add('hs-note-settled');
+   gesture={id:event.pointerId,x:event.clientX,y:event.clientY};
+   clearTimeout(noteTimer);
+   b.setPointerCapture(event.pointerId);
+  });
+  b.addEventListener('pointermove',event=>{
+   if(gesture?.id!==event.pointerId)return;
+   const offset=event.clientY-gesture.y;
+   if(!dragged&&offset < -7 && -offset > Math.abs(event.clientX-gesture.x))dragged=true;
+   if(!dragged)return;
+   b.classList.add('hs-note-dragging');
+   b.style.setProperty('--hs-note-offset',Math.min(0,offset)+'px');
+  });
+  const endGesture=event=>{
+   if(gesture?.id!==event.pointerId)return;
+   const lift=gesture.y-event.clientY;
+   const swipe=event.type==='pointerup'&&lift>=36&&(dragged||lift>Math.abs(event.clientX-gesture.x));
+   gesture=null;
+   if(swipe){dragged=true;dismiss();return;}
+   b.classList.remove('hs-note-dragging');
+   b.style.removeProperty('--hs-note-offset');
+   hold(noteHoldMs);
+  };
+  b.addEventListener('pointerup',endGesture);
+  b.addEventListener('pointercancel',endGesture);
+  b.addEventListener('lostpointercapture',endGesture);
+  hold(enterMs+noteHoldMs);
  }
  function scrollLatest(){
   const chat=$('chat-container');
@@ -342,21 +400,45 @@
      <label><input id="hs-show-motto" type="checkbox" ${config.showMotto?'checked':''}> 显示卡片标语</label>
     </fieldset>
    </fieldset>
-   <label>关系名称<input id="hs-label-input" maxlength="16" value="${esc(config.label)}" placeholder="我们在一起 / 我们相识"></label><label>绑定已有重要日<select id="hs-ann-input"><option value="">单独设置起始日</option>${options.map(a=>`<option value="${esc(a.id)}" ${String(a.id)===config.annId?'selected':''}>${esc(a.name)} · ${esc(a.date)}</option>`).join('')}</select></label><label>起始日期<input id="hs-date-input" type="date" value="${esc(config.date||relationDate()||'')}"></label><p class="hs-hint">从起始日起计算已经过去的自然日，起始日为 0 天；2 月 29 日在平年以 2 月 28 日纪念。</p><p class="hs-hint">卡片标语与聊天顶部同步，可在「字卡库 → 氛围感 → 顶部格言」中管理。</p><label>专属背景<input id="hs-bg-input" type="file" accept="image/*"></label><label><input id="hs-clear-bg" type="checkbox"> 恢复主题色背景</label><button id="hs-save" type="button">保存这张关系卡</button>`;
+   <label>关系名称<input id="hs-label-input" maxlength="16" value="${esc(config.label)}" placeholder="我们在一起 / 我们相识"></label><label>绑定已有重要日<select id="hs-ann-input"><option value="">单独设置起始日</option>${options.map(a=>`<option value="${esc(a.id)}" ${String(a.id)===config.annId?'selected':''}>${esc(a.name)} · ${esc(a.date)}</option>`).join('')}</select></label><label>起始日期<input id="hs-date-input" type="date" value="${esc(config.date||relationDate()||'')}"></label><p class="hs-hint">从起始日起计算已经过去的自然日，起始日为 0 天；2 月 29 日在平年以 2 月 28 日纪念。</p><p class="hs-hint">卡片标语与聊天顶部同步，可在「字卡库 → 氛围感 → 顶部格言」中管理。</p><label>专属背景<input id="hs-bg-input" type="file" accept="image/*"></label><button id="hs-adjust-card-bg" type="button">调整卡片取景</button><label><input id="hs-clear-bg" type="checkbox"> 恢复主题色背景</label><button id="hs-save" type="button">保存这张关系卡</button>`;
   window.XavierConversations?.mountRelationship($('hs-edit-body'));
   const showRelation=$('hs-show-relation');
   const syncOptions=()=>{$('hs-relation-options').disabled=!showRelation.checked;};
   showRelation.onchange=syncOptions;
   syncOptions();
-  $('hs-save').onclick=async()=>{
+  const editorKey=storageKey;
+  const fileInput=$('hs-bg-input'),clearBackground=$('hs-clear-bg'),adjustBackground=$('hs-adjust-card-bg');
+  const saveButton=$('hs-save');
+  let draftBackground=config.background,draftCrop=config.backgroundCrop;
+  const syncBackgroundActions=()=>{adjustBackground.disabled=!draftBackground||clearBackground.checked;};
+  clearBackground.onchange=syncBackgroundActions;
+  syncBackgroundActions();
+  const adjustCard=async file=>{
+   if(saveButton.disabled)return;
+   saveButton.disabled=adjustBackground.disabled=fileInput.disabled=true;
+   try{
+    const source=file?await compress(file):draftBackground;
+    const crop=await window.HomeImageCrop.edit(source,file?null:draftCrop,$('hs-relation'),'调整关系卡片取景');
+    if(editorKey!==storageKey)throw Error('会话已切换，请重新选择图片。');
+    if(crop){draftBackground=source;draftCrop=crop;clearBackground.checked=false;}
+   }catch(error){toast(error.message||'无法调整图片，请重试。');}
+   finally{saveButton.disabled=fileInput.disabled=false;syncBackgroundActions();}
+  };
+  adjustBackground.onclick=()=>adjustCard();
+  fileInput.onchange=()=>{
+   const file=fileInput.files[0];fileInput.value='';
+   if(file)adjustCard(file);
+  };
+  saveButton.onclick=async()=>{
    const button=$('hs-save');button.disabled=true;
    try{
     const id=$('hs-ann-input').value,date=$('hs-date-input').value;
     const chosen=options.find(a=>String(a.id)===id);
     if((chosen?.date||date)&&ordinal(chosen?.date||date)===null)throw Error('请设置一个有效的起始日期。');
-    const file=$('hs-bg-input').files[0];let bg=$('hs-clear-bg').checked?'':config.background;if(file)bg=await compress(file);
+    if(editorKey!==storageKey)throw Error('会话已切换，请重新打开关系卡片。');
     await save({
-     label:$('hs-label-input').value.trim()||'我们在一起',annId:id,date:chosen?.date||date,background:bg,
+     label:$('hs-label-input').value.trim()||'我们在一起',annId:id,date:chosen?.date||date,
+     background:clearBackground.checked?'':draftBackground,backgroundCrop:clearBackground.checked?null:draftCrop,
      showRelation:showRelation.checked,showCountdown:$('hs-show-countdown').checked,showMotto:$('hs-show-motto').checked
     });
     update();hideModal($('hs-edit-modal'));
@@ -376,7 +458,8 @@
   const entry=$('hs-home-background-entry'),panel=$('appearance-panel-home-background');
   const input=$('hs-home-wallpaper-file'),status=$('hs-home-wallpaper-status');
   const gallery=$('hs-home-background-gallery'),add=$('hs-home-background-add'),theme=$('hs-home-background-theme');
-  const reset=$('hs-home-wallpaper-reset'),range=$('hs-home-glass-range'),value=$('hs-home-glass-value');
+  const reset=$('hs-home-wallpaper-reset'),adjust=$('hs-home-wallpaper-adjust');
+  const range=$('hs-home-glass-range'),value=$('hs-home-glass-value');
   const darkRange=$('hs-home-dark-range'),darkValue=$('hs-home-dark-value');
   const preview=$('hs-home-glass-preview');
   if(!entry||!panel)return;
@@ -396,21 +479,28 @@
    darkValue.textContent=darkness+'%';
    for(const target of [home,preview])target.style.setProperty('--hs-night-darkness',darkness/100);
   };
-  const select=async (wallpaper,file)=>{
+  const select=async (wallpaper,file,editCrop=false)=>{
    if(busy)return;
    const activeKey=storageKey;
-   busy=true;add.disabled=theme.disabled=reset.disabled=true;
+   busy=true;add.disabled=theme.disabled=reset.disabled=adjust.disabled=true;
    status.textContent='';
    try{
     const homeBackground=file?await compress(file):wallpaper;
+    let crop=currentWallpaperCrop(homeBackground);
+    if(file||editCrop){
+     crop=await window.HomeImageCrop.edit(homeBackground,crop,home,'调整首页背景取景');
+     if(!crop)return;
+    }
     if(activeKey!==storageKey)throw Error('会话已切换，请重新选择图片。');
-    const homeBackgrounds=new Set(Array.isArray(config.homeBackgrounds)?config.homeBackgrounds:[]);
-    if(validWallpaper(config.homeBackground))homeBackgrounds.add(config.homeBackground);
-    if(homeBackground)homeBackgrounds.add(homeBackground);
-    await save({homeBackground,homeBackgrounds:[...homeBackgrounds]});
+    const images=new Set(Array.isArray(config.homeBackgrounds)?config.homeBackgrounds:[]);
+    if(validWallpaper(config.homeBackground))images.add(config.homeBackground);
+    if(homeBackground)images.add(homeBackground);
+    const homeBackgrounds=[...images];
+    const homeBackgroundCrops=homeBackgrounds.map(image=>image===homeBackground?crop:currentWallpaperCrop(image));
+    await save({homeBackground,homeBackgrounds,homeBackgroundCrops});
     update();
    }catch(error){status.textContent=error.message||'背景保存失败，请重试。';}
-   finally{busy=false;add.disabled=theme.disabled=false;reset.disabled=!config.homeBackground;}
+   finally{busy=false;add.disabled=theme.disabled=false;reset.disabled=adjust.disabled=!config.homeBackground;}
   };
   syncHomeBackground=()=>{
    const {homeBackground,homeBackgrounds}=config;
@@ -429,7 +519,7 @@
      gallery.appendChild(button);
     });
     theme.setAttribute('aria-pressed',String(!homeBackground));
-    reset.disabled=busy||!homeBackground;
+    reset.disabled=adjust.disabled=busy||!homeBackground;
     if(validWallpaper(homeBackground))preview.style.setProperty('--hs-wallpaper','url('+JSON.stringify(homeBackground)+')');
     else preview.style.removeProperty('--hs-wallpaper');
    }
@@ -460,6 +550,7 @@
    if(file)select('',file);
   };
   theme.onclick=reset.onclick=()=>select('');
+  adjust.onclick=()=>{if(config.homeBackground)select(config.homeBackground,null,true);};
   range.oninput=previewGlass;
   darkRange.oninput=previewDark;
   darkRange.onchange=async()=>{
@@ -519,7 +610,7 @@
   #hs-settings .settings-grid>.settings-card{flex:0 0 64px;height:64px;min-height:64px;max-height:64px;aspect-ratio:auto;padding:16px 4px!important}#hs-settings .settings-grid>.settings-card>span{text-align:left;flex:1}#hs-settings .settings-grid>.settings-card::after{flex:0 0 auto}
   #data-modal.hs-settings-detail{position:fixed!important;inset:0!important;align-items:stretch!important;justify-content:stretch!important;height:100vh!important;height:100dvh!important;width:100%!important;padding:0!important}#data-modal.hs-settings-detail>.modal-content{position:relative!important;display:flex!important;flex-direction:column!important;height:100%!important;max-height:100%!important;min-height:0!important;width:100%!important;max-width:none!important;margin:0!important;border:0!important;border-radius:0!important;box-shadow:none!important;padding:0!important;animation:none!important;transform:none!important;overflow:hidden!important}#data-modal.hs-settings-detail .dm-topbar{padding:env(safe-area-inset-top) 12px 0;min-height:52px;box-sizing:content-box;flex:0 0 auto;position:relative;top:auto;background:var(--primary-bg)}#data-modal.hs-settings-detail .dm-topbar-back{border:0;border-radius:0;background:transparent;color:var(--accent-color);height:42px;width:38px}#data-modal.hs-settings-detail .dm-body{flex:1 1 0;min-height:0;overflow-y:auto}#data-modal.hs-settings-detail .dm-topbar-close{display:none!important}#chat-modal.hs-settings-detail>.modal-content>.hs-setting-top{padding-left:12px;padding-right:12px;margin-bottom:0}
   .hs-page{position:absolute;inset:0 0 var(--hs-nav-height);overflow-y:auto;overscroll-behavior:contain;background:var(--primary-bg);color:var(--text-primary);padding:26px 20px 24px;box-sizing:border-box;z-index:10}.hs-page[hidden]{display:none!important}.hs-content{max-width:650px;margin:0 auto}
-  #hs-relation{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:10px;width:100%;padding:20px 16px;border-radius:24px;border:1px solid rgba(var(--accent-color-rgb),.1);background:linear-gradient(155deg,rgba(var(--accent-color-rgb),.08),var(--secondary-bg));background-size:cover;background-position:center;background-origin:border-box;background-clip:border-box;background-repeat:no-repeat;text-align:center;color:var(--text-primary);box-shadow:0 15px 35px rgba(var(--accent-color-rgb),.07);cursor:pointer;font:inherit;min-height:210px}
+  #hs-relation{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:10px;width:100%;padding:20px 16px;border-radius:24px;border:1px solid rgba(var(--accent-color-rgb),.1);background:linear-gradient(155deg,rgba(var(--accent-color-rgb),.08),var(--secondary-bg));background-size:cover,var(--hs-image-size,cover);background-position:center,var(--hs-image-position,center);background-origin:border-box;background-clip:border-box;background-repeat:no-repeat;text-align:center;color:var(--text-primary);box-shadow:0 15px 35px rgba(var(--accent-color-rgb),.07);cursor:pointer;font:inherit;min-height:210px}
   .hs-avatars{display:flex;justify-content:center}.hs-avatar{height:54px;width:54px;display:grid;place-items:center;border-radius:50%;background:var(--secondary-bg);border:2px solid #fff;overflow:hidden;box-shadow:0 5px 15px #0001}.hs-avatar:has(>img){background:transparent}.hs-avatar+ .hs-avatar{margin-left:-10px}.hs-avatar img{width:100%;height:100%;object-fit:cover}.hs-avatar i{font-size:25px;color:var(--accent-color)}#hs-names{display:block;font-size:15px;font-weight:500;letter-spacing:1px}#hs-days{display:block;font-size:20px;line-height:1.6;font-weight:600;margin:2px 0 5px}#hs-countdown,#hs-motto{display:block;font-size:11px;line-height:1.8;color:var(--text-secondary)}#hs-motto{margin-top:8px} #hs-relation.hs-relation-simple .hs-avatar{width:70px;height:70px} #hs-relation.hs-relation-simple .hs-avatar i{font-size:30px}
   :is(#hs-home,#hs-home-glass-preview,body.hs-enabled[data-hs-page=home] #hs-nav){
    --hs-glass-strength:var(--hs-glass-opacity,.63);
@@ -538,7 +629,7 @@
    background:
     linear-gradient(var(--hs-wallpaper-wash),var(--hs-wallpaper-wash)) center / cover no-repeat,
     var(--hs-wallpaper, radial-gradient(ellipse at 6% 7%,rgba(var(--accent-color-rgb),.31),transparent 56%),
-      radial-gradient(ellipse at 96% 52%,rgba(139,160,220,.35),transparent 60%)) center / cover no-repeat,
+      radial-gradient(ellipse at 96% 52%,rgba(139,160,220,.35),transparent 60%)) var(--hs-image-position,center) / var(--hs-image-size,cover) no-repeat,
     var(--primary-bg);
   }
   #hs-home .hs-content{position:relative}
@@ -559,7 +650,7 @@
    display:grid;place-items:center;min-height:74px;border-radius:14px;
    background:
     linear-gradient(var(--hs-wallpaper-wash),var(--hs-wallpaper-wash)) center / cover,
-    var(--hs-wallpaper,linear-gradient(115deg,rgba(var(--accent-color-rgb),.38),rgba(139,160,220,.43))) center / cover;
+    var(--hs-wallpaper,linear-gradient(115deg,rgba(var(--accent-color-rgb),.38),rgba(139,160,220,.43))) var(--hs-image-position,center) / var(--hs-image-size,cover) no-repeat;
   }
   #hs-home-glass-preview span{
    padding:9px 21px;border-radius:11px;color:var(--text-primary);font-size:12px;
@@ -604,11 +695,13 @@
   .hs-app-grid>.settings-item{border:0;background:none;display:flex;flex-direction:column;text-align:center;gap:8px;margin:0;padding:8px 1px;min-width:0;position:relative;box-shadow:none}.hs-app-grid>.settings-item>i{width:52px;height:52px;display:grid;place-items:center;border-radius:18px;background:var(--secondary-bg);color:var(--accent-color);font-size:21px;margin:0;box-shadow:0 5px 18px rgba(var(--accent-color-rgb),.05)}.hs-app-grid>.settings-item>span:not(.env-badge){font-size:11px;line-height:1.5;color:var(--text-secondary)}#hs-apps .env-badge{right:8px!important;top:3px!important}#hs-app-pages{display:flex;justify-content:center;gap:8px;margin:20px 0}#hs-app-pages button{width:7px;height:7px;border:0;border-radius:6px;padding:0;background:var(--border-color)}#hs-app-pages button[aria-pressed=true]{width:24px;background:var(--accent-color)}
   #hs-nav{position:fixed;bottom:0;left:0;right:0;z-index:1200;height:var(--hs-nav-height);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box;background:var(--secondary-bg);border-top:1px solid var(--border-color);display:flex;justify-content:center}#hs-nav button{flex:1;max-width:230px;border:0;background:none;font:inherit;color:var(--text-secondary);display:flex;flex-direction:column;justify-content:center;align-items:center;gap:4px;font-size:10px;position:relative;cursor:pointer}#hs-nav i{font-size:21px}#hs-nav [aria-current=page]{color:var(--accent-color)}#hs-nav .hs-badge{position:absolute;top:4px;left:calc(50% + 9px)}
   #hs-settings>.modal-content{max-width:650px;width:100%;margin:0 auto;max-height:none;padding:0;border:0;box-shadow:none;background:none;overflow:visible;opacity:1!important;transform:none!important}#hs-settings .modal-title{margin:12px 0 25px}#hs-settings #cancel-settings{display:none}#hs-settings .settings-grid{gap:14px}#hs-settings .settings-card{border-radius:20px;padding:22px 12px}.hs-page button:focus-visible,#hs-nav button:focus-visible{outline:2px solid var(--accent-color);outline-offset:3px}
-  #hs-banner{position:fixed;top:max(14px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:92%;max-width:430px;z-index:100100;display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--secondary-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:20px;box-shadow:0 8px 28px #0002;text-align:left;font:inherit;cursor:pointer}
+  #hs-banner{position:fixed;top:max(14px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:92%;max-width:430px;z-index:100100;display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--secondary-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:20px;box-shadow:0 8px 28px #0002;text-align:left;font:inherit;cursor:pointer;touch-action:none;user-select:none}
   #hs-banner{animation:hs-note-enter var(--hs-note-enter) cubic-bezier(.2,.75,.3,1) both}
+  #hs-banner.hs-note-settled{animation:none}
+  #hs-banner.hs-note-dragging{animation:none;transform:translate(-50%,var(--hs-note-offset,0px))}
   #hs-banner.hs-note-exiting{animation:hs-note-exit var(--hs-note-exit) ease-in both;pointer-events:none}
   @keyframes hs-note-enter{from{transform:translate(-50%,calc(-100% - max(14px,env(safe-area-inset-top)) - 30px));opacity:0}to{transform:translate(-50%,0);opacity:1}}
-  @keyframes hs-note-exit{from{transform:translate(-50%,0);opacity:1}to{transform:translate(-50%,calc(-100% - max(14px,env(safe-area-inset-top)) - 30px));opacity:0}}
+  @keyframes hs-note-exit{from{transform:translate(-50%,var(--hs-note-offset,0px));opacity:1}to{transform:translate(-50%,calc(-100% - max(14px,env(safe-area-inset-top)) - 30px));opacity:0}}
   .hs-notice-avatar{display:grid;place-items:center;flex:0 0 40px;width:40px;height:40px;border-radius:12px;overflow:hidden;background:var(--primary-bg);color:var(--accent-color)}
   .hs-notice-avatar img{display:block;width:100%;height:100%;object-fit:cover}
   #hs-banner>span:nth-child(2){flex:1;min-width:0}#hs-banner strong{font-size:13px}.hs-note-text{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:var(--text-secondary)}#hs-banner small{font-size:10px;color:var(--accent-color)}#hs-new-messages{position:fixed;right:15px;bottom:calc(var(--hs-nav-height) + 115px);z-index:1250;border:1px solid var(--border-color);border-radius:20px;background:var(--secondary-bg);color:var(--accent-color);padding:8px 13px;font:inherit;font-size:12px}
@@ -651,6 +744,10 @@
   const scheduleEntry=window.HomeSchedule.mount(home);
   setupHomeMusic();
   setupHomeBackground(home);
+  const cropObserver=new ResizeObserver(applyBackgroundCrops);
+  for(const target of [home,$('hs-relation'),$('hs-home-glass-preview')]){
+   if(target)cropObserver.observe(target);
+  }
   setupChatDisplay();
   const content=$('settings-modal')?.querySelector('.modal-content');if(content)settingPage.appendChild(content);
   let apps=[...document.querySelectorAll('#advanced-modal .settings-item-list > .settings-item')];
@@ -704,7 +801,7 @@
   document.documentElement.removeAttribute('data-hs-boot');
  }
  window.HomeShell={navigate,routeModal,onMessage,onConversationMessage,openChatDisplay,refresh:update,isChat:()=>!ready||page==='chat',
-  isIncoming:incoming,nativeUnreadCount:()=>unread.length,refreshUnread:badges,setNativeUnread:setUnread};
+  isIncoming:incoming,isViewingConversation:isViewingNotice,nativeUnreadCount:()=>unread.length,refreshUnread:badges,setNativeUnread:setUnread};
  let booting=false;
  async function tryBoot(){
   if(ready||booting||typeof SESSION_ID==='undefined'||!SESSION_ID)return;

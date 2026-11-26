@@ -719,6 +719,9 @@
         }
     }
 
+    window.MemoryMatch = {
+        isPlayingTogether: () => isOpen() && Boolean(game && !game.solo && (mode === 'game' || mode === 'result'))
+    };
     $('chat-memory-match-btn')?.addEventListener('click', open);
     window.addEventListener('game-invite-frequency-change', () => {
         if (useSession()) syncInviteFrequency();

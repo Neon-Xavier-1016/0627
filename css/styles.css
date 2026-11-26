@@ -7454,6 +7454,13 @@
     transform: scale(1);
         }
 
+        .rl-my-sticker .sticker-delete-btn {
+    opacity: 1;
+    transform: none;
+    border: 0;
+    font-size: 18px;
+        }
+
         .sticker-delete-btn:hover {
     background: #ff4757;
     transform: scale(1.1);
