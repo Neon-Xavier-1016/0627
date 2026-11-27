@@ -289,7 +289,10 @@
             if (exportAllReal) exportAllReal.addEventListener('click', function () {
                 closeDrawer('dm-drawer-full');
                 if (window.ChatBackup && typeof ChatBackup.exportBackupToFile === 'function') {
-                    ChatBackup.exportBackupToFile();   // ← 必须是这个
+                    ChatBackup.exportBackupToFile().catch(function (error) {
+                        console.error('全量备份导出失败:', error);
+                        if (typeof showNotification === 'function') showNotification('备份导出失败：' + error.message, 'error');
+                    });
                 } else if (typeof exportAllData === 'function') {
                     exportAllData();
                 }

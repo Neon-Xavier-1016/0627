@@ -34,9 +34,8 @@ const NAME_MAX_LEN = 30;
 const NAME_POOL_MAX = 20;
 const AVATAR_POOL_MAX = 20;
 const AVATAR_POOL_TOTAL_MAX = 30;
-const SWAP_MIN_H = 4;
-const SWAP_MAX_H = 8;
-const HOUR_MS = 3600 * 1000;
+const AUTO_SWAP_INTERVAL = 12 * 60 * 60 * 1000;
+const AUTO_SWAP_CHANCE = .30;
 const REJECT_PROB = 0.2;
 const KW_TRIGGER_PROB = 0.6;
 const KW_COOLDOWN_MS = 30000;
@@ -45,7 +44,7 @@ let currentMainTab = 'avatar';
 let currentOwnerTab = 'partner';
 const _bootTime = Date.now();
 let _intervalTimer = null;
-let pendingUserAvatar = false;
+let pendingAutoSwap = false;
 
 /* ============================================================
  * 一、数据
@@ -68,7 +67,6 @@ function getPool() {
   if (typeof p.allowAvatarChange !== 'boolean') p.allowAvatarChange = true;
   if (typeof p.nextSwapAt !== 'number') p.nextSwapAt = 0;
   if (typeof p.lastSwapAt !== 'number') p.lastSwapAt = 0;
-  if (typeof p.nextUserAvatarAt !== 'number') p.nextUserAvatarAt = 0;
   return p;
 }
 function savePool() { try { if (typeof throttledSaveData === 'function') throttledSaveData(); } catch(e) {} }
@@ -864,25 +862,42 @@ function askConsent(kind, value) {
     ov.addEventListener('click', e => { if (e.target === ov) cleanup(false); });
   });
 }
-async function performSwap(reason, skipUserAvatar = false) {
+async function performSwap(reason, automatic = false) {
+  const session = SESSION_ID;
   const id = window.XavierConversations?.homeId() || primaryRole();
   const p = getPool();
   const allowName = p.allowNameChange, allowAvatar = p.allowAvatarChange;
   if (!allowName && !allowAvatar) return;
-  let kind = (allowName && allowAvatar) ? (Math.random() < 0.5 ? 'name' : 'avatar') : (allowName ? 'name' : 'avatar');
-  const partnerAvatarOnly = skipUserAvatar && kind === 'avatar';
-  let owner = partnerAvatarOnly || Math.random() < 0.5 ? 'partner' : 'me';
-  let value = await pickFromPool(owner, kind, id);
-  if (!value) {
-    if (partnerAvatarOnly) return;
-    const altOwner = owner === 'partner' ? 'me' : 'partner';
-    value = await pickFromPool(altOwner, kind, id);
-    if (!value) return;
-    owner = altOwner;
+  const kinds = [allowName && 'name', allowAvatar && 'avatar'].filter(Boolean);
+  if (kinds.length === 2 && Math.random() < .5) kinds.reverse();
+  let kind, owner, value;
+  for (kind of kinds) {
+    const partnerOnly = automatic && kind === 'avatar' && !isUserPresent(reason);
+    owner = partnerOnly || Math.random() < .5 ? 'partner' : 'me';
+    value = await pickFromPool(owner, kind, id);
+    if (!value && !partnerOnly) {
+      owner = owner === 'partner' ? 'me' : 'partner';
+      value = await pickFromPool(owner, kind, id);
+    }
+    if (!value && automatic && id === primaryRole() &&
+      typeof partnerPersonas !== 'undefined' && Array.isArray(partnerPersonas)) {
+      const current = kind === 'name' ? S().partnerName : S().partnerAvatar;
+      const candidates = partnerPersonas.map(persona => persona?.[kind])
+        .filter(candidate => typeof candidate === 'string' && candidate && candidate !== current);
+      if (candidates.length) {
+        owner = 'partner';
+        value = candidates[Math.floor(Math.random() * candidates.length)];
+      }
+    }
+    if (value || !automatic) break;
   }
-  const needConsent = (owner === 'me') && isUserPresent(reason);
+  if (!value || (automatic && SESSION_ID !== session)) return;
+  const needConsent = owner === 'me' && (isUserPresent(reason) || (automatic && kind === 'avatar'));
+  if (needConsent && automatic && (!isUserPresent(reason) ||
+    [...document.querySelectorAll('.modal')].some(modal => getComputedStyle(modal).display !== 'none'))) return;
   if (needConsent) {
     const agreed = await askConsent(kind, value);
+    if (automatic && SESSION_ID !== session) return;
     if (!agreed) { addSystemMessage('你拒绝了TA给你换' + (kind === 'name' ? '名字' : '头像') + '的邀请'); return; }
     await applyChange(kind, owner, value, id);
     if (kind === 'avatar') pushAvatarCard(owner, value, id);
@@ -893,64 +908,32 @@ async function performSwap(reason, skipUserAvatar = false) {
     else addSystemMessage(pickMsg(kind, owner), id);
   }
 }
-function nextSwapTime() {
-  return Date.now() + (SWAP_MIN_H + Math.random() * (SWAP_MAX_H - SWAP_MIN_H)) * HOUR_MS;
-}
-
-function startUserAvatarOffer(pool) {
-  if (!pool.allowAvatarChange || !pool.myAvatarHashes.length) return false;
-  if (!pool.nextUserAvatarAt) {
-    pool.nextUserAvatarAt = pool.nextSwapAt || nextSwapTime();
+async function checkAndSwap(reason) {
+  if (!SESSION_ID || document.hidden || !document.body.classList.contains('hs-enabled') || pendingAutoSwap) return;
+  const pool = getPool();
+  if (!pool.allowNameChange && !pool.allowAvatarChange) return;
+  const now = Date.now();
+  if (pool.autoSwapInterval !== AUTO_SWAP_INTERVAL || !(pool.nextSwapAt > 0) || !Number.isFinite(pool.nextSwapAt)) {
+    pool.autoSwapInterval = AUTO_SWAP_INTERVAL;
+    pool.nextSwapAt = now + AUTO_SWAP_INTERVAL;
     savePool();
+    return;
   }
-  if (Date.now() < pool.nextUserAvatarAt || !isUserPresent('interval')
-    || [...document.querySelectorAll('.modal')].some(modal => getComputedStyle(modal).display !== 'none')) return false;
+  if (now < pool.nextSwapAt) return;
 
-  const activeSession = SESSION_ID;
-  pendingUserAvatar = true;
-  (async () => {
-    const current = S().myAvatar || $('my-avatar')?.querySelector('img')?.getAttribute('src');
-    const hashes = pool.myAvatarHashes.slice();
-    let candidate;
-    while (hashes.length && !candidate) {
-      const [hash] = hashes.splice(Math.floor(Math.random() * hashes.length), 1);
-      const value = await localforage.getItem(avatarKey(hash));
-      if (value && value !== current) candidate = value;
-    }
-    if (SESSION_ID !== activeSession || !pool.allowAvatarChange || !isUserPresent('interval')) return;
-    if ([...document.querySelectorAll('.modal')].some(modal => getComputedStyle(modal).display !== 'none')) return;
-    pool.nextUserAvatarAt = nextSwapTime();
-    savePool();
-    if (!candidate) return;
-
-    const agreed = await askConsent('avatar', candidate);
-    if (!agreed || SESSION_ID !== activeSession || !pool.allowAvatarChange) return;
-    applyChange('avatar', 'me', candidate);
-    pushAvatarCard('me', candidate);
-  })().catch(error => console.warn('[ImagePool]', error)).finally(() => { pendingUserAvatar = false; });
-  return true;
-}
-
-function checkAndSwap(reason) {
-  if (!SESSION_ID || !document.body.classList.contains('hs-enabled') || pendingUserAvatar) return;
-  const p = getPool();
-  if (!p.allowNameChange && !p.allowAvatarChange) return;
-  let rescheduled = false;
-  for (const deadline of ['nextSwapAt', 'nextUserAvatarAt']) {
-    if (p[deadline] <= Date.now() + SWAP_MAX_H * HOUR_MS) continue;
-    p[deadline] = nextSwapTime();
-    rescheduled = true;
+  // Advance the slot before drawing, including when the roll does not change anything.
+  pool.nextSwapAt = now + AUTO_SWAP_INTERVAL;
+  pool.lastSwapAt = now;
+  const session = SESSION_ID;
+  pendingAutoSwap = true;
+  try {
+    await saveData();
+    if (SESSION_ID === session && Math.random() < AUTO_SWAP_CHANCE) await performSwap(reason, true);
+  } catch (error) {
+    console.warn('[ImagePool]', error);
+  } finally {
+    pendingAutoSwap = false;
   }
-  if (rescheduled) savePool();
-  if (startUserAvatarOffer(p)) return;
-  if (!p.nextSwapAt) {
-    p.nextSwapAt = nextSwapTime();
-    p.lastSwapAt = Date.now(); savePool(); return;
-  }
-  if (Date.now() < p.nextSwapAt) return;
-  p.nextSwapAt = nextSwapTime();
-  p.lastSwapAt = Date.now(); savePool();
-  performSwap(reason, true).catch(e => console.warn('[ImagePool]', e));
 }
 
 /* ============================================================
@@ -1038,7 +1021,7 @@ window.ImagePool = {
   checkAndSwap,
   showChangeTab,
   debug: {
-    forceSwap: () => { const p = getPool(); p.nextSwapAt = 0; checkAndSwap('manual'); },
+    forceSwap: () => performSwap('interval'),
     swapNow: () => performSwap('interval'),
     requestName: (who) => requestChange(who || 'me', 'name'),
     requestAvatar: (who) => requestChange(who || 'me', 'avatar'),

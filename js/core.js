@@ -579,7 +579,22 @@ function _tryRecoverFromBackup() {
     }
 }
 
-const saveData = async () => {
+const pendingAppDataSaves = new Set();
+
+function waitForAppDataSaves() {
+    return Promise.allSettled([...pendingAppDataSaves]);
+}
+
+const saveData = () => {
+    if (window.ChatBackup?.isRestoring?.()) return Promise.resolve();
+    const activeSave = writeAppData();
+    pendingAppDataSaves.add(activeSave);
+    const remove = () => pendingAppDataSaves.delete(activeSave);
+    activeSave.then(remove, remove);
+    return activeSave;
+};
+
+const writeAppData = async () => {
     if (!SESSION_ID) {
         console.warn('[saveData] SESSION_ID 尚未初始化，跳过保存以防数据写入临时 key');
         return;
@@ -1893,23 +1908,6 @@ const addMessage = (message) => {
                 _updateReadReceiptsDOM(); throttledSaveData();
             }
 
-if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
-                const currentPool = [
-                    ...partnerPersonas
-                ];
-                if(currentPool.length > 0) {
-                     const nextPersona = currentPool[Math.floor(Math.random() * currentPool.length)];
-                     
-                     settings.partnerName = nextPersona.name;
-                     DOMElements.partner.name.textContent = nextPersona.name;
-                     
-                     if (nextPersona.avatar) {
-                         updateAvatar(DOMElements.partner.avatar, nextPersona.avatar);
-                         localforage.setItem(getStorageKey('partnerAvatar'), nextPersona.avatar);
-                     }
-                     throttledSaveData();
-                }
-            }
             if (!contextual && Math.random() < 0.03) {
                 // ── 对方拍一拍：调用提取的通用函数（同时供 /测试拍一拍 指令使用）──
                 if (typeof window._triggerPartnerPoke === 'function') window._triggerPartnerPoke();

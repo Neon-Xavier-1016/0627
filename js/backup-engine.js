@@ -6,10 +6,7 @@
     'use strict';
 
     var MIN_MEDIA_CHARS = 800;
-
-    function escapeRe(s) {
-        return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
+    var restoring = false;
 
     function isDataMediaUrl(s) {
         return typeof s === 'string' && s.length > MIN_MEDIA_CHARS && /^data:(image|video)\//i.test(s);
@@ -154,24 +151,66 @@
         }
     }
 
-    function inferBackupSessionId(lfKeys, appPrefix) {
-        var pfx = appPrefix || (typeof APP_PREFIX !== 'undefined' ? APP_PREFIX : 'CHAT_APP_V3_');
-        var skipParts = ['MIGRATION', 'sessionList', 'lastSessionId', 'customThemes', 'themeSchemes'];
-        for (var i = 0; i < lfKeys.length; i++) {
-            var sk = lfKeys[i];
-            if (!sk || !sk.startsWith(pfx)) continue;
-            if (skipParts.some(function (s) { return sk.startsWith(pfx + s); })) continue;
-            var after = sk.slice(pfx.length);
-            var u = after.indexOf('_');
-            if (u > 0) return after.slice(0, u);
+    function inferBackupSessionId(keys, appPrefix) {
+        var suffixes = ['_chatSettings', '_chatMessages', '_customEmojis', '_multiCharacterConversations'];
+        for (var key of keys) {
+            if (!key.startsWith(appPrefix)) continue;
+            var suffix = suffixes.find(function (name) { return key.endsWith(name); });
+            if (suffix) return key.slice(appPrefix.length, -suffix.length) || null;
         }
         return null;
     }
 
-    function remapLfKey(key, oldSid, newSid, appPrefix) {
-        if (!oldSid || !newSid || oldSid === newSid || !key) return key;
-        var re = new RegExp(escapeRe(oldSid), 'g');
-        return key.replace(re, newSid);
+    function remapStorageKey(key, sourcePrefix, targetPrefix, sourceId, targetId) {
+        if (!key.startsWith(sourcePrefix)) return key;
+        var suffix = key.slice(sourcePrefix.length);
+        var sessionPrefix = sourceId + '_';
+        if (sourceId && targetId && suffix.startsWith(sessionPrefix)) {
+            suffix = targetId + '_' + suffix.slice(sessionPrefix.length);
+        }
+        return targetPrefix + suffix;
+    }
+
+    function remapSessionReferences(key, value, oldId, newId, prefix) {
+        if (!oldId || !newId || String(oldId) === String(newId)) return value;
+        var role = function (id) { return id != null && String(id) === String(oldId) ? newId : id; };
+        var mapEntries = function (entries, convert) {
+            return Array.isArray(entries) ? entries.map(function (item) { return item && convert(item); }) : entries;
+        };
+        var messages = function (items) {
+            return mapEntries(items, function (msg) {
+                return msg.roleId == null ? msg : { ...msg, roleId: role(msg.roleId) };
+            });
+        };
+        if (key === prefix + 'characterSessionAnchor' || key === prefix + 'lastSessionId') return role(value);
+        if (key === prefix + 'sessionList') {
+            return mapEntries(value, function (entry) { return { ...entry, id: role(entry.id) }; });
+        }
+        if (key.startsWith(prefix) && key.endsWith('_chatSettings') && value?.imagePool?.roles) {
+            var pools = Object.fromEntries(Object.entries(value.imagePool.roles).map(function ([id, pool]) {
+                return [role(id), pool];
+            }));
+            return { ...value, imagePool: { ...value.imagePool, roles: pools } };
+        }
+        if (key.startsWith(prefix) && key.endsWith('_multiCharacterConversations') && value) {
+            return {
+                ...value,
+                selected: role(value.selected),
+                roles: mapEntries(value.roles, function (entry) {
+                    return { ...entry, id: role(entry.id), ...(entry.messages ? { messages: messages(entry.messages) } : {}) };
+                }),
+                groups: mapEntries(value.groups, function (group) {
+                    return { ...group, members: mapEntries(group.members, role), messages: messages(group.messages) };
+                }),
+                removed: mapEntries(value.removed, function (entry) { return { ...entry, id: role(entry.id) }; })
+            };
+        }
+        if (key.startsWith(prefix) && key.endsWith('_stickerLibraryShared')) {
+            return mapEntries(value, function (entry) {
+                return { ...entry, roles: mapEntries(entry.roles, role) };
+            });
+        }
+        return value;
     }
 
     /** 与 group-chat 导出勾选项一致：未勾选的模块对应键名子串会被排除 */
@@ -213,8 +252,12 @@
     async function buildBackupPayload(flags) {
         flags = flags || {
             inclMsgs: true, inclSet: true, inclCustom: true, inclAnn: true,
-            inclThemes: true, inclDg: true, inclStickers: false
+            inclThemes: true, inclDg: true, inclStickers: true
         };
+        if (restoring) throw new Error('正在恢复备份，请稍后再导出。');
+        if (typeof waitForAppDataSaves === 'function') await waitForAppDataSaves();
+        if (typeof saveData === 'function' && typeof SESSION_ID !== 'undefined' && SESSION_ID) await saveData();
+
         var lfData = {};
         var keys = await localforage.keys();
         for (var i = 0; i < keys.length; i++) {
@@ -233,6 +276,18 @@
             try {
                 lsData[lk] = localStorage.getItem(lk);
             } catch (e2) {}
+        }
+        if (typeof getStorageKey === 'function' && typeof SESSION_ID !== 'undefined' && SESSION_ID) {
+            if (flags.inclCustom && typeof customEmojis !== 'undefined' && Array.isArray(customEmojis)) {
+                lfData[getStorageKey('customEmojis')] = customEmojis.slice();
+            }
+            if (flags.inclSet && global.settings?.imagePool) {
+                var settingsKey = getStorageKey('chatSettings');
+                lfData[settingsKey] = {
+                    ...lfData[settingsKey],
+                    imagePool: deepCloneJsonSafe(global.settings.imagePool)
+                };
+            }
         }
         var state = { store: {}, map: new Map(), n: 0 };
         var lfOut = {};
@@ -488,6 +543,19 @@
      * @param {{ selective?: boolean, selectedCategoryIds?: string[], categories?: array }} opt
      */
     async function applyBackupToStorage(data, opt) {
+        if (restoring) throw new Error('已有一份备份正在恢复。');
+        restoring = true;
+        try {
+            if (typeof waitForAppDataSaves === 'function') await waitForAppDataSaves();
+            await writeBackupToStorage(data, opt);
+        } catch (error) {
+            restoring = false;
+            throw error;
+        }
+        // The restore entry points reload the page after success. Keep stale autosaves blocked until then.
+    }
+
+    async function writeBackupToStorage(data, opt) {
         opt = opt || {};
         var selective = !!opt.selective;
         var mediaStore = data.mediaStore || {};
@@ -500,25 +568,28 @@
         }
 
         var lfKeys = Object.keys(lfRaw);
-        var backupSid = data.sessionId || inferBackupSessionId(lfKeys, data.appPrefix);
+        var appPfx = typeof APP_PREFIX !== 'undefined' ? APP_PREFIX : 'CHAT_APP_V3_';
+        var sourcePrefix = data.appPrefix || appPfx;
+        var backupSid = data.sessionId || lfRaw[sourcePrefix + 'characterSessionAnchor'] ||
+            lfRaw[sourcePrefix + 'lastSessionId'] || inferBackupSessionId(lfKeys, sourcePrefix);
         var curSid = typeof SESSION_ID !== 'undefined' ? SESSION_ID : null;
-        var appPfx = data.appPrefix || (typeof APP_PREFIX !== 'undefined' ? APP_PREFIX : 'CHAT_APP_V3_');
-        var needRemap = backupSid && curSid && backupSid !== curSid;
+        var failures = [];
 
         for (var i = 0; i < lfKeys.length; i++) {
             var lk = lfKeys[i];
-            var targetKey = needRemap ? remapLfKey(lk, backupSid, curSid, appPfx) : lk;
-            var val = inlineMediaTree(lfRaw[lk], mediaStore);
+            var targetKey = remapStorageKey(lk, sourcePrefix, appPfx, backupSid, curSid);
+            var val = remapSessionReferences(lk, inlineMediaTree(lfRaw[lk], mediaStore), backupSid, curSid, sourcePrefix);
             try {
                 await localforage.setItem(targetKey, val);
             } catch (e) {
+                failures.push(targetKey);
                 console.warn('[backup] 写入失败', targetKey, e);
             }
         }
 
         for (var k in lsRaw) {
             if (!Object.prototype.hasOwnProperty.call(lsRaw, k)) continue;
-            var targetLsKey = needRemap ? remapLfKey(k, backupSid, curSid, appPfx) : k;
+            var targetLsKey = remapStorageKey(k, sourcePrefix, appPfx, backupSid, curSid);
             try {
                 var lsv = processLocalStorageValueForImport(lsRaw[k], mediaStore);
                 if (typeof lsv === 'string' && lsv.indexOf('data:image/') === 0 && lsv.length > 2000) continue;
@@ -528,29 +599,11 @@
             }
         }
 
-        // 修复 sessionList 中的会话 ID：键已被 remap，但值里的 id 字段还是旧 sessionId
-        if (needRemap) {
-            try {
-                var slKey = appPfx + 'sessionList';
-                var sl = await localforage.getItem(slKey);
-                if (Array.isArray(sl)) {
-                    var remappedSl = sl.map(function(s) {
-                        if (s && s.id === backupSid) {
-                            var copy = {};
-                            for (var p in s) { if (Object.prototype.hasOwnProperty.call(s, p)) copy[p] = s[p]; }
-                            copy.id = curSid;
-                            return copy;
-                        }
-                        return s;
-                    });
-                    await localforage.setItem(slKey, remappedSl);
-                }
-            } catch (e4) {}
+        if (curSid) {
+            await localforage.setItem(appPfx + 'lastSessionId', curSid);
+            await localforage.setItem(appPfx + 'characterSessionAnchor', curSid);
         }
-
-        if (typeof APP_PREFIX !== 'undefined' && typeof SESSION_ID !== 'undefined') {
-            try { await localforage.setItem(APP_PREFIX + 'lastSessionId', SESSION_ID); } catch (e3) {}
-        }
+        if (failures.length) throw new Error('有 ' + failures.length + ' 项数据未能写入，请重试恢复。');
     }
 
     function isFullBackupShape(d) {
@@ -572,6 +625,7 @@
         loadBackupFromFile: loadBackupFromFile,
         loadBackupFromArrayBuffer: loadBackupFromArrayBuffer,
         applyBackupToStorage: applyBackupToStorage,
+        isRestoring: function () { return restoring; },
         serializeBackupV4: serializeBackupV4,
         getLfSource: getLfSource,
         isFullBackupShape: isFullBackupShape,

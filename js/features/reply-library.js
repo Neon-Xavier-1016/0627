@@ -198,8 +198,8 @@ function _renderListContentOnly() {
 
     const q = _searchQuery.toLowerCase().trim();
     const filtered = q ? itemsToRender.filter(item => item.toLowerCase().includes(q)) : itemsToRender;
-    if (_batchModeActive && currentSubTab === 'dreamfree') {
-        _syncDreamFreeSelectAll(document.getElementById('batch-select-all-btn'), _getGroupCtx());
+    if (_batchModeActive && _usesVisibleBatchSelection()) {
+        _syncVisibleBatchSelectAll(document.getElementById('batch-select-all-btn'), _getGroupCtx());
     }
 
     if (filtered.length === 0) {
@@ -356,7 +356,11 @@ function renderReplyLibrary() {
     }
 }
 
-function _getVisibleDreamFreeIndices(ctx) {
+function _usesVisibleBatchSelection() {
+    return currentSubTab === 'dreamfree' || (currentMajorTab === 'atmosphere' && _tabHasGroups());
+}
+
+function _getVisibleBatchIndices(ctx) {
     const query = _searchQuery.trim().toLowerCase();
     const ungrouped = _activeGroupFilter === 'ungrouped';
     const group = ctx.groups.find(item => item.id === _activeGroupFilter);
@@ -369,9 +373,9 @@ function _getVisibleDreamFreeIndices(ctx) {
     return indices;
 }
 
-function _syncDreamFreeSelectAll(button, ctx) {
+function _syncVisibleBatchSelectAll(button, ctx) {
     if (!button) return;
-    const visible = _getVisibleDreamFreeIndices(ctx);
+    const visible = _getVisibleBatchIndices(ctx);
     const allSelected = visible.length > 0 && visible.every(index => _batchSelectedIndices.has(index));
     button.disabled = !visible.length;
     button.querySelector('.batch-select-all-label').textContent =
@@ -380,11 +384,11 @@ function _syncDreamFreeSelectAll(button, ctx) {
 
 function _renderModernToolbar() {
     let toolbar = document.getElementById('batch-ops-toolbar');
-    const isMainCustom = currentMajorTab === 'reply' && currentSubTab === 'custom';
     const isStickersTab = currentMajorTab === 'reply' && currentSubTab === 'stickers';
     const hasGroupSupport = _tabHasGroups();
     const isDreamFree = currentMajorTab === 'reply' && currentSubTab === 'dreamfree';
-    const canBatch = isMainCustom || isStickersTab || isDreamFree;
+    const useVisibleSelection = _usesVisibleBatchSelection();
+    const canBatch = hasGroupSupport || isStickersTab;
 
     if (!toolbar) {
         toolbar = document.createElement('div');
@@ -405,11 +409,6 @@ function _renderModernToolbar() {
                 title="${batchLabel}" aria-label="${batchLabel}" aria-pressed="${_batchModeActive}">
             <span aria-hidden="true">${ICONS.batch}</span>
         </button>` : '';
-
-    const addBtnLabel = (() => {
-        if (!isMainCustom) return '新增';
-        return '新增字卡';
-    })();
 
     let groupFilterHtml = '';
     if (hasGroupSupport && ctx.groups && ctx.groups.length > 0) {
@@ -630,10 +629,10 @@ function _renderModernToolbar() {
 
     if (_batchModeActive) {
         const selectAll = toolbar.querySelector('#batch-select-all-btn');
-        if (isDreamFree) _syncDreamFreeSelectAll(selectAll, ctx);
+        if (useVisibleSelection) _syncVisibleBatchSelectAll(selectAll, ctx);
         selectAll?.addEventListener('click', () => {
-            if (isDreamFree) {
-                const visible = _getVisibleDreamFreeIndices(ctx);
+            if (useVisibleSelection) {
+                const visible = _getVisibleBatchIndices(ctx);
                 const allSelected = visible.every(index => _batchSelectedIndices.has(index));
                 visible.forEach(index => {
                     if (allSelected) _batchSelectedIndices.delete(index);
@@ -647,7 +646,7 @@ function _renderModernToolbar() {
             renderReplyLibrary();
         });
         toolbar.querySelector('#batch-group-btn')?.addEventListener('click', () => {
-            if (!isMainCustom && !isDreamFree) return;
+            if (!hasGroupSupport) return;
             if (_batchSelectedIndices.size === 0) return;
             _showBatchGroupPicker();
         });
@@ -695,9 +694,9 @@ function _renderCardViewWithGroups(list, items) {
     // 预建索引 Map，避免 indexOf 的 O(n²) 查找
     const replyIndexMap = new Map();
     sourceItems.forEach((r, i) => { if (!replyIndexMap.has(r)) replyIndexMap.set(r, i); });
-    const isDreamFree = currentSubTab === 'dreamfree';
+    const useVisibleSelection = _usesVisibleBatchSelection();
     const visibleTexts = new Set(items);
-    const itemsWithIdx = isDreamFree
+    const itemsWithIdx = useVisibleSelection
         ? sourceItems.map((text, idx) => ({ text, idx })).filter(row => visibleTexts.has(row.text))
         : items.map(text => ({ text, idx: replyIndexMap.get(text) ?? -1 }));
 
@@ -709,7 +708,7 @@ function _renderCardViewWithGroups(list, items) {
 
         const inGroup = new Set();
         groups.forEach(g => {
-            const groupItems = isDreamFree
+            const groupItems = useVisibleSelection
                 ? itemsWithIdx.filter(row => (g.items || []).includes(row.text))
                 : (g.items || [])
                     .map(t => ({ text: t, idx: sourceItems.indexOf(t) }))
@@ -1103,7 +1102,9 @@ function _toggleItemDisable(itemText) {
 
 function _batchToggleDisable() {
     const set = _getDisabledItemsSet();
-    const selectedItems = [..._batchSelectedIndices].map(i => customReplies[i]);
+    const { items } = _getGroupCtx();
+    const selectedItems = [..._batchSelectedIndices].map(i => items[i]).filter(item => item !== undefined);
+    if (!selectedItems.length) return;
     const allDisabled = selectedItems.every(item => set.has(item));
     if (allDisabled) {
         selectedItems.forEach(item => set.delete(item));

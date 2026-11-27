@@ -254,12 +254,6 @@
                 dayLabel = '天';
             }
 
-            // ===== 为“生日”标签添加淡橙色内联样式（加 !important 确保覆盖） =====
-            let tagStyle = '';
-            if (type === 'birthday') {
-                tagStyle = ' style="background: #FFE0B2 !important; color: #5d4037 !important; border: 1.5px solid #FFB74D !important;"';
-            }
-
             // 置顶按钮样式
             const isPinned = ann.pinned === true;
             const pinColor = isPinned ? 'var(--accent-color)' : 'var(--text-secondary)';
@@ -268,7 +262,7 @@
             html += `
                 <div class="ann-item-card ${type === 'countdown' ? 'type-future' : 'type-past'}" data-ann-id="${ann.id}" data-type="${type}" style="cursor:pointer;">
                     <div class="ann-item-left">
-                        <div class="ann-item-name">${escapeHtml(ann.name)}<span class="ann-tag"${tagStyle}>${typeLabel}</span></div>
+                        <div class="ann-item-name">${escapeHtml(ann.name)}<span class="ann-tag">${typeLabel}</span></div>
                     </div>
                     <div style="display:flex; align-items:center; gap:8px;">
                         <!-- 置顶按钮 -->

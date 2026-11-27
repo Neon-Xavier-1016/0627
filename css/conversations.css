@@ -1,3 +1,17 @@
+html:has(> body.hs-enabled[data-hs-page="chat"]),
+body.hs-enabled[data-hs-page="chat"] {
+    overflow: hidden;
+    overscroll-behavior-y: none;
+}
+body.hs-enabled[data-hs-page="chat"] {
+    position: fixed;
+    inset: 0;
+}
+body.hs-enabled[data-hs-page="chat"] > .header { flex: 0 0 auto; }
+body.hs-enabled[data-hs-page="chat"] .main-chat-area > .chat-container {
+    overscroll-behavior-y: none;
+}
+
 .xv-page { padding-top: max(18px, env(safe-area-inset-top)); }
 html:has(> body.hs-enabled[data-hs-page="messages"]),
 body.hs-enabled[data-hs-page="messages"],

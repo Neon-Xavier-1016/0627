@@ -21,7 +21,7 @@
             --border-color: #ebebeb;
             --message-sent-bg: var(--accent-color);
             --message-sent-text: #ffffff;
-            --message-received-bg: #f0f0f0;
+            --message-received-bg: #fff;
             --message-received-text: #1a1a1a; 
             --header-bg: #ffffff;
             --input-area-bg: #ffffff; 
@@ -5613,6 +5613,13 @@
 
         html[data-theme="dark"] .ann-item-card.type-past .ann-tag { color: #ff9a9e; }
         html[data-theme="dark"] .ann-item-card.type-future .ann-tag { color: #c4b5fd; }
+
+        .ann-item-card[data-type="birthday"] .ann-tag {
+    background: rgba(237, 204, 109, .21);
+    color: #8a661a;
+    border: 1px solid rgba(217, 180, 82, .35);
+        }
+        html[data-theme="dark"] .ann-item-card[data-type="birthday"] .ann-tag { color: #edcf82; }
 
         .ann-item-right {
     text-align: right;
