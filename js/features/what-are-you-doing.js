@@ -535,14 +535,21 @@
         try { roleStorage.setItem(MOOD_STORE_KEY, JSON.stringify(data)); } catch (e) {}
     }
 
+    const CUSTOM_MOOD_STYLE = { emoji: '💭', color: '#8d819f', texts: [] };
+
     function ensureMoodForHour(hour) {
         const data = loadMoodData();
-        if (data.moods[hour]) return data.moods[hour];
-        const mood = pick(MOOD_POOL);
+        const customLabels = window.customPartnerMoods || [];
+        const current = data.moods[hour];
+        if (current && (!current.custom || customLabels.includes(current.mood))) return current;
+        const customMoods = deduplicateContentArray(customLabels, MOOD_POOL.map(entry => entry.mood)).result
+            .map(label => ({ ...CUSTOM_MOOD_STYLE, mood: label }));
+        const mood = pick([...MOOD_POOL, ...customMoods]);
         const entry = {
             mood: mood.mood,
             emoji: mood.emoji,
-            textIdx: randInt(0, mood.texts.length - 1),
+            custom: mood.texts.length === 0,
+            textIdx: mood.texts.length ? randInt(0, mood.texts.length - 1) : 0,
             ts: Date.now()
         };
         data.moods[hour] = entry;
@@ -579,7 +586,7 @@
         let html = '';
         hours.forEach(hour => {
             const e    = data.moods[hour];
-            const mood = MOOD_POOL.find(m => m.mood === e.mood) || MOOD_POOL[0];
+            const mood = MOOD_POOL.find(m => m.mood === e.mood) || CUSTOM_MOOD_STYLE;
             const text = mood.texts[e.textIdx] || mood.texts[0];
             const range = String(hour).padStart(2, '0') + ':00 - ' +
                           String((hour + 1) % 24).padStart(2, '0') + ':00';
@@ -588,9 +595,9 @@
             <div class="wyd-card wyd-mood-card" style="background:${hexToRgba(color, 0.06)};border-color:${hexToRgba(color, 0.22)};border-left:3px solid ${color};">
                 <div class="wyd-card-head">
                     <span class="wyd-card-title" style="color:${color};">${e.emoji} ${range}</span>
-                    <span class="wyd-card-time" style="color:${hexToRgba(color, 0.75)};">${e.mood}</span>
+                    <span class="wyd-card-time" style="color:${hexToRgba(color, 0.75)};">${escapeHtmlText(e.mood)}</span>
                 </div>
-                <div class="wyd-card-text">${text}</div>
+                ${text ? `<div class="wyd-card-text">${text}</div>` : ''}
             </div>`;
         });
 
@@ -716,6 +723,7 @@
      * 十三、导出给 where.js 使用
      * ============================================================ */
     window.WydMeal = {
+        builtInMoodLabels: () => MOOD_POOL.map(entry => entry.mood),
         ensureToday: function () { return loadToday(); },
         currentMeal: function () {
             if (isPartnerSleeping()) return null;

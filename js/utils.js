@@ -32,6 +32,17 @@ function normalizeStringStrict(s) {
     return s.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+function normalizePartnerMoodLabels(labels) {
+    if (!Array.isArray(labels)) return [];
+    const texts = labels.filter(label => typeof label === 'string').map(label => label.trim());
+    return deduplicateContentArray(texts, window.WydMeal?.builtInMoodLabels?.() || []).result;
+}
+
+function escapeHtmlText(text) {
+    const entities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
+    return text.replace(/[&<>"]/g, char => entities[char]);
+}
+
 function deduplicateContentArray(arr, baseSystemArray = []) {
     const seen = new Set(baseSystemArray.map(normalizeStringStrict));
     const result = [];
@@ -460,7 +471,7 @@ async function importAllData(file) {
             {
                 id: 'replies',
                 label: '回复 / 拍一拍 / 氛围',
-                indexedDBNeedles: ['customReplies', 'customPokes', 'customStatuses', 'customMottos', 'customIntros', 'customEmojis', 'customReplyGroups', 'customPokeGroups', 'customStatusGroups'],
+                indexedDBNeedles: ['customPartnerMoods', 'customReplies', 'customPokes', 'customStatuses', 'customMottos', 'customIntros', 'customEmojis', 'customReplyGroups', 'customPokeGroups', 'customStatusGroups'],
                 localStorageNeedles: ['disabledReplyItems', 'pokeSym_my', 'pokeSym_partner', 'pokeSym_my_custom', 'pokeSym_partner_custom']
             },
             {

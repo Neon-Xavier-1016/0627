@@ -318,7 +318,8 @@ const loadData = async () => {
             localforage.getItem(getStorageKey('customPokeGroups')),
             localforage.getItem(getStorageKey('customStatusGroups')),
             localforage.getItem(getStorageKey('dreamFreeReplies')),
-            localforage.getItem(getStorageKey('dreamFreeGroups'))
+            localforage.getItem(getStorageKey('dreamFreeGroups')),
+            localforage.getItem(getStorageKey('customPartnerMoods'))
         ]);
         const getVal = (index) => results[index].status === 'fulfilled' ? results[index].value : null;
 
@@ -345,6 +346,7 @@ const loadData = async () => {
         const savedStatusGroups = getVal(20);
         const savedDreamFreeReplies = getVal(21);
         const savedDreamFreeGroups = getVal(22);
+        const savedPartnerMoods = getVal(23);
 
         if (savedPartnerPersonas) partnerPersonas = savedPartnerPersonas;
 
@@ -433,6 +435,7 @@ const loadData = async () => {
         await loadCustomEmojis();
         window.dreamFreeReplies = Array.isArray(savedDreamFreeReplies) ? savedDreamFreeReplies : []; //新增
         window.dreamFreeGroups = Array.isArray(savedDreamFreeGroups) ? savedDreamFreeGroups : [];
+        window.customPartnerMoods = normalizePartnerMoodLabels(savedPartnerMoods);
         window._customReplies = customReplies;
         window._CONSTANTS = CONSTANTS;
 
@@ -485,7 +488,8 @@ const LIBRARY_CONFIG = {
             { id: 'emojis', name: 'Emoji', mode: 'grid' },
             { id: 'stickers', name: '对方表情', mode: 'grid' },
             { id: 'my-stickers', name: '我的表情', mode: 'grid' },
-            { id: 'period', name: '月经关怀', mode: 'list' }   // ✅ 新增
+            { id: 'period', name: '月经关怀', mode: 'list' },
+            { id: 'partner-moods', name: '他的情绪', mode: 'list' }
         ]
     },
     atmosphere: {
@@ -693,6 +697,7 @@ const writeAppData = async () => {
         { key: 'themeSchemes',           val: () => localforage.setItem(`${APP_PREFIX}themeSchemes`, themeSchemes) },
         { key: 'chatMessages',           val: () => localforage.setItem(getStorageKey('chatMessages'), messages) },
         { key: 'dreamFreeReplies',       val: () => localforage.setItem(getStorageKey('dreamFreeReplies'), window.dreamFreeReplies || []) },   // ← 加这一行
+        { key: 'customPartnerMoods', val: () => localforage.setItem(getStorageKey('customPartnerMoods'), window.customPartnerMoods || []) },
         { key: 'dreamFreeGroups',  val: () => localforage.setItem(getStorageKey('dreamFreeGroups'),  window.dreamFreeGroups  || []) },
     ];
 

@@ -44,6 +44,9 @@ function _getGroupCtx(tab) {
         if (!window.dreamFreeReplies) window.dreamFreeReplies = [];  // ← 新增
         return { groups: window.dreamFreeGroups, items: window.dreamFreeReplies, itemLabel: '组词' };  // ← 新增
     }
+    if (tab === 'partner-moods') {
+        return { groups: [], items: window.customPartnerMoods ??= [], itemLabel: '情绪标签' };
+    }
     // default: custom replies
     if (!window.customReplyGroups) window.customReplyGroups = [];
     return { groups: window.customReplyGroups, items: customReplies, itemLabel: '字卡' };
@@ -154,6 +157,29 @@ const ICONS = {
     (document.head || document.documentElement).appendChild(s);
 })();
 
+function _builtInPartnerMoods() {
+    return window.WydMeal?.builtInMoodLabels?.() || [];
+}
+
+function _renderPartnerMoodCards(list, toolbar) {
+    const ctx = _getGroupCtx();
+    const query = _searchQuery.trim().toLowerCase();
+    const rows = _getVisibleBatchIndices(ctx).map(idx => ({ text: ctx.items[idx], idx }));
+    for (const text of _builtInPartnerMoods()) {
+        if (!query || text.toLowerCase().includes(query)) rows.push({ text, idx: null });
+    }
+    if (_batchModeActive) {
+        _syncVisibleBatchSelectAll(toolbar?.querySelector('#batch-select-all-btn'), ctx);
+    }
+    if (rows.length === 0) {
+        const empty = document.createElement('div');
+        empty.innerHTML = renderEmptyState(query ? `未找到 "${escapeHtmlText(query)}"` : '列表空空如也');
+        list.appendChild(empty.firstElementChild || empty);
+        return;
+    }
+    _renderCardList(list, rows, null);
+}
+
 function _renderListContentOnly() {
     const list = document.getElementById('custom-replies-list');
     if (!list) return;
@@ -167,6 +193,10 @@ function _renderListContentOnly() {
         return;
     }
 
+    if (currentSubTab === 'partner-moods') {
+        _renderPartnerMoodCards(list, document.getElementById('batch-ops-toolbar'));
+        return;
+    }
     let itemsToRender = [];
     let renderType = 'text';
 
@@ -204,7 +234,7 @@ function _renderListContentOnly() {
 
     if (filtered.length === 0) {
         const empty = document.createElement('div');
-        empty.innerHTML = renderEmptyState(q ? `未找到 "${q}"` : '列表空空如也');
+        empty.innerHTML = renderEmptyState(q ? `未找到 "${escapeHtmlText(q)}"` : '列表空空如也');
         list.appendChild(empty.firstElementChild || empty);
         return;
     }
@@ -312,6 +342,10 @@ function renderReplyLibrary() {
     }
     _renderModernToolbar();
 
+    if (currentSubTab === 'partner-moods') {
+        _renderPartnerMoodCards(list, document.getElementById('batch-ops-toolbar'));
+        return;
+    }
     let itemsToRender = [];
     let renderType = 'text';
 
@@ -345,7 +379,7 @@ function renderReplyLibrary() {
     let filtered = q ? itemsToRender.filter(item => item.toLowerCase().includes(q)) : itemsToRender;
 
     if (filtered.length === 0) {
-        list.innerHTML = renderEmptyState(q ? `未找到"${q}"` : '列表空空如也');
+        list.innerHTML = renderEmptyState(q ? `未找到"${escapeHtmlText(q)}"` : '列表空空如也');
         return;
     }
 
@@ -357,7 +391,7 @@ function renderReplyLibrary() {
 }
 
 function _usesVisibleBatchSelection() {
-    return currentSubTab === 'dreamfree' || (currentMajorTab === 'atmosphere' && _tabHasGroups());
+    return currentSubTab === 'dreamfree' || currentSubTab === 'partner-moods' || (currentMajorTab === 'atmosphere' && _tabHasGroups());
 }
 
 function _getVisibleBatchIndices(ctx) {
@@ -388,7 +422,8 @@ function _renderModernToolbar() {
     const hasGroupSupport = _tabHasGroups();
     const isDreamFree = currentMajorTab === 'reply' && currentSubTab === 'dreamfree';
     const useVisibleSelection = _usesVisibleBatchSelection();
-    const canBatch = hasGroupSupport || isStickersTab;
+    const isMood = currentSubTab === 'partner-moods';
+    const canBatch = hasGroupSupport || isStickersTab || isMood;
 
     if (!toolbar) {
         toolbar = document.createElement('div');
@@ -468,7 +503,7 @@ function _renderModernToolbar() {
                         ${ICONS.tag} 分组
                     </button>
                 ` : ''}
-                ${isDreamFree ? '' : `
+                ${isDreamFree || isMood ? '' : `
                     <button id="batch-disable-btn" class="batch-act-pill ${selectedCount === 0 ? 'batch-act-disabled' : ''}" data-tip="屏蔽/启用">
                         ${ICONS.eyeOff} 屏蔽
                     </button>
@@ -533,9 +568,10 @@ function _renderModernToolbar() {
             <button class="toolbar-icon-btn" id="tb-groups-btn" title="分组管理">
                 ${ICONS.folder}
             </button>` : ''}
+            ${isMood ? '' : `
             <button class="toolbar-icon-btn" id="tb-dedup-btn" title="一键去重">
                 ${ICONS.dedup}
-            </button>
+            </button>`}
             <div style="flex:1;"></div>
             ${batchButton}
             <button class="toolbar-icon-btn" id="tb-import-btn" title="导入">
@@ -549,7 +585,7 @@ function _renderModernToolbar() {
         ${_searchVisible ? `
         <div class="search-input-line">
             <div style="color:var(--text-secondary);">${ICONS.search}</div>
-            <input type="text" id="rl-search-input" value="${_searchQuery}" placeholder="搜索内容…" autocomplete="off">
+            <input type="text" id="rl-search-input" value="${escapeHtmlText(_searchQuery)}" placeholder="搜索内容…" autocomplete="off">
             <button class="toolbar-icon-btn" id="tb-search-clear" title="清除" style="width:28px;height:28px;">
                 ${ICONS.close}
             </button>
@@ -878,10 +914,21 @@ function _createCard(item, index, disabledSet) {
         </span>`;
     })();
 
+    const isMood = currentSubTab === 'partner-moods';
     const itemParts = item.split('|');
-    const displayText = itemParts.length > 1
+    const displayText = isMood
+        ? `<span style="font-size:13px;">${escapeHtmlText(item)}</span>`
+        : itemParts.length > 1
         ? `<span style="font-size:13px;">${itemParts[0]}</span><span style="font-size:11px;opacity:0.6;display:block;margin-top:1px;">${itemParts[1]}</span>`
         : `<span style="font-size:13px;">${item}</span>`;
+
+    if (isMood && index === null) {
+        div.innerHTML = `
+            <div style="flex:1;min-width:0;">${displayText}</div>
+            <span style="font-size:11px;color:var(--text-secondary);white-space:nowrap;">系统内置</span>
+        `;
+        return div;
+    }
 
     if (_batchModeActive) {
         div.style.cssText = 'cursor:pointer;';
@@ -912,12 +959,13 @@ function _createCard(item, index, disabledSet) {
             ${groupBadge}
         </div>
         <div class="rl-card-actions">
+            ${isMood ? '' : `
             <button class="rl-act-btn ${isDisabled ? 'active' : ''}" data-action="disable" title="${isDisabled ? '启用' : '屏蔽'}">
                 ${isDisabled ? ICONS.eye : ICONS.eyeOff}
             </button>
             <button class="rl-act-btn" data-action="tag" title="分组">
                 ${ICONS.tag}
-            </button>
+            </button>`}
             <button class="rl-act-btn" data-action="edit" title="编辑">
                 ${ICONS.edit}
             </button>
@@ -929,8 +977,10 @@ function _createCard(item, index, disabledSet) {
 
     div.querySelector('[data-action="delete"]').onclick = (e) => { e.stopPropagation(); deleteItem(index); };
     div.querySelector('[data-action="edit"]').onclick = (e) => { e.stopPropagation(); editItem(index, item); };
-    div.querySelector('[data-action="disable"]').onclick = (e) => { e.stopPropagation(); _toggleItemDisable(item); };
-    div.querySelector('[data-action="tag"]').onclick = (e) => { e.stopPropagation(); _showSingleItemGroupPicker(item, _getGroupCtx()); };
+    if (!isMood) {
+        div.querySelector('[data-action="disable"]').onclick = (e) => { e.stopPropagation(); _toggleItemDisable(item); };
+        div.querySelector('[data-action="tag"]').onclick = (e) => { e.stopPropagation(); _showSingleItemGroupPicker(item, _getGroupCtx()); };
+    }
 
     return div;
 }
@@ -1011,18 +1061,36 @@ function _renderMyStickerTab(list) {
         list.innerHTML = renderEmptyState('还没有自己的表情包');
         return;
     }
+    let selected = null;
     stickers.forEach((src, index) => {
         const item = document.createElement('div');
         item.className = 'sticker-item rl-my-sticker';
+        const cover = document.createElement('button');
+        cover.type = 'button';
+        cover.className = 'rl-my-sticker-cover';
+        cover.setAttribute('aria-label', `选择我的表情包 ${index + 1}`);
+        cover.setAttribute('aria-pressed', 'false');
         const img = document.createElement('img');
-        img.alt = `我的表情包 ${index + 1}`;
+        img.alt = '';
         img.loading = 'lazy';
         img.src = src;
         const remove = document.createElement('button');
         remove.className = 'sticker-delete-btn';
         remove.type = 'button';
         remove.textContent = '×';
+        remove.hidden = true;
         remove.setAttribute('aria-label', `删除表情包 ${index + 1}`);
+        const setSelected = value => {
+            item.classList.toggle('rl-my-sticker-selected', value);
+            cover.setAttribute('aria-pressed', String(value));
+            remove.hidden = !value;
+        };
+        cover.addEventListener('click', () => {
+            const toggleOff = selected === setSelected;
+            selected?.(false);
+            selected = toggleOff ? null : setSelected;
+            selected?.(true);
+        });
         remove.addEventListener('click', async () => {
             if (remove.disabled || !confirm('从我的表情库删除这张表情包？')) return;
             remove.disabled = true;
@@ -1037,7 +1105,8 @@ function _renderMyStickerTab(list) {
                 remove.disabled = false;
             }
         });
-        item.append(img, remove);
+        cover.append(img);
+        item.append(cover, remove);
         list.appendChild(item);
     });
 }
@@ -1540,6 +1609,7 @@ function deleteItem(index) {
     else if (currentSubTab === 'statuses') customStatuses.splice(index, 1);
     else if (currentSubTab === 'mottos') customMottos.splice(index, 1);
     else if (currentSubTab === 'intros') customIntros.splice(index, 1);
+    else if (currentSubTab === 'partner-moods') ctx.items.splice(index, 1);
     else if (currentSubTab === 'dreamfree') window.dreamFreeReplies.splice(index, 1);   // ← 只保留这一行
     if (item && ctx.groups) {
         ctx.groups.forEach(g => { if (g.items) g.items = g.items.filter(t => t !== item); });
@@ -1574,6 +1644,16 @@ function editItem(index, oldText) {
     else if (currentSubTab === 'statuses') customStatuses[index] = newText.trim();
     else if (currentSubTab === 'mottos') customMottos[index] = newText.trim();
     else if (currentSubTab === 'intros') customIntros[index] = newText.trim();
+    else if (currentSubTab === 'partner-moods') {
+        const { items } = _getGroupCtx();
+        const normalized = normalizeStringStrict(newText);
+        if (items.some((text, i) => i !== index && normalizeStringStrict(text) === normalized) ||
+            _builtInPartnerMoods().some(text => normalizeStringStrict(text) === normalized)) {
+            showNotification('该情绪标签已存在', 'warning');
+            return;
+        }
+        items[index] = newText.trim();
+    }
     else if (currentSubTab === 'dreamfree') window.dreamFreeReplies[index] = newText.trim();   // ← 加这一行
     throttledSaveData();
     renderReplyLibrary();
@@ -1619,6 +1699,17 @@ function _libraryAssetModules() {
             restore:(_,overwrite,zip)=>window.VoiceLibrary.restoreVoiceArchive(zip,overwrite)},
         imageModule('partnerImageLibrary','partner','对方的头像和昵称'),
         imageModule('myImageLibrary','me','我的头像和昵称'),
+        { id: '_rl_partner_moods', key: 'customPartnerMoods', label: '他的情绪', icon: ICONS.smile, section: '回复库',
+            count: () => (window.customPartnerMoods || []).length,
+            measure: data => normalizePartnerMoodLabels(data).length,
+            read: () => window.customPartnerMoods || [],
+            restore: (data, overwrite) => {
+                const incoming = normalizePartnerMoodLabels(data);
+                const existing = overwrite ? [] : (window.customPartnerMoods || []);
+                window.customPartnerMoods = normalizePartnerMoodLabels([...existing, ...incoming]);
+                if (currentSubTab === 'partner-moods') _batchSelectedIndices.clear();
+                return window.customPartnerMoods.length - existing.length;
+            } },
         {id:'_rl_words', key:'dreamFreeLibrary', label:'组词库', icon:ICONS.comment, section:'回复库',
             count:()=>window.dreamFreeReplies?.length || 0, measure:data=>data.items.length,
             read:()=>({items:window.dreamFreeReplies||[],groups:window.dreamFreeGroups||[]}),
@@ -1894,7 +1985,7 @@ function _normalizeImportData(data) {
     if (!data || typeof data !== 'object') return data;
     const knownKeys = ['customReplies','customPokes','customStatuses','customMottos','customIntros','customEmojis',
                        'customReplyGroups','customPokeGroups','customStatusGroups','disabledDefaultReplies',
-                       'announcementConfig','announcementText','announcementStatusPool','qaQuestionLibrary', 'stickerLibrary','myStickerLibrary','partnerImageLibrary','myImageLibrary','voiceLibrary','dreamFreeLibrary','periodCareLibrary','announcementImages'];
+                       'announcementConfig','announcementText','announcementStatusPool','qaQuestionLibrary', 'stickerLibrary','myStickerLibrary','partnerImageLibrary','myImageLibrary','voiceLibrary','dreamFreeLibrary','periodCareLibrary','announcementImages','customPartnerMoods'];
     const hasNewFormat = knownKeys.some(k => data[k] !== undefined && data[k] !== null);
     if (hasNewFormat) return data;
     if (Array.isArray(data)) {
@@ -1906,7 +1997,7 @@ function _normalizeImportData(data) {
 function _showImportUI(data, voiceZip = null) {
     const knownFields = ['customReplies','customPokes','customStatuses','customMottos','customIntros','customEmojis',
                          'customReplyGroups','customPokeGroups','customStatusGroups',
-                         'announcementConfig','announcementText','announcementStatusPool','qaQuestionLibrary', 'stickerLibrary','myStickerLibrary','partnerImageLibrary','myImageLibrary','voiceLibrary','dreamFreeLibrary','periodCareLibrary','announcementImages'];
+                         'announcementConfig','announcementText','announcementStatusPool','qaQuestionLibrary', 'stickerLibrary','myStickerLibrary','partnerImageLibrary','myImageLibrary','voiceLibrary','dreamFreeLibrary','periodCareLibrary','announcementImages','customPartnerMoods'];
     const hasValid = data && knownFields.some(f => data[f] !== undefined && data[f] !== null);
     if (!hasValid) { showNotification('无效的字卡备份文件', 'error'); return; }
 
@@ -2342,6 +2433,8 @@ function _showBatchAddDialog() {
         const existing = new Set(ctx.items.map(normalizeStringStrict));
         if (currentSubTab === 'custom') {
             CONSTANTS.REPLY_MESSAGES.forEach(text => existing.add(normalizeStringStrict(text)));
+        } else if (currentSubTab === 'partner-moods') {
+            _builtInPartnerMoods().forEach(text => existing.add(normalizeStringStrict(text)));
         }
         const newItems = [];
         for (const text of lines) {
@@ -2453,7 +2546,7 @@ function initReplyLibraryListeners() {
                 }
                 return;
             }
-            if (_tabHasGroups()) {
+            if (_tabHasGroups() || currentSubTab === 'partner-moods') {
                 _showBatchAddDialog(); return;
             }
             let input;
@@ -2486,7 +2579,7 @@ function initReplyLibraryListeners() {
 }
 
 function getCategoryName(tabId) {
-    return { custom: '回复', pokes: '拍一拍', statuses: '状态', mottos: '格言', intros: '开场语' }[tabId] || '内容';
+    return { custom: '回复', pokes: '拍一拍', statuses: '状态', mottos: '格言', intros: '开场语', 'partner-moods': '情绪标签' }[tabId] || '内容';
 }
 
 function updateTabUI() {
