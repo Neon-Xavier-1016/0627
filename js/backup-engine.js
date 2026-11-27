@@ -278,7 +278,8 @@
             } catch (e2) {}
         }
         if (typeof getStorageKey === 'function' && typeof SESSION_ID !== 'undefined' && SESSION_ID) {
-            if (flags.inclCustom && typeof customEmojis !== 'undefined' && Array.isArray(customEmojis)) {
+            if (flags.inclCustom && typeof customEmojis !== 'undefined' && Array.isArray(customEmojis) &&
+                (typeof hasLoadedCustomEmojis !== 'function' || hasLoadedCustomEmojis())) {
                 lfData[getStorageKey('customEmojis')] = customEmojis.slice();
             }
             if (flags.inclSet && global.settings?.imagePool) {
@@ -574,6 +575,7 @@
             lfRaw[sourcePrefix + 'lastSessionId'] || inferBackupSessionId(lfKeys, sourcePrefix);
         var curSid = typeof SESSION_ID !== 'undefined' ? SESSION_ID : null;
         var failures = [];
+        var restoredEmojiLists = new Map();
 
         for (var i = 0; i < lfKeys.length; i++) {
             var lk = lfKeys[i];
@@ -581,6 +583,9 @@
             var val = remapSessionReferences(lk, inlineMediaTree(lfRaw[lk], mediaStore), backupSid, curSid, sourcePrefix);
             try {
                 await localforage.setItem(targetKey, val);
+                if (targetKey.startsWith(appPfx) && targetKey.endsWith('_customEmojis') && Array.isArray(val)) {
+                    restoredEmojiLists.set(targetKey + 'Backup', val);
+                }
             } catch (e) {
                 failures.push(targetKey);
                 console.warn('[backup] 写入失败', targetKey, e);
@@ -596,6 +601,15 @@
                 localStorage.setItem(targetLsKey, lsv);
             } catch (e2) {
                 console.warn('[backup] localStorage 恢复失败', targetLsKey, e2);
+            }
+        }
+
+        for (var [shadowKey, items] of restoredEmojiLists) {
+            try {
+                localStorage.removeItem(shadowKey);
+                localStorage.setItem(shadowKey, JSON.stringify({ items: items }));
+            } catch (error) {
+                console.warn('[backup] Emoji 备用存储写入失败', error);
             }
         }
 

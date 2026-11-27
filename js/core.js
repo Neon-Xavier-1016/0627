@@ -430,7 +430,7 @@ const loadData = async () => {
         if (savedMyStickers) myStickerLibrary = savedMyStickers;
         if (savedCustomThemes) customThemes = savedCustomThemes;
         if (savedThemeSchemes) themeSchemes = savedThemeSchemes;
-        try { const ce = await localforage.getItem(getStorageKey('customEmojis')); if (ce && Array.isArray(ce)) customEmojis = ce; } catch(e) {}
+        await loadCustomEmojis();
         window.dreamFreeReplies = Array.isArray(savedDreamFreeReplies) ? savedDreamFreeReplies : []; //新增
         window.dreamFreeGroups = Array.isArray(savedDreamFreeGroups) ? savedDreamFreeGroups : [];
         window._customReplies = customReplies;
@@ -579,10 +579,86 @@ function _tryRecoverFromBackup() {
     }
 }
 
+let emojiLoadedKey = null;
+let emojiWrites = Promise.resolve();
+let emojiRevision = 0;
+
+function hasLoadedCustomEmojis() {
+    return !!SESSION_ID && emojiLoadedKey === getStorageKey('customEmojis');
+}
+
+function readEmojiShadow(key) {
+    try {
+        const value = JSON.parse(localStorage.getItem(key));
+        return Array.isArray(value?.items) ? value : null;
+    } catch {
+        return null;
+    }
+}
+
+function writeEmojiShadow(key, value) {
+    try {
+        if (localStorage.getItem(key) !== value) localStorage.setItem(key, value);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function loadCustomEmojis() {
+    const key = getStorageKey('customEmojis');
+    const shadowKey = key + 'Backup';
+    const shadow = readEmojiShadow(shadowKey);
+    let saved;
+    let readFailed = false;
+    try {
+        saved = await localforage.getItem(key);
+    } catch (error) {
+        readFailed = true;
+        console.warn('读取自定义 Emoji 失败:', error);
+    }
+    if (key !== getStorageKey('customEmojis')) return;
+    if (shadow && (shadow.pending || !Array.isArray(saved))) {
+        customEmojis = shadow.items;
+        emojiLoadedKey = key;
+        saveCustomEmojis().catch(error => console.warn('恢复自定义 Emoji 失败:', error));
+        return;
+    }
+    customEmojis = Array.isArray(saved) ? saved : [];
+    emojiLoadedKey = readFailed ? null : key;
+    if (Array.isArray(saved)) writeEmojiShadow(shadowKey, JSON.stringify({ items: saved }));
+}
+
+function saveCustomEmojis({ intentional = false } = {}) {
+    if (!SESSION_ID || window.ChatBackup?.isRestoring?.()) return Promise.resolve();
+    const key = getStorageKey('customEmojis');
+    if (emojiLoadedKey !== key && !intentional) return Promise.resolve();
+    emojiLoadedKey = key;
+
+    const items = customEmojis.slice();
+    const shadowKey = key + 'Backup';
+    const pending = JSON.stringify({ items, pending: Date.now() + '-' + (++emojiRevision) });
+    const localSaved = writeEmojiShadow(shadowKey, pending);
+    const write = emojiWrites.catch(() => {}).then(async () => {
+        try {
+            await localforage.setItem(key, items);
+        } catch (error) {
+            if (!localSaved) throw error;
+            console.warn('自定义 Emoji 暂由备用存储保留:', error);
+            return;
+        }
+        try {
+            if (localStorage.getItem(shadowKey) === pending) writeEmojiShadow(shadowKey, JSON.stringify({ items }));
+        } catch {}
+    });
+    emojiWrites = write;
+    return write;
+}
+
 const pendingAppDataSaves = new Set();
 
 function waitForAppDataSaves() {
-    return Promise.allSettled([...pendingAppDataSaves]);
+    return Promise.allSettled([...pendingAppDataSaves, emojiWrites]);
 }
 
 const saveData = () => {
@@ -606,7 +682,7 @@ const writeAppData = async () => {
         { key: 'customReplyGroups',      val: () => localforage.setItem(getStorageKey('customReplyGroups'), window.customReplyGroups || []) },
         { key: 'customPokeGroups',        val: () => localforage.setItem(getStorageKey('customPokeGroups'), window.customPokeGroups || []) },
         { key: 'customStatusGroups',      val: () => localforage.setItem(getStorageKey('customStatusGroups'), window.customStatusGroups || []) },
-        { key: 'customEmojis',           val: () => localforage.setItem(getStorageKey('customEmojis'), customEmojis) },
+        { key: 'customEmojis',           val: () => saveCustomEmojis() },
         { key: 'anniversaries',          val: () => localforage.setItem(getStorageKey('anniversaries'), anniversaries) },
         { key: 'customPokes',            val: () => localforage.setItem(getStorageKey('customPokes'), customPokes) },
         { key: 'customStatuses',         val: () => localforage.setItem(getStorageKey('customStatuses'), customStatuses) },
@@ -2495,7 +2571,10 @@ function showModal(modalElement, focusElement = null) {
                             if (importedData.customWeatherMap) { try { Object.keys(importedData.customWeatherMap).forEach(wk => localStorage.setItem(wk, importedData.customWeatherMap[wk])); } catch(e2) {} }
                         }
                         if (doReplies  && importedData.customReplies)  customReplies  = importedData.customReplies;
-                        if (doReplies  && importedData.customEmojis && Array.isArray(importedData.customEmojis)) customEmojis = importedData.customEmojis;
+                        if (doReplies && Array.isArray(importedData.customEmojis)) {
+                            customEmojis = importedData.customEmojis;
+                            saveCustomEmojis({ intentional: true }).catch(error => console.warn('保存导入的 Emoji 失败:', error));
+                        }
                         if (doAnn      && importedData.anniversaries)   anniversaries  = importedData.anniversaries;
                         if (doThemes   && importedData.customThemes)    customThemes   = importedData.customThemes;
                         if (doThemes   && importedData.stickerLibrary)  stickerLibrary = importedData.stickerLibrary;

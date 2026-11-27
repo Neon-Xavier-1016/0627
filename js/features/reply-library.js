@@ -963,6 +963,15 @@ function _renderAtmosphereList(list, items) {
     list.appendChild(frag);
 }
 
+function saveEmojiLibraryChange(message) {
+    return saveCustomEmojis({ intentional: true }).then(() => {
+        if (message) showNotification(message, 'success');
+    }).catch(error => {
+        console.error('保存自定义 Emoji 失败:', error);
+        showNotification('Emoji 保存失败，请重试', 'error');
+    });
+}
+
 function _renderEmojiTab(list, itemsToRender) {
     if (itemsToRender.length === 0 && customEmojis.length === 0) {
         list.innerHTML = renderEmptyState('暂无 Emoji'); return;
@@ -988,7 +997,7 @@ function _renderEmojiTab(list, itemsToRender) {
             div.querySelector('.emoji-custom-del').addEventListener('click', e => {
                 e.stopPropagation();
                 customEmojis.splice(idx, 1);
-                throttledSaveData();
+                saveEmojiLibraryChange('已删除 Emoji');
                 renderReplyLibrary();
             });
             list.appendChild(div);
@@ -1150,6 +1159,7 @@ function _runDedup() {
     const preEmoji = customEmojis.length;
     customEmojis = [...new Set(customEmojis)];
     totalRemoved += (preEmoji - customEmojis.length);
+    if (preEmoji !== customEmojis.length) saveEmojiLibraryChange();
     if (totalRemoved > 0) {
         throttledSaveData(); renderReplyLibrary();
         showNotification(`🧹 共清理了 ${totalRemoved} 条重复内容`, 'success');
@@ -1942,7 +1952,10 @@ function _showImportUI(data, voiceZip = null) {
                     else if (m.key === 'customStatuses')   { customStatuses              = data.customStatuses;      totalAdded += data.customStatuses.length; }
                     else if (m.key === 'customMottos')     { customMottos                = data.customMottos;        totalAdded += data.customMottos.length; }
                     else if (m.key === 'customIntros')     { customIntros                = data.customIntros;        totalAdded += data.customIntros.length; }
-                    else if (m.key === 'customEmojis')     { customEmojis                = data.customEmojis; }
+                    else if (m.key === 'customEmojis') {
+                        customEmojis = data.customEmojis;
+                        saveEmojiLibraryChange();
+                    }
                     else if (m.key === 'customReplyGroups')  { window.customReplyGroups  = data.customReplyGroups; }
                     else if (m.key === 'customPokeGroups')   { window.customPokeGroups   = data.customPokeGroups; }
                     else if (m.key === 'customStatusGroups') { window.customStatusGroups = data.customStatusGroups; }
@@ -1990,6 +2003,7 @@ function _showImportUI(data, voiceZip = null) {
                         totalAdded += customIntros.length - before;
                     } else if (m.key === 'customEmojis') {
                         customEmojis = [...new Set([...customEmojis, ...data.customEmojis])];
+                        saveEmojiLibraryChange();
                     } else if (m.key === 'customReplyGroups') {
                         if (!window.customReplyGroups) window.customReplyGroups = [];
                         data.customReplyGroups.forEach(dg => {
@@ -2434,8 +2448,8 @@ function initReplyLibraryListeners() {
                 const input = prompt('请输入要添加的 Emoji（支持组合表情）:');
                 if (input?.trim()) {
                     customEmojis.push(input.trim());
-                    throttledSaveData(); renderReplyLibrary();
-                    showNotification('✓ Emoji 已添加', 'success');
+                    saveEmojiLibraryChange('✓ Emoji 已添加');
+                    renderReplyLibrary();
                 }
                 return;
             }
